@@ -662,7 +662,7 @@ public class MainActivity extends Activity {
         for (android.content.pm.ApplicationInfo app :
                 pm.getInstalledApplications(0)) {
             String nombre = pm.getApplicationLabel(app).toString();
-            if (nombre.equalsIgnoreCase("YMusic")) {
+            if (nombre.toLowerCase().replace(" ", "").contains("ymusic") || app.packageName.toLowerCase().contains("ymusic")) {
                 return pm.getLaunchIntentForPackage(app.packageName);
             }
         }
