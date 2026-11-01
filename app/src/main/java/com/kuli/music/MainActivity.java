@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -210,8 +211,10 @@ public class MainActivity extends Activity {
             try {
                 if (reproductor.isPlaying()) {
                     reproductor.pause(); estado.setText("Ⅱ EN PAUSA");
+                    detenerServicio();
                 } else {
                     reproductor.start(); estado.setText("▶ REPRODUCIENDO");
+                    iniciarServicio();
                 }
             } catch (IllegalStateException e) { aviso("No se pudo reproducir"); }
             actualizarProgreso();
@@ -395,6 +398,7 @@ public class MainActivity extends Activity {
             reproductor.setOnCompletionListener(mp -> alTerminar());
             prepararSiguiente();
             reproductor.start(); estado.setText("▶ REPRODUCIENDO");
+            iniciarServicio();
             arrastrando = false;
             actualizarProgreso();
         } catch (Exception e) {
@@ -408,9 +412,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Notificación fija mientras suena, para que Android no pare la música en segundo plano.
+    private void iniciarServicio() {
+        try { startForegroundService(new Intent(this, MusicaService.class)); }
+        catch (Throwable e) { android.util.Log.e("KULI_PLAY", "Servicio", e); }
+    }
+    private void detenerServicio() {
+        try { stopService(new Intent(this, MusicaService.class)); }
+        catch (Throwable ignored) { }
+    }
+
     private MediaPlayer abrirReproductor(Uri uri) throws Exception {
         MediaPlayer mp = new MediaPlayer();
         try {
+            mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
             mp.setDataSource(this, uri);
             mp.prepare();
             return mp;
@@ -489,6 +504,7 @@ public class MainActivity extends Activity {
     private void alTerminar() {
         if (!modoLista || listaFavoritas.isEmpty()) {
             estado.setText("✓ REPRODUCCIÓN TERMINADA");
+            detenerServicio();
             actualizarProgreso();
             return;
         }
@@ -686,6 +702,7 @@ public class MainActivity extends Activity {
             if (!repetir) {
                 modoLista = false;
                 estado.setText("✓ LISTA TERMINADA");
+                detenerServicio();
                 return;
             }
             siguienteIndice = 0;
@@ -697,6 +714,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         ui.removeCallbacks(ticker);
+        detenerServicio();
         liberarSiguiente();
         if (reproductor != null) { reproductor.release(); reproductor = null; }
         super.onDestroy();
