@@ -264,10 +264,7 @@ public class MainActivity extends Activity {
             Intent i = buscarYMusic();
             if (i != null) startActivity(i); else aviso("YMusic no encontrado");
         });
-        buscar.setOnClickListener(v -> {
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.jamendo.com/search"))); }
-            catch (Exception e) { aviso("No se pudo abrir el navegador"); }
-        });
+        buscar.setOnClickListener(v -> abrirBuscador());
 
         TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
         pie.setAlpha(0.7f);
@@ -392,8 +389,7 @@ public class MainActivity extends Activity {
         try {
             liberarSiguiente();
             if (reproductor != null) { reproductor.release(); reproductor = null; }
-            reproductor = MediaPlayer.create(this, uri);
-            if (reproductor == null) throw new Exception("No se pudo abrir el audio");
+            reproductor = abrirReproductor(uri);
             uriActual = uri;
             mostrarDatos(uri);
             reproductor.setOnCompletionListener(mp -> alTerminar());
@@ -401,7 +397,27 @@ public class MainActivity extends Activity {
             reproductor.start(); estado.setText("▶ REPRODUCIENDO");
             arrastrando = false;
             actualizarProgreso();
-        } catch (Exception e) { aviso("Error: " + e.getMessage()); }
+        } catch (Exception e) {
+            android.util.Log.e("KULI_PLAY", "No se pudo reproducir " + uri, e);
+            String motivo = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            String ayuda = (e instanceof SecurityException)
+                ? "\n\nAndroid ya no deja a la app leer esta canción. Vuelve a elegirla con «Mis canciones»."
+                : "";
+            new AlertDialog.Builder(this).setTitle("No se pudo reproducir")
+                .setMessage(motivo + ayuda).setPositiveButton("CERRAR", null).show();
+        }
+    }
+
+    private MediaPlayer abrirReproductor(Uri uri) throws Exception {
+        MediaPlayer mp = new MediaPlayer();
+        try {
+            mp.setDataSource(this, uri);
+            mp.prepare();
+            return mp;
+        } catch (Exception e) {
+            mp.release();
+            throw e;
+        }
     }
 
     private void mostrarDatos(Uri uri) {
@@ -464,8 +480,7 @@ public class MainActivity extends Activity {
         int n = indiceSiguiente();
         if (n < 0 || reproductor == null) return;
         try {
-            MediaPlayer proximo = MediaPlayer.create(this, Uri.parse(listaFavoritas.get(n)));
-            if (proximo == null) return;
+            MediaPlayer proximo = abrirReproductor(Uri.parse(listaFavoritas.get(n)));
             siguienteReproductor = proximo;
             indicePreparado = n;
         } catch (Exception ignored) { liberarSiguiente(); }
@@ -602,6 +617,35 @@ public class MainActivity extends Activity {
             }
         }
         return total;
+    }
+
+    // ---------- Buscar música por épocas ----------
+    private void abrirEnlace(String url) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
+        catch (Exception e) { aviso("No se pudo abrir el enlace"); }
+    }
+    private void abrirBuscador() {
+        final String[] epocas = {"Años 80", "Años 90", "Años 2000", "Música libre (Jamendo)"};
+        final String[] consultas = {
+            "éxitos música años 80", "éxitos música años 90", "éxitos música años 2000"};
+        new AlertDialog.Builder(this).setTitle("⌕ BUSCAR MÚSICA")
+            .setItems(epocas, (d, i) -> {
+                if (i == 3) { abrirEnlace("https://www.jamendo.com/search"); return; }
+                elegirServicio(epocas[i], consultas[i]);
+            })
+            .setNegativeButton("CERRAR", null).show();
+    }
+    private void elegirServicio(String epoca, String consulta) {
+        final String q = Uri.encode(consulta);
+        final String[] servicios = {"YouTube Music", "YouTube", "Spotify", "Deezer"};
+        final String[] enlaces = {
+            "https://music.youtube.com/search?q=" + q,
+            "https://www.youtube.com/results?search_query=" + Uri.encode(consulta + " mix"),
+            "https://open.spotify.com/search/" + q,
+            "https://www.deezer.com/search/" + q};
+        new AlertDialog.Builder(this).setTitle(epoca + " · ¿dónde buscar?")
+            .setItems(servicios, (d, i) -> abrirEnlace(enlaces[i]))
+            .setNegativeButton("ATRÁS", (d, w) -> abrirBuscador()).show();
     }
 
     private void mostrarFavoritas() {
