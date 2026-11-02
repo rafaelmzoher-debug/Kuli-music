@@ -52,6 +52,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.TreeMap;
 import java.util.Map;
 import java.util.Collections;
 
@@ -557,19 +559,49 @@ public class MainActivity extends Activity {
         if (favoritos.contains(clave)) {
             favoritos.edit().remove(clave).apply(); aviso("Eliminada de favoritas");
         } else {
-            favoritos.edit().putString(clave, tituloActual + " — " + artistaActual).apply();
+            String titulo = tituloActual + " — " + artistaActual;
             if ("nas".equals(uriActual.getScheme())) {
+                favoritos.edit().putString(clave, titulo).apply();
                 aviso("Guardada en favoritas (ya está en el NAS)");
             } else {
-                aviso("Guardada en favoritas. Copiando al NAS…");
-                try { copiarFavoritaAlNas(uriActual); }
-                catch (Throwable e) { aviso("Favorita guardada; error al iniciar NAS"); android.util.Log.e("KULI_NAS", "Inicio NAS", e); }
+                pedirEstiloYGuardar(uriActual, clave, titulo);
+                return;
             }
         }
         actualizarBotonFavorito();
     }
+
+    // ---------- Estilos (carpetas del NAS) ----------
+    private void pedirEstiloYGuardar(final Uri uri, final String clave, final String titulo) {
+        final String[] estilos = {"Pop", "Rock", "Latino", "Baladas", "Dance",
+            "Años 80", "Años 90", "Años 2000", "Otro…"};
+        new AlertDialog.Builder(this).setTitle("¿De qué estilo es?")
+            .setItems(estilos, (d, i) -> {
+                if (i == estilos.length - 1) pedirEstiloNuevo(uri, clave, titulo);
+                else guardarFavoritaConEstilo(uri, clave, titulo, estilos[i]);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+    private void pedirEstiloNuevo(final Uri uri, final String clave, final String titulo) {
+        final android.widget.EditText campo = new android.widget.EditText(this);
+        campo.setHint("Ej.: Flamenco, Jazz, Infantil…");
+        campo.setSingleLine(true);
+        new AlertDialog.Builder(this).setTitle("Nuevo estilo").setView(campo)
+            .setPositiveButton("GUARDAR", (d, w) -> {
+                String e = campo.getText().toString().trim();
+                guardarFavoritaConEstilo(uri, clave, titulo, e.isEmpty() ? "Sin clasificar" : e);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+    private void guardarFavoritaConEstilo(Uri uri, String clave, String titulo, String estilo) {
+        favoritos.edit().putString(clave, titulo).apply();
+        aviso("Guardada en favoritas. Copiando al NAS…");
+        try { copiarFavoritaAlNas(uri, estilo); }
+        catch (Throwable e) { aviso("Favorita guardada; error al iniciar NAS"); android.util.Log.e("KULI_NAS", "Inicio NAS", e); }
+        actualizarBotonFavorito();
+    }
     // Copia una canción seleccionada al NAS solo con WiFi. No borra el original.
-    private void copiarFavoritaAlNas(Uri uri) {
+    private void copiarFavoritaAlNas(Uri uri, String estilo) {
         // Ejecutar TODA la operación de red fuera del hilo principal.
         new Thread(() -> {
             try {
@@ -586,7 +618,10 @@ public class MainActivity extends Activity {
                 if (nombre == null || nombre.trim().isEmpty()) nombre = "cancion.mp3";
                 nombre = nombre.replaceAll("[\\/:*?\"<>|]", "_");
                 final String archivo = nombre;
-                final String ruta = "KULI MUSIC\\" + archivo;
+                String carpeta = estilo == null ? "" : estilo.replaceAll("[\\/:*?\"<>|]", "_").trim();
+                if (carpeta.isEmpty()) carpeta = "Sin clasificar";
+                final String estiloFinal = carpeta;
+                final String ruta = "KULI MUSIC\\" + estiloFinal + "\\" + archivo;
                 // Prueba varias formas de conectar: invitado/anónimo, con SMB por defecto y con SMB 2.1.
                 SmbConfig[] configs = {
                     SmbConfig.createDefaultConfig(),
@@ -613,7 +648,7 @@ public class MainActivity extends Activity {
                 }
                 if (total < 0) throw ultimo != null ? ultimo : new java.io.IOException("Sin conexión con el NAS");
                 final long bytes = total;
-                runOnUiThread(() -> aviso("NAS: " + archivo + " (" + bytes + " bytes)"));
+                runOnUiThread(() -> aviso("NAS · " + estiloFinal + ": " + archivo + " (" + bytes + " bytes)"));
             } catch (Throwable e) {
                 android.util.Log.e("KULI_NAS", "Error al copiar favorita", e);
                 String detalle = e.getClass().getSimpleName();
@@ -637,6 +672,8 @@ public class MainActivity extends Activity {
                 if (origen == null) throw new java.io.IOException("No se puede leer el MP3");
                 if (!disco.folderExists("KULI MUSIC"))
                     throw new java.io.IOException("No existe la carpeta Public/KULI MUSIC");
+                String carpetaEstilo = ruta.substring(0, ruta.lastIndexOf('\\'));
+                if (!disco.folderExists(carpetaEstilo)) disco.mkdir(carpetaEstilo);
                 try (File destino = disco.openFile(ruta,
                         EnumSet.of(AccessMask.GENERIC_WRITE),
                         null,
@@ -731,6 +768,8 @@ public class MainActivity extends Activity {
     }
     private String nombreSinExtension(String n) {
         if (n == null) return "Canción del NAS";
+        int barra = n.lastIndexOf('/');
+        if (barra >= 0) n = n.substring(barra + 1);
         int p = n.lastIndexOf('.');
         return p > 0 ? n.substring(0, p) : n;
     }
@@ -748,41 +787,75 @@ public class MainActivity extends Activity {
         aviso("Conectando con el NAS…");
         new Thread(() -> {
             try {
-                final ArrayList<String> nombres = conNas(disco -> {
-                    ArrayList<String> r = new ArrayList<>();
+                final LinkedHashMap<String, ArrayList<String>> grupos = conNas(disco -> {
+                    TreeMap<String, ArrayList<String>> carpetas = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+                    ArrayList<String> sueltas = new ArrayList<>();
                     for (var f : disco.list("KULI MUSIC")) {
                         String n = f.getFileName();
-                        if ((f.getFileAttributes() & 0x10L) != 0) continue;
-                        if (esAudio(n)) r.add(n);
+                        if (n.equals(".") || n.equals("..")) continue;
+                        if ((f.getFileAttributes() & 0x10L) != 0) {
+                            ArrayList<String> dentro = new ArrayList<>();
+                            for (var g : disco.list("KULI MUSIC\\" + n)) {
+                                String m = g.getFileName();
+                                if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(m)) dentro.add(n + "/" + m);
+                            }
+                            Collections.sort(dentro, String.CASE_INSENSITIVE_ORDER);
+                            if (!dentro.isEmpty()) carpetas.put(n, dentro);
+                        } else if (esAudio(n)) {
+                            sueltas.add(n);
+                        }
                     }
-                    Collections.sort(r, String.CASE_INSENSITIVE_ORDER);
+                    Collections.sort(sueltas, String.CASE_INSENSITIVE_ORDER);
+                    LinkedHashMap<String, ArrayList<String>> r = new LinkedHashMap<>(carpetas);
+                    if (!sueltas.isEmpty()) r.put("Sin clasificar", sueltas);
                     return r;
                 });
-                runOnUiThread(() -> mostrarListaNas(nombres));
+                runOnUiThread(() -> mostrarGruposNas(grupos));
             } catch (Throwable e) {
                 runOnUiThread(() -> mostrarErrorNas("No se pudo abrir el NAS", e));
             }
         }).start();
     }
 
-    private void mostrarListaNas(final ArrayList<String> nombres) {
-        if (nombres.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
-        String[] items = new String[nombres.size()];
-        for (int n = 0; n < items.length; n++) items[n] = nombreSinExtension(nombres.get(n));
-        new AlertDialog.Builder(this).setTitle("☁ NAS · " + nombres.size() + " canciones")
-            .setItems(items, (d, index) -> {
-                cargarListaNas(nombres);
-                modoLista = true;
-                posicionFavorita = index;
-                reproducir(Uri.parse(listaFavoritas.get(index)));
-            })
-            .setPositiveButton("▶ REPRODUCIR TODAS", (d, w) -> {
-                cargarListaNas(nombres);
-                modoLista = true;
-                posicionFavorita = 0;
-                reproducir(Uri.parse(listaFavoritas.get(0)));
-            })
+    private void mostrarGruposNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        if (grupos.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
+        if (grupos.size() == 1) {
+            String unica = grupos.keySet().iterator().next();
+            mostrarCancionesNas(unica, grupos.get(unica), grupos);
+            return;
+        }
+        final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
+        final ArrayList<String> todas = new ArrayList<>();
+        String[] items = new String[claves.size()];
+        for (int i = 0; i < items.length; i++) {
+            ArrayList<String> lista = grupos.get(claves.get(i));
+            items[i] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
+            todas.addAll(lista);
+        }
+        new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
+            .setItems(items, (d, i) -> mostrarCancionesNas(claves.get(i), grupos.get(claves.get(i)), grupos))
+            .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
             .setNegativeButton("CERRAR", null).show();
+    }
+
+    private void mostrarCancionesNas(String estilo, final ArrayList<String> rutas,
+                                     final LinkedHashMap<String, ArrayList<String>> grupos) {
+        String[] items = new String[rutas.size()];
+        for (int i = 0; i < items.length; i++) items[i] = nombreSinExtension(rutas.get(i));
+        final boolean hayMasGrupos = grupos.size() > 1;
+        new AlertDialog.Builder(this).setTitle("📁 " + estilo + " · " + rutas.size())
+            .setItems(items, (d, i) -> reproducirListaNas(rutas, i))
+            .setPositiveButton("▶ REPRODUCIR TODAS", (d, w) -> reproducirListaNas(rutas, 0))
+            .setNegativeButton(hayMasGrupos ? "ATRÁS" : "CERRAR", (d, w) -> {
+                if (hayMasGrupos) mostrarGruposNas(grupos);
+            }).show();
+    }
+
+    private void reproducirListaNas(List<String> rutas, int inicio) {
+        cargarListaNas(rutas);
+        modoLista = true;
+        posicionFavorita = inicio;
+        reproducir(Uri.parse(listaFavoritas.get(inicio)));
     }
 
     private void cargarListaNas(List<String> nombres) {
@@ -793,12 +866,14 @@ public class MainActivity extends Activity {
     private java.io.File archivoCache(String nombre) {
         java.io.File dir = new java.io.File(getCacheDir(), "nas");
         dir.mkdirs();
-        return new java.io.File(dir, nombre);
+        return new java.io.File(dir, nombre.replace('/', '_'));
     }
     // Borra de la caché todo menos la canción actual y la siguiente.
     private void limpiarCache(String a, String b) {
         java.io.File[] fs = new java.io.File(getCacheDir(), "nas").listFiles();
         if (fs == null) return;
+        if (a != null) a = a.replace('/', '_');
+        if (b != null) b = b.replace('/', '_');
         for (java.io.File f : fs) {
             String n = f.getName();
             if (a != null && (n.equals(a) || n.startsWith(a + "."))) continue;
@@ -816,7 +891,7 @@ public class MainActivity extends Activity {
     private void descargarDelNas(final String nombre, final java.io.File destino) throws Throwable {
         conNas(disco -> {
             java.io.File tmp = new java.io.File(destino.getPath() + "." + System.nanoTime() + ".part");
-            try (File origen = disco.openFile("KULI MUSIC\\" + nombre,
+            try (File origen = disco.openFile("KULI MUSIC\\" + nombre.replace('/', '\\'),
                         EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL,
                         SMB2CreateDisposition.FILE_OPEN,
                         EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
