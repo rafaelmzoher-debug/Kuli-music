@@ -680,7 +680,7 @@ public class MainActivity extends Activity {
             String y = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR);
             if (y != null && y.length() >= 4) anio = Integer.parseInt(y.substring(0, 4));
         } catch (Exception ignored) { } finally { try { m.release(); } catch (Exception ignored) { } }
-        String estilo = estiloDeGenero(genero);
+        String estilo = simple(nombreDeUri(u)).contains("flamenc") ? "Flamenquito" : estiloDeGenero(genero);
         if (estilo == null) {
             String termino = (titulo != null && !titulo.trim().isEmpty())
                 ? ((autor == null ? "" : autor + " ") + titulo)
@@ -711,6 +711,11 @@ public class MainActivity extends Activity {
         if (g.contains("balad") || g.contains("romant") || g.contains("singer") || g.contains("easy listening")) return "Baladas";
         if (g.contains("pop")) return "Pop";
         return null;
+    }
+
+    // Nombre "comparable": sin extensión, sin (Video Oficial), sin acentos ni símbolos.
+    private String claveNombre(String nombre) {
+        return simple(limpiarNombre(nombre)).replaceAll("[^a-z0-9]", "");
     }
 
     private String limpiarNombre(String nombre) {
@@ -1674,19 +1679,40 @@ public class MainActivity extends Activity {
         aviso("Subiendo " + total + " al NAS (" + estilo + ")…");
         new Thread(() -> {
             final int[] hechas = {0};
+            final int[] repetidas = {0};
             final ArrayList<String> fallos = new ArrayList<>();
             try {
                 conNas(disco -> {
                     hechas[0] = 0;
+                    repetidas[0] = 0;
                     fallos.clear();
                     String dir = "KULI MUSIC\\" + estilo;
                     if (!disco.folderExists("KULI MUSIC"))
                         throw new java.io.IOException("No existe la carpeta Public/KULI MUSIC");
                     if (!disco.folderExists(dir)) disco.mkdir(dir);
+                    // Canciones que ya hay en cualquier carpeta del NAS (para no duplicar).
+                    java.util.HashSet<String> existentes = new java.util.HashSet<>();
+                    for (var f : disco.list("KULI MUSIC")) {
+                        String n = f.getFileName();
+                        if (n.equals(".") || n.equals("..")) continue;
+                        if ((f.getFileAttributes() & 0x10L) != 0) {
+                            for (var g : disco.list("KULI MUSIC\\" + n))
+                                if ((g.getFileAttributes() & 0x10L) == 0) existentes.add(claveNombre(g.getFileName()));
+                        } else {
+                            existentes.add(claveNombre(n));
+                        }
+                    }
                     for (int k = 0; k < uris.size(); k++) {
                         String nombre = nombreDeUri(uris.get(k));
+                        String clave = claveNombre(nombre);
+                        if (existentes.contains(clave)) {
+                            repetidas[0]++;
+                            if (alSubir != null) alSubir.accept(uris.get(k));
+                            continue;
+                        }
                         try {
                             copiarAlDisco(disco, uris.get(k), dir + "\\" + nombre);
+                            existentes.add(clave);
                             hechas[0]++;
                             if (alSubir != null) alSubir.accept(uris.get(k));
                         } catch (Exception e) {
@@ -1696,11 +1722,14 @@ public class MainActivity extends Activity {
                     return null;
                 });
                 runOnUiThread(() -> {
+                    String rep = repetidas[0] == 0 ? "" : " · " + repetidas[0] + " ya estaban (no se repiten)";
                     if (fallos.isEmpty()) {
-                        aviso("✓ " + hechas[0] + " canciones subidas a " + estilo);
+                        aviso(hechas[0] == 0 && repetidas[0] > 0
+                            ? "Ya estaban todas en el NAS (" + repetidas[0] + ")"
+                            : "✓ " + hechas[0] + " subidas a " + estilo + rep);
                     } else {
                         new AlertDialog.Builder(this)
-                            .setTitle(hechas[0] + " de " + total + " subidas a " + estilo)
+                            .setTitle(hechas[0] + " subidas a " + estilo + rep)
                             .setMessage("No se pudieron subir:\n\n" + android.text.TextUtils.join("\n", fallos))
                             .setPositiveButton("CERRAR", null).show();
                     }
