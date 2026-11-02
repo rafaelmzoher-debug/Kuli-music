@@ -59,6 +59,7 @@ import java.util.Collections;
 
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 100;
+    private static final int PICK_SUBIR = 101;
     private static final String NAS_IP = "192.168.1.46";
 
     // Paleta: negro profundo, dorado y grises suaves.
@@ -248,11 +249,20 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lpFila1 = new LinearLayout.LayoutParams(-1, -2);
         lpFila1.topMargin = dp(22);
         pantalla.addView(fila1, lpFila1);
-        Button nas = pastilla("☁  Canciones del NAS", CONTORNO);
-        LinearLayout.LayoutParams lpNas = new LinearLayout.LayoutParams(-1, dp(48));
-        lpNas.topMargin = dp(10);
-        pantalla.addView(nas, lpNas);
+        Button nas = pastilla("☁  Ver NAS", CONTORNO);
+        Button subir = pastilla("⇪  Subir al NAS", CONTORNO);
+        LinearLayout filaNas = new LinearLayout(this);
+        LinearLayout.LayoutParams lpN1 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        lpN1.rightMargin = dp(5);
+        LinearLayout.LayoutParams lpN2 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        lpN2.leftMargin = dp(5);
+        filaNas.addView(nas, lpN1);
+        filaNas.addView(subir, lpN2);
+        LinearLayout.LayoutParams lpFilaNas = new LinearLayout.LayoutParams(-1, -2);
+        lpFilaNas.topMargin = dp(10);
+        pantalla.addView(filaNas, lpFilaNas);
         nas.setOnClickListener(v -> abrirListaNas());
+        subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
         misCanciones.setOnClickListener(v -> mostrarFavoritas());
 
@@ -387,6 +397,19 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_SUBIR && resultCode == RESULT_OK && data != null) {
+            final ArrayList<Uri> uris = new ArrayList<>();
+            if (data.getClipData() != null) {
+                for (int k = 0; k < data.getClipData().getItemCount(); k++)
+                    uris.add(data.getClipData().getItemAt(k).getUri());
+            } else if (data.getData() != null) {
+                uris.add(data.getData());
+            }
+            if (uris.isEmpty()) return;
+            String que = uris.size() == 1 ? "1 canción" : uris.size() + " canciones";
+            elegirEstilo("Estilo para " + que, estilo -> subirVariasAlNas(uris, estilo));
+            return;
+        }
         if (requestCode == PICK_AUDIO && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             try {
@@ -572,26 +595,30 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Estilos (carpetas del NAS) ----------
-    private void pedirEstiloYGuardar(final Uri uri, final String clave, final String titulo) {
-        final String[] estilos = {"Pop", "Rock", "Latino", "Baladas", "Dance",
-            "Años 80", "Años 90", "Años 2000", "Otro…"};
-        new AlertDialog.Builder(this).setTitle("¿De qué estilo es?")
-            .setItems(estilos, (d, i) -> {
-                if (i == estilos.length - 1) pedirEstiloNuevo(uri, clave, titulo);
-                else guardarFavoritaConEstilo(uri, clave, titulo, estilos[i]);
+    private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Baladas", "Dance",
+        "Años 80", "Años 90", "Años 2000", "Otro…"};
+
+    private void elegirEstilo(final String titulo, final java.util.function.Consumer<String> listo) {
+        new AlertDialog.Builder(this).setTitle(titulo)
+            .setItems(ESTILOS, (d, i) -> {
+                if (i == ESTILOS.length - 1) {
+                    final android.widget.EditText campo = new android.widget.EditText(this);
+                    campo.setHint("Ej.: Flamenco, Jazz, Infantil…");
+                    campo.setSingleLine(true);
+                    new AlertDialog.Builder(this).setTitle("Nuevo estilo").setView(campo)
+                        .setPositiveButton("ACEPTAR", (d2, w) -> {
+                            String texto = campo.getText().toString().trim();
+                            listo.accept(texto.isEmpty() ? "Sin clasificar" : texto);
+                        })
+                        .setNegativeButton("CANCELAR", null).show();
+                } else {
+                    listo.accept(ESTILOS[i]);
+                }
             })
             .setNegativeButton("CANCELAR", null).show();
     }
-    private void pedirEstiloNuevo(final Uri uri, final String clave, final String titulo) {
-        final android.widget.EditText campo = new android.widget.EditText(this);
-        campo.setHint("Ej.: Flamenco, Jazz, Infantil…");
-        campo.setSingleLine(true);
-        new AlertDialog.Builder(this).setTitle("Nuevo estilo").setView(campo)
-            .setPositiveButton("GUARDAR", (d, w) -> {
-                String e = campo.getText().toString().trim();
-                guardarFavoritaConEstilo(uri, clave, titulo, e.isEmpty() ? "Sin clasificar" : e);
-            })
-            .setNegativeButton("CANCELAR", null).show();
+    private void pedirEstiloYGuardar(final Uri uri, final String clave, final String titulo) {
+        elegirEstilo("¿De qué estilo es?", estilo -> guardarFavoritaConEstilo(uri, clave, titulo, estilo));
     }
     private void guardarFavoritaConEstilo(Uri uri, String clave, String titulo, String estilo) {
         favoritos.edit().putString(clave, titulo).apply();
@@ -843,12 +870,62 @@ public class MainActivity extends Activity {
         String[] items = new String[rutas.size()];
         for (int i = 0; i < items.length; i++) items[i] = nombreSinExtension(rutas.get(i));
         final boolean hayMasGrupos = grupos.size() > 1;
-        new AlertDialog.Builder(this).setTitle("📁 " + estilo + " · " + rutas.size())
+        final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("📁 " + estilo + " · " + rutas.size())
             .setItems(items, (d, i) -> reproducirListaNas(rutas, i))
             .setPositiveButton("▶ REPRODUCIR TODAS", (d, w) -> reproducirListaNas(rutas, 0))
             .setNegativeButton(hayMasGrupos ? "ATRÁS" : "CERRAR", (d, w) -> {
                 if (hayMasGrupos) mostrarGruposNas(grupos);
             }).show();
+        dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
+            dlg.dismiss();
+            final String ruta = rutas.get(pos);
+            elegirEstilo("Mover «" + nombreSinExtension(ruta) + "» a…", elegido -> moverCancionNas(ruta, elegido));
+            return true;
+        });
+        aviso("Mantén pulsada una canción para cambiarle el estilo");
+    }
+
+    // Mueve una canción de una carpeta de estilo a otra, dentro del NAS.
+    private void moverCancionNas(final String rutaRel, String estiloElegido) {
+        String carpeta = estiloElegido.replaceAll("[\\/:*?\"<>|]", "_").trim();
+        if (carpeta.isEmpty()) carpeta = "Sin clasificar";
+        final String estiloNuevo = carpeta;
+        final String archivo = rutaRel.substring(rutaRel.lastIndexOf('/') + 1);
+        final String nuevaRel = estiloNuevo + "/" + archivo;
+        if (nuevaRel.equals(rutaRel)) { aviso("Ya está en ese estilo"); return; }
+        final String origen = "KULI MUSIC\\" + rutaRel.replace('/', '\\');
+        final String destino = "KULI MUSIC\\" + estiloNuevo + "\\" + archivo;
+        aviso("Moviendo…");
+        new Thread(() -> {
+            try {
+                conNas(disco -> {
+                    if (!disco.folderExists("KULI MUSIC\\" + estiloNuevo)) disco.mkdir("KULI MUSIC\\" + estiloNuevo);
+                    try (File f = disco.openFile(origen,
+                            EnumSet.of(AccessMask.DELETE), null, SMB2ShareAccess.ALL,
+                            SMB2CreateDisposition.FILE_OPEN,
+                            EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))) {
+                        f.rename(destino);
+                    }
+                    return null;
+                });
+                runOnUiThread(() -> {
+                    actualizarFavoritoMovido(rutaRel, nuevaRel);
+                    aviso("Movida a " + estiloNuevo);
+                    abrirListaNas();
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> mostrarErrorNas("No se pudo mover la canción", e));
+            }
+        }).start();
+    }
+
+    // Si la canción movida estaba en favoritas, actualiza su ruta para que siga sonando.
+    private void actualizarFavoritoMovido(String vieja, String nueva) {
+        String claveVieja = uriNas(vieja).toString();
+        String titulo = favoritos.getString(claveVieja, null);
+        if (titulo != null) {
+            favoritos.edit().remove(claveVieja).putString(uriNas(nueva).toString(), titulo).apply();
+        }
     }
 
     private void reproducirListaNas(List<String> rutas, int inicio) {
@@ -944,6 +1021,91 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             try { descargarDelNas(nombre, destino); }
             catch (Throwable ignored) { }
+        }).start();
+    }
+
+    // ---------- Subir canciones del móvil (p. ej. las de YMusic) al NAS ----------
+    private void elegirCancionesParaSubir() {
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa para subir al NAS"); return; }
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.setType("audio/*");
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        startActivityForResult(i, PICK_SUBIR);
+    }
+
+    private String nombreDeUri(Uri uri) {
+        String nombre = null;
+        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) nombre = c.getString(0);
+        } catch (Exception ignored) { }
+        if (nombre == null || nombre.trim().isEmpty()) nombre = "cancion_" + System.currentTimeMillis() + ".mp3";
+        return nombre.replaceAll("[\\/:*?\"<>|]", "_");
+    }
+
+    private long copiarAlDisco(DiskShare disco, Uri uri, String ruta) throws Exception {
+        long total = 0;
+        try (InputStream origen = getContentResolver().openInputStream(uri)) {
+            if (origen == null) throw new java.io.IOException("No se puede leer el archivo");
+            try (File destino = disco.openFile(ruta,
+                    EnumSet.of(AccessMask.GENERIC_WRITE), null, SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                    EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
+                 OutputStream salida = destino.getOutputStream()) {
+                byte[] buffer = new byte[65536];
+                int leidos;
+                while ((leidos = origen.read(buffer)) != -1) {
+                    salida.write(buffer, 0, leidos);
+                    total += leidos;
+                }
+                salida.flush();
+            }
+        }
+        if (total == 0) throw new java.io.IOException("El archivo está vacío");
+        return total;
+    }
+
+    private void subirVariasAlNas(final List<Uri> uris, String estiloElegido) {
+        String carpeta = estiloElegido.replaceAll("[\\/:*?\"<>|]", "_").trim();
+        if (carpeta.isEmpty()) carpeta = "Sin clasificar";
+        final String estilo = carpeta;
+        final int total = uris.size();
+        aviso("Subiendo " + total + " al NAS (" + estilo + ")…");
+        new Thread(() -> {
+            final int[] hechas = {0};
+            final ArrayList<String> fallos = new ArrayList<>();
+            try {
+                conNas(disco -> {
+                    hechas[0] = 0;
+                    fallos.clear();
+                    String dir = "KULI MUSIC\\" + estilo;
+                    if (!disco.folderExists("KULI MUSIC"))
+                        throw new java.io.IOException("No existe la carpeta Public/KULI MUSIC");
+                    if (!disco.folderExists(dir)) disco.mkdir(dir);
+                    for (int k = 0; k < uris.size(); k++) {
+                        String nombre = nombreDeUri(uris.get(k));
+                        try {
+                            copiarAlDisco(disco, uris.get(k), dir + "\\" + nombre);
+                            hechas[0]++;
+                        } catch (Exception e) {
+                            fallos.add(nombre + " (" + e.getMessage() + ")");
+                        }
+                    }
+                    return null;
+                });
+                runOnUiThread(() -> {
+                    if (fallos.isEmpty()) {
+                        aviso("✓ " + hechas[0] + " canciones subidas a " + estilo);
+                    } else {
+                        new AlertDialog.Builder(this)
+                            .setTitle(hechas[0] + " de " + total + " subidas a " + estilo)
+                            .setMessage("No se pudieron subir:\n\n" + android.text.TextUtils.join("\n", fallos))
+                            .setPositiveButton("CERRAR", null).show();
+                    }
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> mostrarErrorNas("No se pudo subir al NAS", e));
+            }
         }).start();
     }
 
