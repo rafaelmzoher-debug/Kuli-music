@@ -1256,15 +1256,25 @@ public class MainActivity extends Activity {
         catch (Exception e) { aviso("No se pudo abrir el enlace"); }
     }
     private void abrirBuscador() {
-        final String[] epocas = {"Años 80", "Años 90", "Años 2000", "Música libre (Jamendo)"};
+        final String[] epocas = {"🔥 Novedades de ahora", "Años 80", "Años 90", "Años 2000", "Música libre (Jamendo)"};
         final String[] consultas = {
-            "éxitos música años 80", "éxitos música años 90", "éxitos música años 2000"};
+            "", "éxitos música años 80", "éxitos música años 90", "éxitos música años 2000"};
         new AlertDialog.Builder(this).setTitle("⌕ BUSCAR MÚSICA")
             .setItems(epocas, (d, i) -> {
-                if (i == 3) { abrirEnlace("https://www.jamendo.com/search"); return; }
+                if (i == 0) { abrirNovedades(); return; }
+                if (i == 4) { abrirEnlace("https://www.jamendo.com/search"); return; }
                 elegirServicio(epocas[i], consultas[i]);
             })
             .setNegativeButton("CERRAR", null).show();
+    }
+    private void abrirNovedades() {
+        final String[] temas = {"Nuevos lanzamientos", "Top 50 España", "Éxitos del momento",
+                                "Novedades latino", "Novedades pop", "Novedades flamenco"};
+        final String[] consultas = {"nuevos lanzamientos música", "top 50 España", "éxitos del momento",
+                                    "novedades música latina", "novedades pop", "novedades flamenco pop"};
+        new AlertDialog.Builder(this).setTitle("🔥 Novedades · ¿qué buscas?")
+            .setItems(temas, (d, i) -> elegirServicio(temas[i], consultas[i]))
+            .setNegativeButton("ATRÁS", (d, w) -> abrirBuscador()).show();
     }
     private void elegirServicio(String epoca, String consulta) {
         final String q = Uri.encode(consulta);
