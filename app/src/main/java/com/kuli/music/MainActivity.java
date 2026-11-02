@@ -310,7 +310,7 @@ public class MainActivity extends Activity {
         TextView eq = texto("🎚  Ecualizador", 12, GRIS);
         eq.setPadding(dp(10), dp(10), dp(10), dp(10));
         eq.setOnClickListener(v -> abrirEcualizador());
-        TextView dormir = texto("⏾  Dormir", 12, GRIS);
+        TextView dormir = texto("🌙  Dormir", 12, GRIS);
         dormir.setPadding(dp(10), dp(10), dp(10), dp(10));
         dormir.setOnClickListener(v -> abrirDormir());
         TextView radio = texto("📻  Radio en directo", 13, DORADO);
@@ -863,7 +863,7 @@ public class MainActivity extends Activity {
     private void abrirDormir() {
         final int[] minutos = {15, 30, 60, 0};
         String[] items = {"15 minutos", "30 minutos", "1 hora", "Cancelar temporizador"};
-        new AlertDialog.Builder(this).setTitle("⏾ Parar la música en…")
+        new AlertDialog.Builder(this).setTitle("🌙 Parar la música en…")
             .setItems(items, (d, i) -> programarDormir(minutos[i]))
             .setNegativeButton("CERRAR", null).show();
     }
