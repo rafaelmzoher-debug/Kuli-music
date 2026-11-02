@@ -60,7 +60,33 @@ import java.util.Collections;
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 100;
     private static final int PICK_SUBIR = 101;
-    private static final String NAS_IP = "192.168.1.46";
+    static MainActivity instancia;
+    private static final String NAS_IP_DEFECTO = "192.168.1.46";
+    private String nasIp() {
+        String ip = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getString("nas_ip", NAS_IP_DEFECTO);
+        return (ip == null || ip.trim().isEmpty()) ? NAS_IP_DEFECTO : ip.trim();
+    }
+    private void ajustesNas() {
+        final android.widget.EditText campo = new android.widget.EditText(this);
+        campo.setText(nasIp());
+        campo.setSingleLine(true);
+        campo.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+            .setTitle("Dirección del NAS")
+            .setMessage("En casa: " + NAS_IP_DEFECTO + "\nFuera de casa con Tailscale: la IP 100.x.x.x del NAS")
+            .setView(campo)
+            .setPositiveButton("GUARDAR", (d, w) -> {
+                String ip = campo.getText().toString().trim();
+                if (ip.isEmpty()) ip = NAS_IP_DEFECTO;
+                getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("nas_ip", ip).apply();
+                aviso("NAS: " + ip);
+            })
+            .setNeutralButton("RESTAURAR", (d, w) -> {
+                getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().remove("nas_ip").apply();
+                aviso("NAS: " + NAS_IP_DEFECTO);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
 
     // Paleta: negro profundo, dorado y grises suaves.
     private final int NEGRO = Color.rgb(9, 10, 15);
@@ -210,19 +236,7 @@ public class MainActivity extends Activity {
 
         anterior.setOnClickListener(v -> saltar(-1));
         siguiente.setOnClickListener(v -> saltar(1));
-        botonPlay.setOnClickListener(v -> {
-            if (reproductor == null) { aviso("Selecciona una canción"); return; }
-            try {
-                if (reproductor.isPlaying()) {
-                    reproductor.pause(); estado.setText("Ⅱ EN PAUSA");
-                    detenerServicio();
-                } else {
-                    reproductor.start(); estado.setText("▶ REPRODUCIENDO");
-                    iniciarServicio();
-                }
-            } catch (IllegalStateException e) { aviso("No se pudo reproducir"); }
-            actualizarProgreso();
-        });
+        botonPlay.setOnClickListener(v -> alternarReproduccion());
         mezcla.setOnClickListener(v -> {
             aleatorio = !aleatorio;
             estiloBoton(mezcla, aleatorio ? CONTORNO : APAGADO, 1000);
@@ -287,6 +301,14 @@ public class MainActivity extends Activity {
         });
         buscar.setOnClickListener(v -> abrirBuscador());
 
+        TextView ajustes = texto("⚙  Ajustes del NAS", 12, GRIS);
+        ajustes.setPadding(dp(12), dp(10), dp(12), dp(10));
+        ajustes.setOnClickListener(v -> ajustesNas());
+        LinearLayout.LayoutParams lpAjustes = new LinearLayout.LayoutParams(-2, -2);
+        lpAjustes.gravity = Gravity.CENTER_HORIZONTAL;
+        lpAjustes.topMargin = dp(6);
+        pantalla.addView(ajustes, lpAjustes);
+
         TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
         pie.setAlpha(0.7f);
         pie.setLetterSpacing(0.2f);
@@ -296,6 +318,10 @@ public class MainActivity extends Activity {
         pantalla.addView(pie, lpPie);
 
         setContentView(scroll);
+
+        MainActivity viejo = instancia;
+        instancia = this;
+        if (viejo != null && viejo != this && viejo.reproductor != null) adoptar(viejo);
     }
 
     @Override protected void onResume() {
@@ -446,6 +472,7 @@ public class MainActivity extends Activity {
             actualizarProgreso();
         } catch (Exception e) {
             android.util.Log.e("KULI_PLAY", "No se pudo reproducir " + fuente, e);
+            if (isDestroyed()) return;
             String motivo = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
             String ayuda = (e instanceof SecurityException)
                 ? "\n\nAndroid ya no deja a la app leer esta canción. Vuelve a elegirla con «Mis canciones»."
@@ -455,10 +482,65 @@ public class MainActivity extends Activity {
         }
     }
 
-    // Notificación fija mientras suena, para que Android no pare la música en segundo plano.
+    private void alternarReproduccion() {
+        if (reproductor == null) { aviso("Selecciona una canción"); return; }
+        try {
+            if (reproductor.isPlaying()) {
+                reproductor.pause(); estado.setText("Ⅱ EN PAUSA");
+            } else {
+                reproductor.start(); estado.setText("▶ REPRODUCIENDO");
+            }
+            iniciarServicio();
+        } catch (IllegalStateException e) { aviso("No se pudo reproducir"); }
+        actualizarProgreso();
+    }
+
+    // Órdenes que llegan desde los botones de la notificación.
+    void accionNotificacion(String accion) {
+        if (MusicaService.PAUSA.equals(accion)) alternarReproduccion();
+        else if (MusicaService.SIGUIENTE.equals(accion)) saltar(1);
+        else if (MusicaService.ANTERIOR.equals(accion)) saltar(-1);
+    }
+
+    // Si la app se cerró (o giró) con música sonando, la nueva pantalla recoge el reproductor.
+    private void adoptar(MainActivity v) {
+        reproductor = v.reproductor; v.reproductor = null;
+        siguienteReproductor = v.siguienteReproductor; v.siguienteReproductor = null;
+        indicePreparado = v.indicePreparado;
+        uriActual = v.uriActual;
+        tituloActual = v.tituloActual; artistaActual = v.artistaActual;
+        listaFavoritas.clear(); listaFavoritas.addAll(v.listaFavoritas);
+        posicionFavorita = v.posicionFavorita;
+        modoLista = v.modoLista; aleatorio = v.aleatorio; repetir = v.repetir;
+        try { reproductor.setOnCompletionListener(mp -> alTerminar()); } catch (Exception ignored) { }
+        cancion.setText(tituloActual);
+        artista.setText(artistaActual);
+        estiloBoton(mezcla, aleatorio ? CONTORNO : APAGADO, 1000);
+        estiloBoton(bucle, repetir ? CONTORNO : APAGADO, 1000);
+        if (v.portada != null && v.portada.getColorFilter() == null && v.portada.getDrawable() != null) {
+            portada.clearColorFilter();
+            portada.setPadding(0, 0, 0, 0);
+            portada.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            portada.setImageDrawable(v.portada.getDrawable());
+        }
+        boolean suena = false;
+        try { suena = reproductor.isPlaying(); } catch (Exception ignored) { }
+        estado.setText(suena ? "▶ REPRODUCIENDO" : "Ⅱ EN PAUSA");
+        actualizarBotonFavorito();
+        actualizarProgreso();
+    }
+
+    // Notificación fija con botones mientras suena, para que Android no pare la música.
     private void iniciarServicio() {
-        try { startForegroundService(new Intent(this, MusicaService.class)); }
-        catch (Throwable e) { android.util.Log.e("KULI_PLAY", "Servicio", e); }
+        boolean suena = false;
+        try { suena = reproductor != null && reproductor.isPlaying(); } catch (Exception ignored) { }
+        try {
+            MusicaService activo = MusicaService.instancia;
+            if (activo != null) { activo.refrescar(tituloActual, artistaActual, suena); return; }
+            Intent i = new Intent(this, MusicaService.class)
+                .putExtra("t", tituloActual).putExtra("a", artistaActual).putExtra("p", suena);
+            startForegroundService(i);
+        } catch (Throwable e) { android.util.Log.e("KULI_PLAY", "Servicio", e); }
     }
     private void detenerServicio() {
         try { stopService(new Intent(this, MusicaService.class)); }
@@ -564,6 +646,7 @@ public class MainActivity extends Activity {
             mostrarDatos(Uri.parse(listaFavoritas.get(posicionFavorita)));
             reproductor.setOnCompletionListener(mp -> alTerminar());
             estado.setText("▶ REPRODUCIENDO");
+            iniciarServicio();
             prepararSiguiente();
         } else {
             saltar(1);
@@ -692,7 +775,7 @@ public class MainActivity extends Activity {
     private long subirAlNas(Uri uri, String ruta, SmbConfig cfg, AuthenticationContext ctx) throws Exception {
         long total = 0;
         try (SMBClient cliente = new SMBClient(cfg);
-             Connection conexion = cliente.connect(NAS_IP)) {
+             Connection conexion = cliente.connect(nasIp())) {
             Session sesion = conexion.authenticate(ctx);
             try (DiskShare disco = (DiskShare) sesion.connectShare("Public");
                  InputStream origen = getContentResolver().openInputStream(uri)) {
@@ -759,7 +842,7 @@ public class MainActivity extends Activity {
     private boolean hayWifi() {
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkCapabilities caps = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
-        return caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+        return caps != null && (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN));
     }
 
     // Conecta con el NAS probando invitado/anónimo y dos versiones de SMB, y ejecuta la tarea.
@@ -774,7 +857,7 @@ public class MainActivity extends Activity {
         for (SmbConfig cfg : configs) {
             for (AuthenticationContext ctx : cuentas) {
                 try (SMBClient cliente = new SMBClient(cfg);
-                     Connection conexion = cliente.connect(NAS_IP)) {
+                     Connection conexion = cliente.connect(nasIp())) {
                     Session sesion = conexion.authenticate(ctx);
                     try (DiskShare disco = (DiskShare) sesion.connectShare("Public")) {
                         return tarea.ejecutar(disco);
@@ -804,13 +887,14 @@ public class MainActivity extends Activity {
 
     private void mostrarErrorNas(String titulo, Throwable e) {
         android.util.Log.e("KULI_NAS", titulo, e);
+        if (isDestroyed()) return;
         String m = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
         new AlertDialog.Builder(this).setTitle(titulo).setMessage(m)
             .setPositiveButton("CERRAR", null).show();
     }
 
     private void abrirListaNas() {
-        if (!hayWifi()) { aviso("Necesitas la WiFi de casa para ver el NAS"); return; }
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para ver el NAS"); return; }
         aviso("Conectando con el NAS…");
         new Thread(() -> {
             try {
@@ -1026,7 +1110,7 @@ public class MainActivity extends Activity {
 
     // ---------- Subir canciones del móvil (p. ej. las de YMusic) al NAS ----------
     private void elegirCancionesParaSubir() {
-        if (!hayWifi()) { aviso("Necesitas la WiFi de casa para subir al NAS"); return; }
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para subir al NAS"); return; }
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.setType("audio/*");
         i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -1159,6 +1243,11 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         ui.removeCallbacks(ticker);
+        if (instancia != this) { super.onDestroy(); return; }
+        boolean suena = false;
+        try { suena = reproductor != null && reproductor.isPlaying(); } catch (Exception ignored) { }
+        if (suena) { super.onDestroy(); return; }   // sigue sonando en segundo plano
+        instancia = null;
         detenerServicio();
         liberarSiguiente();
         if (reproductor != null) { reproductor.release(); reproductor = null; }
