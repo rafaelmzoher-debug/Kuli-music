@@ -304,10 +304,16 @@ public class MainActivity extends Activity {
         TextView ajustes = texto("⚙  Ajustes del NAS", 12, GRIS);
         ajustes.setPadding(dp(12), dp(10), dp(12), dp(10));
         ajustes.setOnClickListener(v -> ajustesNas());
-        LinearLayout.LayoutParams lpAjustes = new LinearLayout.LayoutParams(-2, -2);
-        lpAjustes.gravity = Gravity.CENTER_HORIZONTAL;
+        TextView eq = texto("🎚  Ecualizador", 12, GRIS);
+        eq.setPadding(dp(12), dp(10), dp(12), dp(10));
+        eq.setOnClickListener(v -> abrirEcualizador());
+        LinearLayout filaAjustes = new LinearLayout(this);
+        filaAjustes.setGravity(Gravity.CENTER_HORIZONTAL);
+        filaAjustes.addView(eq);
+        filaAjustes.addView(ajustes);
+        LinearLayout.LayoutParams lpAjustes = new LinearLayout.LayoutParams(-1, -2);
         lpAjustes.topMargin = dp(6);
-        pantalla.addView(ajustes, lpAjustes);
+        pantalla.addView(filaAjustes, lpAjustes);
 
         TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
         pie.setAlpha(0.7f);
@@ -550,14 +556,76 @@ public class MainActivity extends Activity {
     private MediaPlayer abrirReproductor(Uri uri) throws Exception {
         MediaPlayer mp = new MediaPlayer();
         try {
+            try { mp.setAudioSessionId(sesionAudio()); } catch (Exception ignored) { }
             mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
             mp.setDataSource(this, uri);
             mp.prepare();
+            aplicarEcualizador();
             return mp;
         } catch (Exception e) {
             mp.release();
             throw e;
         }
+    }
+
+    // ---------- Ecualizador ----------
+    private static int sesionAudio = 0;
+    private static android.media.audiofx.Equalizer ecualizador;
+    private static android.media.audiofx.BassBoost refuerzo;
+    private static final String[] PRESETS = {"Normal", "Bajos", "Rock", "Pop", "Voces", "Agudos"};
+
+    private int sesionAudio() {
+        if (sesionAudio == 0) {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            sesionAudio = am.generateAudioSessionId();
+        }
+        return sesionAudio;
+    }
+
+    // Forma de cada ajuste: t va de 0 (graves) a 1 (agudos); devuelve de -1 a 1.
+    private double curva(int preset, double t) {
+        switch (preset) {
+            case 1: return Math.max(0, 1 - t * 2) * 1.0;                 // Bajos
+            case 2: return Math.abs(t - 0.5) * 2 * 0.7 - 0.2;            // Rock (en V)
+            case 3: return 0.6 * Math.exp(-Math.pow((t - 0.5) / 0.28, 2)) + (t < 0.2 ? 0.15 : 0) - 0.1; // Pop
+            case 4: return 0.7 * Math.exp(-Math.pow((t - 0.6) / 0.2, 2)) - (t < 0.2 ? 0.3 : 0);        // Voces
+            case 5: return Math.max(0, t * 2 - 1) * 1.0;                 // Agudos
+            default: return 0;
+        }
+    }
+
+    private void aplicarEcualizador() {
+        try {
+            int preset = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getInt("eq_preset", 0);
+            if (ecualizador == null) ecualizador = new android.media.audiofx.Equalizer(0, sesionAudio());
+            short[] rango = ecualizador.getBandLevelRange();
+            short bandas = ecualizador.getNumberOfBands();
+            for (short b = 0; b < bandas; b++) {
+                double t = bandas > 1 ? (double) b / (bandas - 1) : 0.5;
+                double f = Math.max(-1, Math.min(1, curva(preset, t)));
+                int nivel = (int) (f >= 0 ? f * rango[1] : -f * rango[0]);
+                ecualizador.setBandLevel(b, (short) nivel);
+            }
+            ecualizador.setEnabled(preset != 0);
+        } catch (Throwable e) { android.util.Log.e("KULI_EQ", "Ecualizador", e); }
+        try {
+            int preset = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getInt("eq_preset", 0);
+            if (refuerzo == null) refuerzo = new android.media.audiofx.BassBoost(0, sesionAudio());
+            if (refuerzo.getStrengthSupported()) refuerzo.setStrength((short) (preset == 1 ? 700 : 0));
+            refuerzo.setEnabled(preset == 1);
+        } catch (Throwable e) { android.util.Log.e("KULI_EQ", "Refuerzo de graves", e); }
+    }
+
+    private void abrirEcualizador() {
+        int actual = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getInt("eq_preset", 0);
+        new AlertDialog.Builder(this).setTitle("🎚 Ecualizador")
+            .setSingleChoiceItems(PRESETS, actual, (d, i) -> {
+                getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putInt("eq_preset", i).apply();
+                aplicarEcualizador();
+                aviso("Sonido: " + PRESETS[i]);
+                d.dismiss();
+            })
+            .setNegativeButton("CERRAR", null).show();
     }
 
     private void mostrarDatos(Uri uri) {
@@ -930,11 +998,6 @@ public class MainActivity extends Activity {
 
     private void mostrarGruposNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
         if (grupos.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
-        if (grupos.size() == 1) {
-            String unica = grupos.keySet().iterator().next();
-            mostrarCancionesNas(unica, grupos.get(unica), grupos);
-            return;
-        }
         final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
         final ArrayList<String> todas = new ArrayList<>();
         String[] items = new String[claves.size()];
@@ -943,10 +1006,82 @@ public class MainActivity extends Activity {
             items[i] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
             todas.addAll(lista);
         }
-        new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
+        final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
             .setItems(items, (d, i) -> mostrarCancionesNas(claves.get(i), grupos.get(claves.get(i)), grupos))
             .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
+            .setNeutralButton("🔍 BUSCAR", (d, w) -> buscarEnNas(grupos))
             .setNegativeButton("CERRAR", null).show();
+        // Mantener pulsada una carpeta: suena entera, en aleatorio.
+        dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
+            dlg.dismiss();
+            reproducirAleatorio(grupos.get(claves.get(pos)));
+            return true;
+        });
+        aviso("Toca una carpeta para verla · mantenla pulsada para oírla entera en aleatorio");
+    }
+
+    private void reproducirAleatorio(List<String> rutas) {
+        if (rutas.isEmpty()) return;
+        aleatorio = true;
+        estiloBoton(mezcla, CONTORNO, 1000);
+        reproducirListaNas(rutas, new java.util.Random().nextInt(rutas.size()));
+    }
+
+    // Quita acentos y mayúsculas para que "años" encuentre "Anos" y "AÑOS".
+    private String simple(String t) {
+        String n = java.text.Normalizer.normalize(t == null ? "" : t, java.text.Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "").toLowerCase();
+    }
+
+    private void pedirTexto(String titulo, final java.util.function.Consumer<String> alAceptar) {
+        final android.widget.EditText campo = new android.widget.EditText(this);
+        campo.setSingleLine(true);
+        campo.setHint("Nombre de la canción o artista");
+        new AlertDialog.Builder(this).setTitle(titulo).setView(campo)
+            .setPositiveButton("BUSCAR", (d, w) -> {
+                String q = campo.getText().toString().trim();
+                if (!q.isEmpty()) alAceptar.accept(q);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void buscarEnNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        pedirTexto("🔍 Buscar en el NAS", q -> {
+            String clave = simple(q);
+            ArrayList<String> hallados = new ArrayList<>();
+            for (ArrayList<String> lista : grupos.values())
+                for (String ruta : lista)
+                    if (simple(ruta.replace('/', ' ')).contains(clave)) hallados.add(ruta);
+            if (hallados.isEmpty()) { aviso("No hay nada con «" + q + "»"); return; }
+            mostrarCancionesNas("«" + q + "»", hallados, grupos);
+        });
+    }
+
+    private void buscarEnFavoritas() {
+        final Map<String, ?> datos = favoritos.getAll();
+        pedirTexto("🔍 Buscar en favoritas", q -> {
+            String clave = simple(q);
+            final ArrayList<String> claves = new ArrayList<>();
+            for (String k : datos.keySet())
+                if (simple(String.valueOf(datos.get(k))).contains(clave)) claves.add(k);
+            if (claves.isEmpty()) { aviso("No hay nada con «" + q + "»"); return; }
+            Collections.sort(claves, (a, b) ->
+                String.valueOf(datos.get(a)).compareToIgnoreCase(String.valueOf(datos.get(b))));
+            String[] nombres = new String[claves.size()];
+            for (int n = 0; n < nombres.length; n++) nombres[n] = String.valueOf(datos.get(claves.get(n)));
+            new AlertDialog.Builder(this).setTitle("🔍 «" + q + "» · " + claves.size())
+                .setItems(nombres, (d, i) -> {
+                    listaFavoritas.clear(); listaFavoritas.addAll(claves);
+                    modoLista = true; posicionFavorita = i;
+                    reproducir(Uri.parse(listaFavoritas.get(i)));
+                })
+                .setPositiveButton("▶ TODAS", (d, w) -> {
+                    listaFavoritas.clear(); listaFavoritas.addAll(claves);
+                    modoLista = true; posicionFavorita = 0;
+                    reproducir(Uri.parse(listaFavoritas.get(0)));
+                })
+                .setNegativeButton("CERRAR", null).show();
+        });
     }
 
     private void mostrarCancionesNas(String estilo, final ArrayList<String> rutas,
@@ -956,7 +1091,8 @@ public class MainActivity extends Activity {
         final boolean hayMasGrupos = grupos.size() > 1;
         final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("📁 " + estilo + " · " + rutas.size())
             .setItems(items, (d, i) -> reproducirListaNas(rutas, i))
-            .setPositiveButton("▶ REPRODUCIR TODAS", (d, w) -> reproducirListaNas(rutas, 0))
+            .setPositiveButton("▶ TODAS", (d, w) -> reproducirListaNas(rutas, 0))
+            .setNeutralButton("🔀 ALEATORIO", (d, w) -> reproducirAleatorio(rutas))
             .setNegativeButton(hayMasGrupos ? "ATRÁS" : "CERRAR", (d, w) -> {
                 if (hayMasGrupos) mostrarGruposNas(grupos);
             }).show();
@@ -1209,11 +1345,12 @@ public class MainActivity extends Activity {
                 posicionFavorita = index;
                 reproducir(Uri.parse(listaFavoritas.get(index)));
             })
-            .setPositiveButton("▶ REPRODUCIR TODAS", (dialog, which) -> {
+            .setPositiveButton("▶ TODAS", (dialog, which) -> {
                 modoLista = true;
                 posicionFavorita = 0;
                 reproducir(Uri.parse(listaFavoritas.get(0)));
             })
+            .setNeutralButton("🔍 BUSCAR", (dialog, which) -> buscarEnFavoritas())
             .setNegativeButton("CERRAR", null).show();
     }
     private void saltar(int direccion) {
