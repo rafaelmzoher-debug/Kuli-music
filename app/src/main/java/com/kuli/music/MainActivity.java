@@ -112,6 +112,9 @@ public class MainActivity extends Activity {
     private final ArrayList<String> listaFavoritas = new ArrayList<>();
     private int posicionFavorita = -1;
     private boolean modoLista = false, aleatorio = false, repetir = true;
+    private boolean esRadio = false;
+    private Uri ultimaUri = null;
+    private int posicionPendienteMs = 0;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable ticker = new Runnable() {
@@ -207,7 +210,7 @@ public class MainActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar s) { arrastrando = true; }
             @Override public void onStopTrackingTouch(SeekBar s) {
                 arrastrando = false;
-                try { if (reproductor != null) reproductor.seekTo(s.getProgress()); }
+                try { if (reproductor != null && !esRadio) reproductor.seekTo(s.getProgress()); }
                 catch (IllegalStateException ignored) { }
             }
         });
@@ -310,13 +313,21 @@ public class MainActivity extends Activity {
         TextView dormir = texto("⏾  Dormir", 12, GRIS);
         dormir.setPadding(dp(10), dp(10), dp(10), dp(10));
         dormir.setOnClickListener(v -> abrirDormir());
+        TextView radio = texto("📻  Radio en directo", 13, DORADO);
+        radio.setPadding(dp(12), dp(10), dp(12), dp(6));
+        radio.setOnClickListener(v -> abrirRadio());
+        LinearLayout.LayoutParams lpRadio = new LinearLayout.LayoutParams(-2, -2);
+        lpRadio.gravity = Gravity.CENTER_HORIZONTAL;
+        lpRadio.topMargin = dp(6);
+        pantalla.addView(radio, lpRadio);
+
         LinearLayout filaAjustes = new LinearLayout(this);
         filaAjustes.setGravity(Gravity.CENTER_HORIZONTAL);
         filaAjustes.addView(eq);
         filaAjustes.addView(dormir);
         filaAjustes.addView(ajustes);
         LinearLayout.LayoutParams lpAjustes = new LinearLayout.LayoutParams(-1, -2);
-        lpAjustes.topMargin = dp(6);
+        lpAjustes.topMargin = dp(0);
         pantalla.addView(filaAjustes, lpAjustes);
 
         TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
@@ -332,6 +343,7 @@ public class MainActivity extends Activity {
         MainActivity viejo = instancia;
         instancia = this;
         if (viejo != null && viejo != this && viejo.reproductor != null) adoptar(viejo);
+        else cargarUltima();
     }
 
     @Override protected void onResume() {
@@ -342,6 +354,14 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
+        try {
+            if (instancia == this && reproductor != null && uriActual != null && !esRadio) {
+                getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit()
+                    .putString("ultima_uri", uriActual.toString())
+                    .putString("ultima_titulo", tituloActual + " — " + artistaActual)
+                    .putInt("ultima_pos", reproductor.getCurrentPosition()).apply();
+            }
+        } catch (Exception ignored) { }
         super.onPause();
     }
 
@@ -412,6 +432,14 @@ public class MainActivity extends Activity {
     }
     private void actualizarProgreso() {
         if (reproductor == null) return;
+        if (esRadio) {
+            try {
+                barra.setMax(1); barra.setProgress(0);
+                tiempoActual.setText("●"); tiempoTotal.setText("DIRECTO");
+                botonPlay.setText(reproductor.isPlaying() ? "❚❚" : "▶");
+            } catch (IllegalStateException ignored) { }
+            return;
+        }
         try {
             int duracion = reproductor.getDuration();
             int pos = reproductor.getCurrentPosition();
@@ -464,6 +492,7 @@ public class MainActivity extends Activity {
     // 'fuente' es lo que se reproduce; 'identidad' es cómo se reconoce la canción (favoritos, NAS...).
     private void reproducirArchivo(Uri fuente, Uri identidad) {
         try {
+            esRadio = false;
             liberarSiguiente();
             if (reproductor != null) { reproductor.release(); reproductor = null; }
             reproductor = abrirReproductor(fuente);
@@ -477,6 +506,10 @@ public class MainActivity extends Activity {
             actualizarBotonFavorito();
             reproductor.setOnCompletionListener(mp -> alTerminar());
             prepararSiguiente();
+            if (posicionPendienteMs > 0) {
+                try { reproductor.seekTo(posicionPendienteMs); } catch (Exception ignored) { }
+                posicionPendienteMs = 0;
+            }
             reproductor.start(); estado.setText("▶ REPRODUCIENDO");
             iniciarServicio();
             arrastrando = false;
@@ -494,6 +527,12 @@ public class MainActivity extends Activity {
     }
 
     private void alternarReproduccion() {
+        if (reproductor == null && ultimaUri != null) {
+            Uri u = ultimaUri; ultimaUri = null;
+            posicionPendienteMs = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getInt("ultima_pos", 0);
+            reproducir(u);
+            return;
+        }
         if (reproductor == null) { aviso("Selecciona una canción"); return; }
         try {
             if (reproductor.isPlaying()) {
@@ -522,7 +561,7 @@ public class MainActivity extends Activity {
         tituloActual = v.tituloActual; artistaActual = v.artistaActual;
         listaFavoritas.clear(); listaFavoritas.addAll(v.listaFavoritas);
         posicionFavorita = v.posicionFavorita;
-        modoLista = v.modoLista; aleatorio = v.aleatorio; repetir = v.repetir;
+        modoLista = v.modoLista; aleatorio = v.aleatorio; repetir = v.repetir; esRadio = v.esRadio;
         try { reproductor.setOnCompletionListener(mp -> alTerminar()); } catch (Exception ignored) { }
         cancion.setText(tituloActual);
         artista.setText(artistaActual);
@@ -571,6 +610,114 @@ public class MainActivity extends Activity {
             mp.release();
             throw e;
         }
+    }
+
+    // ---------- Última canción ----------
+    private void cargarUltima() {
+        try {
+            SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+            String u = aj.getString("ultima_uri", null);
+            if (u == null) return;
+            ultimaUri = Uri.parse(u);
+            cancion.setText("↺ " + aj.getString("ultima_titulo", "Última canción"));
+            artista.setText("Pulsa ▶ para continuar");
+        } catch (Exception ignored) { }
+    }
+
+    // ---------- Radio en directo ----------
+    private void abrirRadio() {
+        aviso("Buscando emisoras…");
+        buscarEmisoras(null);
+    }
+
+    private void buscarEmisoras(final String nombre) {
+        new Thread(() -> {
+            String filtro = "&order=clickcount&reverse=true&limit=60&hidebroken=true";
+            String ruta;
+            try {
+                ruta = nombre == null
+                    ? "/json/stations/search?countrycode=ES" + filtro
+                    : "/json/stations/search?name=" + java.net.URLEncoder.encode(nombre, "UTF-8") + filtro;
+            } catch (Exception e) { return; }
+            String[] servidores = {"https://de1.api.radio-browser.info", "https://at1.api.radio-browser.info",
+                                   "https://nl1.api.radio-browser.info"};
+            String texto = null;
+            for (String srv : servidores) {
+                try {
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(srv + ruta).openConnection();
+                    c.setConnectTimeout(6000); c.setReadTimeout(9000);
+                    c.setRequestProperty("User-Agent", "KULIMusic/3.3");
+                    StringBuilder sb = new StringBuilder();
+                    try (java.io.BufferedReader r = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                        String linea;
+                        while ((linea = r.readLine()) != null) sb.append(linea);
+                    }
+                    texto = sb.toString();
+                    break;
+                } catch (Exception e) { android.util.Log.e("KULI_RADIO", srv, e); }
+            }
+            if (texto == null) { runOnUiThread(() -> aviso("No se pudo cargar la lista de emisoras")); return; }
+            final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray(texto);
+                java.util.HashSet<String> vistos = new java.util.HashSet<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject o = arr.getJSONObject(i);
+                    String n = o.optString("name").trim();
+                    String url = o.optString("url_resolved");
+                    if (url.isEmpty()) url = o.optString("url");
+                    if (n.isEmpty() || url.isEmpty() || !vistos.add(n.toLowerCase())) continue;
+                    nombres.add(n); urls.add(url);
+                }
+            } catch (Exception e) { runOnUiThread(() -> aviso("Respuesta de emisoras no válida")); return; }
+            runOnUiThread(() -> mostrarEmisoras(nombre, nombres, urls));
+        }).start();
+    }
+
+    private void mostrarEmisoras(String nombre, final ArrayList<String> nombres, final ArrayList<String> urls) {
+        if (isDestroyed()) return;
+        if (nombres.isEmpty()) { aviso("No hay emisoras con ese nombre"); return; }
+        String titulo = nombre == null ? "📻 Radios de España" : "📻 «" + nombre + "»";
+        new AlertDialog.Builder(this).setTitle(titulo)
+            .setItems(nombres.toArray(new String[0]), (d, i) -> reproducirRadio(nombres.get(i), urls.get(i)))
+            .setNeutralButton("🔍 BUSCAR", (d, w) ->
+                pedirTexto("🔍 Buscar emisora (ej. Los 40)", q -> buscarEmisoras(q)))
+            .setNegativeButton("CERRAR", null).show();
+    }
+
+    private void reproducirRadio(final String nombre, final String url) {
+        aviso("Conectando con " + nombre + "…");
+        new Thread(() -> {
+            final MediaPlayer mp = new MediaPlayer();
+            try {
+                try { mp.setAudioSessionId(sesionAudio()); } catch (Exception ignored) { }
+                mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+                mp.setDataSource(url);
+                mp.prepare();
+            } catch (Exception e) {
+                android.util.Log.e("KULI_RADIO", "No abre " + url, e);
+                try { mp.release(); } catch (Exception ignored) { }
+                runOnUiThread(() -> aviso("No se pudo abrir " + nombre + ". Prueba con otra."));
+                return;
+            }
+            runOnUiThread(() -> {
+                liberarSiguiente();
+                if (reproductor != null) { try { reproductor.release(); } catch (Exception ignored) { } }
+                reproductor = mp;
+                modoLista = false; esRadio = true; uriActual = null;
+                tituloActual = nombre; artistaActual = "Radio en directo";
+                cancion.setText(nombre); artista.setText("Radio en directo");
+                portadaVacia();
+                mp.setOnErrorListener((m, w, x) -> { aviso("Se cortó la emisora"); return true; });
+                mp.start();
+                estado.setText("📻 EN DIRECTO");
+                actualizarBotonFavorito();
+                iniciarServicio();
+                aplicarEcualizador();
+                actualizarProgreso();
+            });
+        }).start();
     }
 
     // ---------- Temporizador para dormir ----------
