@@ -301,15 +301,19 @@ public class MainActivity extends Activity {
         });
         buscar.setOnClickListener(v -> abrirBuscador());
 
-        TextView ajustes = texto("⚙  Ajustes del NAS", 12, GRIS);
-        ajustes.setPadding(dp(12), dp(10), dp(12), dp(10));
+        TextView ajustes = texto("⚙  NAS", 12, GRIS);
+        ajustes.setPadding(dp(10), dp(10), dp(10), dp(10));
         ajustes.setOnClickListener(v -> ajustesNas());
         TextView eq = texto("🎚  Ecualizador", 12, GRIS);
-        eq.setPadding(dp(12), dp(10), dp(12), dp(10));
+        eq.setPadding(dp(10), dp(10), dp(10), dp(10));
         eq.setOnClickListener(v -> abrirEcualizador());
+        TextView dormir = texto("⏾  Dormir", 12, GRIS);
+        dormir.setPadding(dp(10), dp(10), dp(10), dp(10));
+        dormir.setOnClickListener(v -> abrirDormir());
         LinearLayout filaAjustes = new LinearLayout(this);
         filaAjustes.setGravity(Gravity.CENTER_HORIZONTAL);
         filaAjustes.addView(eq);
+        filaAjustes.addView(dormir);
         filaAjustes.addView(ajustes);
         LinearLayout.LayoutParams lpAjustes = new LinearLayout.LayoutParams(-1, -2);
         lpAjustes.topMargin = dp(6);
@@ -334,6 +338,7 @@ public class MainActivity extends Activity {
         super.onResume();
         ui.removeCallbacks(ticker);
         ui.post(ticker);
+        revisarYMusic();
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
@@ -566,6 +571,97 @@ public class MainActivity extends Activity {
             mp.release();
             throw e;
         }
+    }
+
+    // ---------- Temporizador para dormir ----------
+    private static final Handler hTemporizador = new Handler(Looper.getMainLooper());
+    private static Runnable temporizador;
+
+    private void abrirDormir() {
+        final int[] minutos = {15, 30, 60, 0};
+        String[] items = {"15 minutos", "30 minutos", "1 hora", "Cancelar temporizador"};
+        new AlertDialog.Builder(this).setTitle("⏾ Parar la música en…")
+            .setItems(items, (d, i) -> programarDormir(minutos[i]))
+            .setNegativeButton("CERRAR", null).show();
+    }
+
+    private void programarDormir(int minutos) {
+        if (temporizador != null) hTemporizador.removeCallbacks(temporizador);
+        temporizador = null;
+        if (minutos <= 0) { aviso("Temporizador cancelado"); return; }
+        temporizador = () -> {
+            temporizador = null;
+            MainActivity m = instancia;
+            if (m != null) m.pausarPorTemporizador();
+        };
+        hTemporizador.postDelayed(temporizador, minutos * 60000L);
+        aviso("La música se parará en " + minutos + " min");
+    }
+
+    private void pausarPorTemporizador() {
+        try {
+            if (reproductor != null && reproductor.isPlaying()) {
+                reproductor.pause();
+                estado.setText("Ⅱ EN PAUSA");
+                iniciarServicio();
+            }
+        } catch (Exception ignored) { }
+    }
+
+    // ---------- Canciones nuevas de YMusic ----------
+    private static boolean revisadoYMusic = false;
+
+    private void marcarVistas(java.util.Collection<String> claves) {
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        java.util.HashSet<String> todas = new java.util.HashSet<>(aj.getStringSet("ymusic_vistas", new java.util.HashSet<>()));
+        todas.addAll(claves);
+        aj.edit().putStringSet("ymusic_vistas", todas).apply();
+    }
+
+    private void revisarYMusic() {
+        if (revisadoYMusic || isFinishing() || isDestroyed()) return;
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (!aj.getBoolean("pidio_permiso", false)) {
+                aj.edit().putBoolean("pidio_permiso", true).apply();
+                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 200);
+            }
+            return;
+        }
+        if (!hayWifi()) return;
+        revisadoYMusic = true;
+        final java.util.Set<String> vistas = aj.getStringSet("ymusic_vistas", new java.util.HashSet<>());
+        final ArrayList<Uri> nuevas = new ArrayList<>();
+        final java.util.HashMap<Uri, String> claves = new java.util.HashMap<>();
+        try (Cursor c = getContentResolver().query(
+                android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                new String[]{android.provider.MediaStore.Audio.Media._ID, android.provider.MediaStore.Audio.Media.SIZE},
+                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[]{"%/YMusic/%"}, null)) {
+            while (c != null && c.moveToNext()) {
+                String clave = c.getLong(0) + ":" + c.getLong(1);
+                if (vistas.contains(clave)) continue;
+                Uri u = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, c.getLong(0));
+                nuevas.add(u);
+                claves.put(u, clave);
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_YM", "Buscando YMusic", e); return; }
+        if (nuevas.isEmpty()) return;
+        final String que = nuevas.size() == 1 ? "1 canción nueva" : nuevas.size() + " canciones nuevas";
+        new AlertDialog.Builder(this).setTitle("Música nueva de YMusic")
+            .setMessage("Hay " + que + " descargada(s) con YMusic. ¿Las subo al NAS?")
+            .setPositiveButton("SUBIR", (d, w) ->
+                elegirEstilo("Estilo para " + que, estilo ->
+                    subirVariasAlNas(nuevas, estilo, u -> marcarVistas(java.util.Collections.singleton(claves.get(u))))))
+            .setNeutralButton("IGNORAR", (d, w) -> marcarVistas(claves.values()))
+            .setNegativeButton("AHORA NO", null).show();
+    }
+
+    @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
+        super.onRequestPermissionsResult(codigo, permisos, resultados);
+        if (codigo == 200 && resultados.length > 0
+                && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) revisarYMusic();
     }
 
     // ---------- Ecualizador ----------
@@ -1286,6 +1382,11 @@ public class MainActivity extends Activity {
     }
 
     private void subirVariasAlNas(final List<Uri> uris, String estiloElegido) {
+        subirVariasAlNas(uris, estiloElegido, null);
+    }
+
+    private void subirVariasAlNas(final List<Uri> uris, String estiloElegido,
+                                  final java.util.function.Consumer<Uri> alSubir) {
         String carpeta = estiloElegido.replaceAll("[\\/:*?\"<>|]", "_").trim();
         if (carpeta.isEmpty()) carpeta = "Sin clasificar";
         final String estilo = carpeta;
@@ -1307,6 +1408,7 @@ public class MainActivity extends Activity {
                         try {
                             copiarAlDisco(disco, uris.get(k), dir + "\\" + nombre);
                             hechas[0]++;
+                            if (alSubir != null) alSubir.accept(uris.get(k));
                         } catch (Exception e) {
                             fallos.add(nombre + " (" + e.getMessage() + ")");
                         }
