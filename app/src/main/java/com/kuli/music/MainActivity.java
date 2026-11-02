@@ -472,7 +472,7 @@ public class MainActivity extends Activity {
             }
             if (uris.isEmpty()) return;
             String que = uris.size() == 1 ? "1 canción" : uris.size() + " canciones";
-            elegirEstilo("Estilo para " + que, estilo -> subirVariasAlNas(uris, estilo));
+            ofrecerSubida(uris, null, null);
             return;
         }
         if (requestCode == PICK_AUDIO && resultCode == RESULT_OK && data != null && data.getData() != null) {
@@ -609,6 +609,137 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             mp.release();
             throw e;
+        }
+    }
+
+    // ---------- Subida automática por estilo ----------
+    private void ofrecerSubida(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir,
+                               final Runnable alIgnorar) {
+        final String que = uris.size() == 1 ? "1 canción" : uris.size() + " canciones";
+        final ArrayList<String> op = new ArrayList<>();
+        op.add("⚡  Subir automático (cada una a su estilo)");
+        op.add("📁  Elegir yo un estilo para todas");
+        if (alIgnorar != null) op.add("🚫  Ignorar estas canciones");
+        op.add("Ahora no");
+        new AlertDialog.Builder(this).setTitle("Música nueva · " + que)
+            .setItems(op.toArray(new String[0]), (d, i) -> {
+                String e = op.get(i);
+                if (e.startsWith("⚡")) subirAutomatico(uris, alSubir);
+                else if (e.startsWith("📁")) elegirEstilo("Estilo para " + que,
+                        estilo -> subirVariasAlNas(uris, estilo, alSubir));
+                else if (e.startsWith("🚫")) alIgnorar.run();
+            }).show();
+    }
+
+    private void subirAutomatico(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir) {
+        aviso("Reconociendo " + uris.size() + " canciones…");
+        new Thread(() -> {
+            final LinkedHashMap<String, ArrayList<Uri>> porEstilo = new LinkedHashMap<>();
+            for (Uri u : uris) {
+                String estilo;
+                try { estilo = detectarEstilo(u); } catch (Throwable e) { estilo = "Sin clasificar"; }
+                if (!porEstilo.containsKey(estilo)) porEstilo.put(estilo, new ArrayList<>());
+                porEstilo.get(estilo).add(u);
+            }
+            runOnUiThread(() -> confirmarAutomatico(uris, porEstilo, alSubir));
+        }).start();
+    }
+
+    private void confirmarAutomatico(final ArrayList<Uri> uris, final LinkedHashMap<String, ArrayList<Uri>> porEstilo,
+                                     final java.util.function.Consumer<Uri> alSubir) {
+        if (isDestroyed()) return;
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, ArrayList<Uri>> e : porEstilo.entrySet())
+            sb.append("📁 ").append(e.getKey()).append(":  ").append(e.getValue().size()).append("\n");
+        sb.append("\nLas «Sin clasificar» no se han podido reconocer; puedes moverlas luego con una pulsación larga en la lista del NAS.");
+        new AlertDialog.Builder(this).setTitle("Así las voy a guardar")
+            .setMessage(sb.toString())
+            .setPositiveButton("SUBIR ASÍ", (d, w) -> subirGrupos(new ArrayList<>(porEstilo.entrySet()), 0, alSubir))
+            .setNeutralButton("ELEGIR YO", (d, w) -> elegirEstilo("Estilo para todas",
+                    estilo -> subirVariasAlNas(uris, estilo, alSubir)))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void subirGrupos(final ArrayList<Map.Entry<String, ArrayList<Uri>>> cola, final int i,
+                             final java.util.function.Consumer<Uri> alSubir) {
+        if (i >= cola.size()) return;
+        subirVariasAlNas(cola.get(i).getValue(), cola.get(i).getKey(), alSubir,
+                () -> subirGrupos(cola, i + 1, alSubir));
+    }
+
+    // Etiqueta de la canción; si no hay, la busca en internet (iTunes) por título y artista.
+    private String detectarEstilo(Uri u) {
+        String genero = null, titulo = null, autor = null;
+        int anio = 0;
+        MediaMetadataRetriever m = new MediaMetadataRetriever();
+        try {
+            m.setDataSource(this, u);
+            genero = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE);
+            titulo = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+            autor = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+            String y = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR);
+            if (y != null && y.length() >= 4) anio = Integer.parseInt(y.substring(0, 4));
+        } catch (Exception ignored) { } finally { try { m.release(); } catch (Exception ignored) { } }
+        String estilo = estiloDeGenero(genero);
+        if (estilo == null) {
+            String termino = (titulo != null && !titulo.trim().isEmpty())
+                ? ((autor == null ? "" : autor + " ") + titulo)
+                : limpiarNombre(nombreDeUri(u));
+            String[] r = consultarItunes(termino);
+            if (r != null) {
+                estilo = estiloDeGenero(r[0]);
+                if (anio == 0 && r[1] != null && r[1].length() >= 4) {
+                    try { anio = Integer.parseInt(r[1].substring(0, 4)); } catch (Exception ignored) { }
+                }
+            }
+        }
+        if (estilo == null && anio >= 1980 && anio <= 2009)
+            estilo = anio < 1990 ? "Años 80" : anio < 2000 ? "Años 90" : "Años 2000";
+        return estilo == null ? "Sin clasificar" : estilo;
+    }
+
+    private String estiloDeGenero(String genero) {
+        if (genero == null) return null;
+        String g = simple(genero);
+        if (g.isEmpty()) return null;
+        if (g.contains("flamenc") || g.contains("rumba")) return "Flamenquito";
+        if (g.contains("latin") || g.contains("reggaeton") || g.contains("urban") || g.contains("salsa")
+            || g.contains("bachata") || g.contains("cumbia") || g.contains("tropical")) return "Latino";
+        if (g.contains("rock") || g.contains("alternativ") || g.contains("metal") || g.contains("punk")) return "Rock";
+        if (g.contains("danc") || g.contains("electr") || g.contains("house") || g.contains("techno")
+            || g.contains("disco")) return "Dance";
+        if (g.contains("balad") || g.contains("romant") || g.contains("singer") || g.contains("easy listening")) return "Baladas";
+        if (g.contains("pop")) return "Pop";
+        return null;
+    }
+
+    private String limpiarNombre(String nombre) {
+        String n = nombreSinExtension(nombre).replace('_', ' ');
+        n = n.replaceAll("\\([^)]*\\)|\\[[^\\]]*\\]", " ");
+        n = n.replaceAll("(?i)official|video oficial|videoclip|lyrics|letra|audio|\\bhd\\b|\\bhq\\b", " ");
+        return n.replaceAll("\\s+", " ").trim();
+    }
+
+    private String[] consultarItunes(String termino) {
+        if (termino == null || termino.trim().isEmpty()) return null;
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(
+                "https://itunes.apple.com/search?media=music&entity=song&limit=1&country=ES&term="
+                + java.net.URLEncoder.encode(termino, "UTF-8")).openConnection();
+            c.setConnectTimeout(6000); c.setReadTimeout(8000);
+            StringBuilder sb = new StringBuilder();
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                String linea;
+                while ((linea = r.readLine()) != null) sb.append(linea);
+            }
+            org.json.JSONArray res = new org.json.JSONObject(sb.toString()).optJSONArray("results");
+            if (res == null || res.length() == 0) return null;
+            org.json.JSONObject o = res.getJSONObject(0);
+            return new String[]{o.optString("primaryGenreName"), o.optString("releaseDate")};
+        } catch (Exception e) {
+            android.util.Log.e("KULI_ESTILO", "iTunes", e);
+            return null;
         }
     }
 
@@ -796,13 +927,10 @@ public class MainActivity extends Activity {
         } catch (Exception e) { android.util.Log.e("KULI_YM", "Buscando YMusic", e); return; }
         if (nuevas.isEmpty()) return;
         final String que = nuevas.size() == 1 ? "1 canción nueva" : nuevas.size() + " canciones nuevas";
-        new AlertDialog.Builder(this).setTitle("Música nueva de YMusic")
-            .setMessage("Hay " + que + " descargada(s) con YMusic. ¿Las subo al NAS?")
-            .setPositiveButton("SUBIR", (d, w) ->
-                elegirEstilo("Estilo para " + que, estilo ->
-                    subirVariasAlNas(nuevas, estilo, u -> marcarVistas(java.util.Collections.singleton(claves.get(u))))))
-            .setNeutralButton("IGNORAR", (d, w) -> marcarVistas(claves.values()))
-            .setNegativeButton("AHORA NO", null).show();
+        final java.util.function.Consumer<Uri> marcar = u -> marcarVistas(java.util.Collections.singleton(claves.get(u)));
+        final Runnable ignorar = () -> marcarVistas(claves.values());
+        aviso("Hay " + que + " de YMusic");
+        ofrecerSubida(nuevas, marcar, ignorar);
     }
 
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
@@ -989,7 +1117,7 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Estilos (carpetas del NAS) ----------
-    private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Baladas", "Dance",
+    private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Flamenquito", "Baladas", "Dance",
         "Años 80", "Años 90", "Años 2000", "Otro…"};
 
     private void elegirEstilo(final String titulo, final java.util.function.Consumer<String> listo) {
@@ -1529,11 +1657,16 @@ public class MainActivity extends Activity {
     }
 
     private void subirVariasAlNas(final List<Uri> uris, String estiloElegido) {
-        subirVariasAlNas(uris, estiloElegido, null);
+        subirVariasAlNas(uris, estiloElegido, null, null);
     }
 
     private void subirVariasAlNas(final List<Uri> uris, String estiloElegido,
                                   final java.util.function.Consumer<Uri> alSubir) {
+        subirVariasAlNas(uris, estiloElegido, alSubir, null);
+    }
+
+    private void subirVariasAlNas(final List<Uri> uris, String estiloElegido,
+                                  final java.util.function.Consumer<Uri> alSubir, final Runnable alFin) {
         String carpeta = estiloElegido.replaceAll("[\\/:*?\"<>|]", "_").trim();
         if (carpeta.isEmpty()) carpeta = "Sin clasificar";
         final String estilo = carpeta;
@@ -1571,6 +1704,7 @@ public class MainActivity extends Activity {
                             .setMessage("No se pudieron subir:\n\n" + android.text.TextUtils.join("\n", fallos))
                             .setPositiveButton("CERRAR", null).show();
                     }
+                    if (alFin != null) alFin.run();
                 });
             } catch (Throwable e) {
                 runOnUiThread(() -> mostrarErrorNas("No se pudo subir al NAS", e));
