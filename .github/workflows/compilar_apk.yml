@@ -28,13 +28,17 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: KULI-MUSIC-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: KULI-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            fotos/build/outputs/apk/debug/fotos-debug.apk
 
       - name: Publicar APK como descarga directa
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: KULI MUSIC build ${{ github.run_number }}
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            fotos/build/outputs/apk/debug/fotos-debug.apk
           make_latest: true
