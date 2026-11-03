@@ -1,4 +1,4 @@
-plugins { id("com.android.application") version "8.7.3" }
+plugins { id("com.android.application") }
 android {
     namespace = "com.kuli.music"
     compileSdk = 35
