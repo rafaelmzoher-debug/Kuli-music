@@ -526,6 +526,9 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Cuando suena la radio del coche, la música del móvil se pausa.
+    void pausarDesdeAuto() { pausarPorTemporizador(); }
+
     private void alternarReproduccion() {
         if (reproductor == null && ultimaUri != null) {
             Uri u = ultimaUri; ultimaUri = null;
@@ -584,6 +587,7 @@ public class MainActivity extends Activity {
     private void iniciarServicio() {
         boolean suena = false;
         try { suena = reproductor != null && reproductor.isPlaying(); } catch (Exception ignored) { }
+        if (suena && AutoService.instancia != null) AutoService.instancia.pararPorApp();
         try {
             MusicaService activo = MusicaService.instancia;
             if (activo != null) { activo.refrescar(tituloActual, artistaActual, suena); return; }
