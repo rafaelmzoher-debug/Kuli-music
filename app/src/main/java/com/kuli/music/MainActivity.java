@@ -316,10 +316,9 @@ public class MainActivity extends Activity {
         TextView radio = texto("📻  Radio en directo", 13, DORADO);
         radio.setPadding(dp(12), dp(10), dp(12), dp(6));
         radio.setOnClickListener(v -> abrirRadio());
-        TextView tv = texto("📺  TV (TDT)", 13, DORADO);
+        TextView tv = texto("📺  TV en directo", 13, DORADO);
         tv.setPadding(dp(12), dp(10), dp(12), dp(6));
         tv.setOnClickListener(v -> abrirTv());
-        tv.setOnLongClickListener(v -> { elegirAppTv(); return true; });
         LinearLayout filaMedios = new LinearLayout(this);
         filaMedios.setGravity(Gravity.CENTER_HORIZONTAL);
         filaMedios.addView(radio);
@@ -1863,28 +1862,89 @@ public class MainActivity extends Activity {
         if (reproductor != null) { reproductor.release(); reproductor = null; }
         super.onDestroy();
     }
-    // ---------- TV (abre tu app de TDT) ----------
+    // ---------- TV dentro de KULI (lista pública de canales de España) ----------
+    private ArrayList<String> tvNombres, tvUrls;
+
     private void abrirTv() {
-        android.content.pm.PackageManager pm = getPackageManager();
-        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
-        String pkg = aj.getString("tv_pkg", null);
-        if (pkg != null) {
-            Intent i = pm.getLaunchIntentForPackage(pkg);
-            if (i != null) { startActivity(i); return; }
-        }
-        for (android.content.pm.ApplicationInfo app : pm.getInstalledApplications(0)) {
-            if (app.packageName.equals(getPackageName())) continue;
-            String nombre = pm.getApplicationLabel(app).toString().toLowerCase().replace(" ", "");
-            if (nombre.contains("tdt") || app.packageName.toLowerCase().contains("tdt")) {
-                Intent i = pm.getLaunchIntentForPackage(app.packageName);
-                if (i != null) {
-                    aj.edit().putString("tv_pkg", app.packageName).apply();
-                    startActivity(i);
-                    return;
-                }
+        if (tvNombres != null && !tvNombres.isEmpty()) { mostrarCanalesTv(null); return; }
+        aviso("Cargando canales…");
+        new Thread(() -> {
+            String[] fuentes = {"https://iptv-org.github.io/iptv/countries/es.m3u",
+                                "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/es.m3u"};
+            final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
+            for (String f : fuentes) {
+                try {
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(f).openConnection();
+                    c.setConnectTimeout(8000); c.setReadTimeout(15000);
+                    c.setRequestProperty("User-Agent", "KULIMusic/3.12");
+                    java.util.HashSet<String> vistos = new java.util.HashSet<>();
+                    String nombre = null;
+                    try (java.io.BufferedReader r = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                        String l;
+                        while ((l = r.readLine()) != null) {
+                            l = l.trim();
+                            if (l.startsWith("#EXTINF")) {
+                                int k = l.lastIndexOf(',');
+                                nombre = k >= 0 ? l.substring(k + 1).trim() : null;
+                            } else if (!l.isEmpty() && !l.startsWith("#")) {
+                                if (nombre != null && !nombre.isEmpty() && l.startsWith("http")
+                                        && vistos.add(nombre.toLowerCase())) {
+                                    nombres.add(nombre); urls.add(l);
+                                }
+                                nombre = null;
+                            }
+                        }
+                    }
+                    if (!nombres.isEmpty()) break;
+                } catch (Exception e) { android.util.Log.e("KULI_TV", f, e); }
             }
-        }
-        elegirAppTv();
+            runOnUiThread(() -> {
+                if (nombres.isEmpty()) { aviso("No se pudo cargar la lista de canales. Revisa tu conexión."); return; }
+                tvNombres = nombres; tvUrls = urls;
+                mostrarCanalesTv(null);
+            });
+        }).start();
+    }
+
+    private void mostrarCanalesTv(final String filtro) {
+        if (isDestroyed()) return;
+        final ArrayList<String> n = new ArrayList<>(), u = new ArrayList<>();
+        for (int i = 0; i < tvNombres.size(); i++)
+            if (filtro == null || tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase())) {
+                n.add(tvNombres.get(i)); u.add(tvUrls.get(i));
+            }
+        if (n.isEmpty()) { aviso("No hay canales con ese nombre"); return; }
+        new AlertDialog.Builder(this).setTitle("📺 TV en directo")
+            .setItems(n.toArray(new String[0]), (d, i) -> reproducirTv(n.get(i), u.get(i)))
+            .setNeutralButton("🔍 BUSCAR", (d, w) ->
+                pedirTexto("🔍 Buscar canal (ej. La 1)", q -> mostrarCanalesTv(q)))
+            .setNegativeButton("CERRAR", null).show();
+    }
+
+    private void reproducirTv(final String nombre, final String url) {
+        try { if (reproductor != null && reproductor.isPlaying()) reproductor.pause(); } catch (Exception ignored) { }
+        final android.app.Dialog dlg = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        FrameLayout caja = new FrameLayout(this);
+        caja.setBackgroundColor(Color.BLACK);
+        final android.widget.VideoView video = new android.widget.VideoView(this);
+        caja.addView(video, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        final TextView info = new TextView(this);
+        info.setText("📺 " + nombre + "\nConectando…");
+        info.setTextColor(Color.WHITE); info.setTextSize(16); info.setGravity(Gravity.CENTER);
+        caja.addView(info, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        dlg.setContentView(caja);
+        video.setOnPreparedListener(mp -> info.setVisibility(View.GONE));
+        video.setOnErrorListener((mp, w, x) -> {
+            aviso("No se pudo abrir " + nombre + ". Prueba con otro canal.");
+            dlg.dismiss();
+            mostrarCanalesTv(null);
+            return true;
+        });
+        dlg.setOnDismissListener(d -> { try { video.stopPlayback(); } catch (Exception ignored) { } });
+        dlg.show();
+        video.setVideoURI(Uri.parse(url));
+        video.start();
     }
 
     private void elegirAppTv() {
