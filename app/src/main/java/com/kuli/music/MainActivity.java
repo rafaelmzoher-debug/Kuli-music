@@ -316,10 +316,17 @@ public class MainActivity extends Activity {
         TextView radio = texto("📻  Radio en directo", 13, DORADO);
         radio.setPadding(dp(12), dp(10), dp(12), dp(6));
         radio.setOnClickListener(v -> abrirRadio());
-        LinearLayout.LayoutParams lpRadio = new LinearLayout.LayoutParams(-2, -2);
-        lpRadio.gravity = Gravity.CENTER_HORIZONTAL;
+        TextView tv = texto("📺  TV (TDT)", 13, DORADO);
+        tv.setPadding(dp(12), dp(10), dp(12), dp(6));
+        tv.setOnClickListener(v -> abrirTv());
+        tv.setOnLongClickListener(v -> { elegirAppTv(); return true; });
+        LinearLayout filaMedios = new LinearLayout(this);
+        filaMedios.setGravity(Gravity.CENTER_HORIZONTAL);
+        filaMedios.addView(radio);
+        filaMedios.addView(tv);
+        LinearLayout.LayoutParams lpRadio = new LinearLayout.LayoutParams(-1, -2);
         lpRadio.topMargin = dp(6);
-        pantalla.addView(radio, lpRadio);
+        pantalla.addView(filaMedios, lpRadio);
 
         LinearLayout filaAjustes = new LinearLayout(this);
         filaAjustes.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -351,6 +358,7 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(ticker);
         ui.post(ticker);
         revisarYMusic();
+        ymusicAFavoritas();
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
@@ -903,6 +911,45 @@ public class MainActivity extends Activity {
         java.util.HashSet<String> todas = new java.util.HashSet<>(aj.getStringSet("ymusic_vistas", new java.util.HashSet<>()));
         todas.addAll(claves);
         aj.edit().putStringSet("ymusic_vistas", todas).apply();
+    }
+
+    // Las canciones de la carpeta YMusic entran solas en Favoritas (una sola vez cada una).
+    private static boolean favYMusicRevisado = false;
+    private void ymusicAFavoritas() {
+        if (favYMusicRevisado || isFinishing() || isDestroyed()) return;
+        if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        favYMusicRevisado = true;
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        java.util.HashSet<String> hechas = new java.util.HashSet<>(
+                aj.getStringSet("ymusic_favs_hechas", new java.util.HashSet<String>()));
+        SharedPreferences.Editor ed = favoritos.edit();
+        int nuevas = 0;
+        try (Cursor c = getContentResolver().query(
+                android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                new String[]{android.provider.MediaStore.Audio.Media._ID,
+                             android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
+                             android.provider.MediaStore.Audio.Media.TITLE,
+                             android.provider.MediaStore.Audio.Media.ARTIST},
+                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[]{"%/YMusic/%"}, null)) {
+            while (c != null && c.moveToNext()) {
+                String clave = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, c.getLong(0)).toString();
+                if (hechas.contains(clave)) continue;
+                hechas.add(clave);
+                if (favoritos.contains(clave)) continue;
+                String nombre = c.getString(1) == null ? "Canción" : nombreSinExtension(c.getString(1));
+                String titulo = c.getString(2), artista = c.getString(3);
+                if (titulo == null || titulo.trim().isEmpty()) titulo = nombre;
+                String texto = (artista == null || artista.trim().isEmpty() || artista.contains("unknown"))
+                        ? titulo : titulo + " — " + artista;
+                ed.putString(clave, texto);
+                nuevas++;
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_YM", "Favoritas YMusic", e); return; }
+        ed.apply();
+        aj.edit().putStringSet("ymusic_favs_hechas", hechas).apply();
+        if (nuevas > 0) aviso("♥ " + nuevas + (nuevas == 1 ? " canción" : " canciones") + " de YMusic añadidas a Favoritas");
     }
 
     private void revisarYMusic() {
@@ -1816,6 +1863,51 @@ public class MainActivity extends Activity {
         if (reproductor != null) { reproductor.release(); reproductor = null; }
         super.onDestroy();
     }
+    // ---------- TV (abre tu app de TDT) ----------
+    private void abrirTv() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        String pkg = aj.getString("tv_pkg", null);
+        if (pkg != null) {
+            Intent i = pm.getLaunchIntentForPackage(pkg);
+            if (i != null) { startActivity(i); return; }
+        }
+        for (android.content.pm.ApplicationInfo app : pm.getInstalledApplications(0)) {
+            if (app.packageName.equals(getPackageName())) continue;
+            String nombre = pm.getApplicationLabel(app).toString().toLowerCase().replace(" ", "");
+            if (nombre.contains("tdt") || app.packageName.toLowerCase().contains("tdt")) {
+                Intent i = pm.getLaunchIntentForPackage(app.packageName);
+                if (i != null) {
+                    aj.edit().putString("tv_pkg", app.packageName).apply();
+                    startActivity(i);
+                    return;
+                }
+            }
+        }
+        elegirAppTv();
+    }
+
+    private void elegirAppTv() {
+        final android.content.pm.PackageManager pm = getPackageManager();
+        Intent principal = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        final ArrayList<android.content.pm.ResolveInfo> apps = new ArrayList<>();
+        for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(principal, 0))
+            if (!r.activityInfo.packageName.equals(getPackageName())) apps.add(r);
+        Collections.sort(apps, (a, b) -> a.loadLabel(pm).toString().compareToIgnoreCase(b.loadLabel(pm).toString()));
+        String[] nombres = new String[apps.size()];
+        for (int i = 0; i < nombres.length; i++) nombres[i] = apps.get(i).loadLabel(pm).toString();
+        new AlertDialog.Builder(this).setTitle("📺 Elige tu app de TV")
+            .setItems(nombres, (d, i) -> {
+                String pkg = apps.get(i).activityInfo.packageName;
+                getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("tv_pkg", pkg).apply();
+                Intent l = pm.getLaunchIntentForPackage(pkg);
+                if (l != null) startActivity(l);
+            })
+            .setNeutralButton("🔍 BUSCAR EN INTERNET", (d, w) ->
+                abrirEnlace("https://www.google.com/search?q=TDT+Channels+app+android"))
+            .setNegativeButton("CERRAR", null).show();
+    }
+
     private Intent buscarYMusic() {
         android.content.pm.PackageManager pm = getPackageManager();
         for (android.content.pm.ApplicationInfo app :
