@@ -1911,15 +1911,26 @@ public class MainActivity extends Activity {
         if (isDestroyed()) return;
         final ArrayList<String> n = new ArrayList<>(), u = new ArrayList<>();
         for (int i = 0; i < tvNombres.size(); i++)
-            if (filtro == null || tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase())) {
+            if (filtro == null || (filtro.equals("\u0001DEPORTES") ? esDeportivo(tvNombres.get(i))
+                    : tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase()))) {
                 n.add(tvNombres.get(i)); u.add(tvUrls.get(i));
             }
         if (n.isEmpty()) { aviso("No hay canales con ese nombre"); return; }
-        new AlertDialog.Builder(this).setTitle("📺 TV en directo")
+        new AlertDialog.Builder(this).setTitle(filtro != null && filtro.equals("\u0001DEPORTES") ? "⚽ Deportes" : "📺 TV en directo")
+            .setPositiveButton(filtro == null ? "⚽ DEPORTES" : "📺 TODOS", (d, w) ->
+                mostrarCanalesTv(filtro == null ? "\u0001DEPORTES" : null))
             .setItems(n.toArray(new String[0]), (d, i) -> reproducirTv(n.get(i), u.get(i)))
             .setNeutralButton("🔍 BUSCAR", (d, w) ->
                 pedirTexto("🔍 Buscar canal (ej. La 1)", q -> mostrarCanalesTv(q)))
             .setNegativeButton("CERRAR", null).show();
+    }
+
+    private boolean esDeportivo(String nombre) {
+        String t = nombre.toLowerCase();
+        String[] claves = {"deport", "sport", "gol", "marca", "real madrid", "barça", "barca", "futbol", "fútbol",
+                           "motor", "toros", "caza", "pesca", "padel", "pádel", "tenis", "basket", "baloncesto", "esport"};
+        for (String c : claves) if (t.contains(c)) return true;
+        return false;
     }
 
     private void reproducirTv(final String nombre, final String url) {
