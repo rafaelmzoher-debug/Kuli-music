@@ -1870,7 +1870,8 @@ public class MainActivity extends Activity {
         aviso("Cargando canales…");
         new Thread(() -> {
             String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u",
-                                "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"};
+                                "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+                                "https://iptv-org.github.io/iptv/index.m3u"};
             final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
             java.util.HashSet<String> vistos = new java.util.HashSet<>();
             for (String f : fuentes) {
@@ -1878,8 +1879,9 @@ public class MainActivity extends Activity {
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(f).openConnection();
                     c.setConnectTimeout(8000); c.setReadTimeout(15000);
                     c.setRequestProperty("User-Agent", "KULIMusic/3.12");
-                    String nombre = null, grupo = null;
+                    String nombre = null, grupo = null, tvgId = null;
                     boolean soloEs = f.contains("Free-TV");
+                    boolean porId = f.contains("iptv-org");
                     try (java.io.BufferedReader r = new java.io.BufferedReader(
                             new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
                         String l;
@@ -1888,11 +1890,13 @@ public class MainActivity extends Activity {
                             if (l.startsWith("#EXTINF")) {
                                 int k = l.lastIndexOf(',');
                                 nombre = k >= 0 ? l.substring(k + 1).trim() : null;
-                                grupo = null;
+                                grupo = null; tvgId = null;
+                                int t = l.indexOf("tvg-id=\"");
+                                if (t >= 0) { int u2 = l.indexOf('"', t + 8); if (u2 > t) tvgId = l.substring(t + 8, u2); }
                                 int g = l.indexOf("group-title=\"");
                                 if (g >= 0) { int h = l.indexOf('"', g + 13); if (h > g) grupo = l.substring(g + 13, h); }
                             } else if (!l.isEmpty() && !l.startsWith("#")) {
-                                if (nombre != null && !nombre.isEmpty() && l.startsWith("http") && (!soloEs || esEspana(grupo))
+                                if (nombre != null && !nombre.isEmpty() && l.startsWith("http") && (!soloEs || esEspana(grupo)) && (!porId || (tvgId != null && tvgId.toLowerCase().contains(".es")))
                                         && vistos.add(nombre.toLowerCase())) {
                                     nombres.add(nombre); urls.add(l);
                                 }
