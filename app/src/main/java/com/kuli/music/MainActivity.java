@@ -720,6 +720,10 @@ public class MainActivity extends Activity {
         if (g.contains("danc") || g.contains("electr") || g.contains("house") || g.contains("techno")
             || g.contains("disco")) return "Dance";
         if (g.contains("balad") || g.contains("romant") || g.contains("singer") || g.contains("easy listening")) return "Baladas";
+        if (g.contains("hip") || g.contains("rap")) return "Hip Hop";
+        if (g.contains("jazz") || g.contains("blues")) return "Jazz";
+        if (g.contains("classic") || g.contains("clasic") || g.contains("opera")) return "Clásica";
+        if (g.contains("children") || g.contains("infantil") || g.contains("kids")) return "Infantil";
         if (g.contains("pop")) return "Pop";
         return null;
     }
@@ -1173,7 +1177,7 @@ public class MainActivity extends Activity {
 
     // ---------- Estilos (carpetas del NAS) ----------
     private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Flamenquito", "Baladas", "Dance",
-        "Años 80", "Años 90", "Años 2000", "Otro…"};
+        "Hip Hop", "Jazz", "Clásica", "Infantil", "Años 80", "Años 90", "Años 2000", "Otro…"};
 
     private void elegirEstilo(final String titulo, final java.util.function.Consumer<String> listo) {
         new AlertDialog.Builder(this).setTitle(titulo)
@@ -1195,7 +1199,20 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show();
     }
     private void pedirEstiloYGuardar(final Uri uri, final String clave, final String titulo) {
-        elegirEstilo("¿De qué estilo es?", estilo -> guardarFavoritaConEstilo(uri, clave, titulo, estilo));
+        aviso("Reconociendo el estilo…");
+        new Thread(() -> {
+            String estilo;
+            try { estilo = detectarEstilo(uri); } catch (Throwable e) { estilo = "Sin clasificar"; }
+            final String detectado = estilo;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if ("Sin clasificar".equals(detectado))
+                    elegirEstilo("No he podido reconocerla. ¿De qué estilo es?",
+                            elegido -> guardarFavoritaConEstilo(uri, clave, titulo, elegido));
+                else
+                    guardarFavoritaConEstilo(uri, clave, titulo, detectado);
+            });
+        }).start();
     }
     private void guardarFavoritaConEstilo(Uri uri, String clave, String titulo, String estilo) {
         favoritos.edit().putString(clave, titulo).apply();
