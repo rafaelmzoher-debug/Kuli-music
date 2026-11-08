@@ -1869,8 +1869,7 @@ public class MainActivity extends Activity {
         if (tvNombres != null && !tvNombres.isEmpty()) { mostrarCanalesTv(null); return; }
         aviso("Cargando canales…");
         new Thread(() -> {
-            String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u", "https://iptv-org.github.io/iptv/countries/es.m3u",
-                                "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/es.m3u"};
+            String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u"};
             final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
             java.util.HashSet<String> vistos = new java.util.HashSet<>();
             for (String f : fuentes) {
