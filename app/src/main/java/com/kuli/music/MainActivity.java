@@ -1869,7 +1869,8 @@ public class MainActivity extends Activity {
         if (tvNombres != null && !tvNombres.isEmpty()) { mostrarCanalesTv(null); return; }
         aviso("Cargando canales…");
         new Thread(() -> {
-            String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u"};
+            String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u",
+                                "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"};
             final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
             java.util.HashSet<String> vistos = new java.util.HashSet<>();
             for (String f : fuentes) {
@@ -1877,7 +1878,8 @@ public class MainActivity extends Activity {
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(f).openConnection();
                     c.setConnectTimeout(8000); c.setReadTimeout(15000);
                     c.setRequestProperty("User-Agent", "KULIMusic/3.12");
-                    String nombre = null;
+                    String nombre = null, grupo = null;
+                    boolean soloEs = f.contains("Free-TV");
                     try (java.io.BufferedReader r = new java.io.BufferedReader(
                             new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
                         String l;
@@ -1886,8 +1888,11 @@ public class MainActivity extends Activity {
                             if (l.startsWith("#EXTINF")) {
                                 int k = l.lastIndexOf(',');
                                 nombre = k >= 0 ? l.substring(k + 1).trim() : null;
+                                grupo = null;
+                                int g = l.indexOf("group-title=\"");
+                                if (g >= 0) { int h = l.indexOf('"', g + 13); if (h > g) grupo = l.substring(g + 13, h); }
                             } else if (!l.isEmpty() && !l.startsWith("#")) {
-                                if (nombre != null && !nombre.isEmpty() && l.startsWith("http")
+                                if (nombre != null && !nombre.isEmpty() && l.startsWith("http") && (!soloEs || esEspana(grupo))
                                         && vistos.add(nombre.toLowerCase())) {
                                     nombres.add(nombre); urls.add(l);
                                 }
@@ -1905,6 +1910,12 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private boolean esEspana(String g) {
+        if (g == null) return false;
+        String t = g.toLowerCase();
+        return t.contains("spain") || t.contains("españa") || t.contains("spanish");
+    }
+
     private void mostrarCanalesTv(final String filtro) {
         if (isDestroyed()) return;
         final ArrayList<String> n = new ArrayList<>(), u = new ArrayList<>();
@@ -1913,11 +1924,27 @@ public class MainActivity extends Activity {
                     : tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase()))) {
                 n.add(tvNombres.get(i)); u.add(tvUrls.get(i));
             }
+        if (filtro == null) {
+            String[][] web = {
+                {"antena3", "📺 Antena 3 (abre Atresplayer)", "https://www.atresplayer.com/directos/antena3/"},
+                {"telecinco", "📺 Telecinco (abre Mitele)", "https://www.mitele.es/directo/telecinco/"},
+                {"lasexta", "📺 laSexta (abre Atresplayer)", "https://www.atresplayer.com/directos/lasexta/"},
+                {"cuatro", "📺 Cuatro (abre Mitele)", "https://www.mitele.es/directo/cuatro/"}};
+            int pos = 0;
+            for (String[] w : web) {
+                boolean esta = false;
+                for (String x : tvNombres) if (x.toLowerCase().replace(" ", "").contains(w[0])) esta = true;
+                if (!esta) { n.add(pos, w[1]); u.add(pos, "web:" + w[2]); pos++; }
+            }
+        }
         if (n.isEmpty()) { aviso("No hay canales con ese nombre"); return; }
         new AlertDialog.Builder(this).setTitle(filtro != null && filtro.equals("\u0001DEPORTES") ? "⚽ Deportes" : "📺 TV en directo")
             .setPositiveButton(filtro == null ? "⚽ DEPORTES" : "📺 TODOS", (d, w) ->
                 mostrarCanalesTv(filtro == null ? "\u0001DEPORTES" : null))
-            .setItems(n.toArray(new String[0]), (d, i) -> reproducirTv(n.get(i), u.get(i)))
+            .setItems(n.toArray(new String[0]), (d, i) -> {
+                if (u.get(i).startsWith("web:")) abrirEnlace(u.get(i).substring(4));
+                else reproducirTv(n.get(i), u.get(i));
+            })
             .setNeutralButton("🔍 BUSCAR", (d, w) ->
                 pedirTexto("🔍 Buscar canal (ej. La 1)", q -> mostrarCanalesTv(q)))
             .setNegativeButton("CERRAR", null).show();
