@@ -66,6 +66,17 @@ public class MainActivity extends Activity {
         copiar.setOnClickListener(v -> alPulsarCopiar());
         p.addView(copiar, margen(new LinearLayout.LayoutParams(-1, dp(56)), 28));
 
+        Button repasar = boton("🔄  Volver a revisar todo", false);
+        repasar.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Volver a revisar todo")
+            .setMessage("KULI FOTOS olvidará lo que ya copió y revisará todas las fotos y vídeos. Las que ya estén en el NAS no se repiten.")
+            .setPositiveButton("REVISAR", (d, w) -> { CopiaFotos.olvidar(this); alPulsarCopiar(); })
+            .setNegativeButton("CANCELAR", null).show());
+        p.addView(repasar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+
+        Button liberar = boton("🧹  Liberar espacio del móvil", false);
+        liberar.setOnClickListener(v -> alPulsarLiberar());
+        p.addView(liberar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
         p.addView(auto, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
@@ -89,8 +100,13 @@ public class MainActivity extends Activity {
     private boolean tienePermiso() {
         return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
+    private boolean puedeBorrar() {
+        return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
     private void pedirPermiso() {
-        if (!tienePermiso()) requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISO);
+        if (!tienePermiso() || !puedeBorrar()) requestPermissions(new String[]{
+            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISO);
     }
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] r) {
         super.onRequestPermissionsResult(codigo, permisos, r);
@@ -104,17 +120,19 @@ public class MainActivity extends Activity {
         }
         new Thread(() -> {
             final ArrayList<CopiaFotos.Item> l = CopiaFotos.pendientes(this);
+            final int enMovil = CopiaFotos.todas(this).size();
             int v = 0;
             for (CopiaFotos.Item it : l) if (it.video) v++;
             final int videos = v, fotos = l.size() - v;
             runOnUiThread(() -> {
                 if (copiando || isDestroyed()) return;
                 if (l.isEmpty()) {
-                    estado.setText("✓ Todo copiado");
-                    detalle.setText("No hay fotos ni vídeos nuevos");
+                    estado.setText(enMovil == 0 ? "No veo fotos en el móvil" : "✓ Todo copiado");
+                    detalle.setText(enMovil == 0 ? "Comprueba el permiso de fotos de la app"
+                        : "Hay " + enMovil + " fotos y vídeos en el móvil, todos ya copiados");
                 } else {
                     estado.setText(l.size() + " por copiar");
-                    detalle.setText(fotos + " fotos y " + videos + " vídeos");
+                    detalle.setText(fotos + " fotos y " + videos + " vídeos (en el móvil hay " + enMovil + ")");
                 }
                 barra.setProgress(0);
             });
@@ -187,6 +205,63 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             final int n = CopiaFotos.pendientes(this).size();
             runOnUiThread(() -> { if (!copiando && !isDestroyed() && n > 0) detalle.append("\nQuedan " + n + " por copiar"); });
+        }).start();
+    }
+
+    // ---------- Liberar espacio ----------
+    private void alPulsarLiberar() {
+        if (copiando) { aviso("Espera a que termine la copia"); return; }
+        if (!tienePermiso() || !puedeBorrar()) { pedirPermiso(); aviso("Concede el permiso y vuelve a pulsar"); return; }
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
+        copiando = true;
+        estado.setText("Comprobando en el NAS…");
+        detalle.setText("Solo fotos con más de 30 días");
+        new Thread(() -> {
+            CopiaFotos.Borrables b = null;
+            Throwable error = null;
+            try { b = CopiaFotos.verificadas(this, 30); } catch (Throwable e) { error = e; }
+            final CopiaFotos.Borrables res = b;
+            final Throwable err = error;
+            runOnUiThread(() -> {
+                copiando = false;
+                if (isDestroyed()) return;
+                if (err != null) {
+                    estado.setText("No se pudo conectar con el NAS");
+                    detalle.setText("No se ha borrado nada");
+                    return;
+                }
+                if (res.items.isEmpty()) {
+                    estado.setText("Nada que borrar");
+                    detalle.setText("No hay fotos con más de 30 días ya comprobadas en el NAS");
+                    return;
+                }
+                contarPendientes();
+                String gb = res.bytes >= 1073741824L
+                    ? String.format(java.util.Locale.US, "%.1f GB", res.bytes / 1073741824.0)
+                    : (res.bytes / 1048576L) + " MB";
+                new AlertDialog.Builder(this).setTitle("🧹 Liberar espacio")
+                    .setMessage("Puedo borrar del móvil " + res.fotos + " fotos y " + res.videos + " vídeos (" + gb
+                        + ") con más de 30 días.\n\nYa he comprobado que cada una está en el NAS con el mismo tamaño."
+                        + "\n\nBorrarlas del móvil no se puede deshacer. ¿Las borro?")
+                    .setPositiveButton("BORRAR", (d, w) -> borrarAhora(res))
+                    .setNegativeButton("CANCELAR", null).show();
+            });
+        }).start();
+    }
+
+    private void borrarAhora(final CopiaFotos.Borrables b) {
+        copiando = true;
+        estado.setText("Borrando del móvil…");
+        detalle.setText("");
+        new Thread(() -> {
+            final int[] r = CopiaFotos.borrar(this, b.items);
+            runOnUiThread(() -> {
+                copiando = false;
+                if (isDestroyed()) return;
+                estado.setText("✓ " + r[0] + " borradas del móvil");
+                detalle.setText(r[1] > 0 ? r[1] + " no se pudieron borrar (siguen en el móvil y en el NAS)" : "Siguen guardadas en el NAS");
+                contarPendientes();
+            });
         }).start();
     }
 

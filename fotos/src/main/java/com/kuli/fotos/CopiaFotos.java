@@ -56,13 +56,25 @@ final class CopiaFotos {
         SharedPreferences sp = c.getSharedPreferences("fotos", Context.MODE_PRIVATE);
         Set<String> vistas = sp.getStringSet("copiadas", new HashSet<String>());
         ArrayList<Item> r = new ArrayList<>();
-        consultar(c, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, vistas, r);
-        consultar(c, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, vistas, r);
+        consultar(c, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, vistas, r, false);
+        consultar(c, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, vistas, r, false);
         Collections.sort(r, (a, b) -> Long.compare(b.fecha, a.fecha));
         return r;
     }
 
-    private static void consultar(Context ctx, Uri base, boolean video, Set<String> vistas, List<Item> salida) {
+    // Todas las fotos y vídeos del móvil (copiados o no)
+    static ArrayList<Item> todas(Context c) {
+        ArrayList<Item> r = new ArrayList<>();
+        consultar(c, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, new HashSet<String>(), r, false);
+        consultar(c, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, new HashSet<String>(), r, false);
+        return r;
+    }
+
+    static void olvidar(Context c) {
+        c.getSharedPreferences("fotos", Context.MODE_PRIVATE).edit().remove("copiadas").apply();
+    }
+
+    private static void consultar(Context ctx, Uri base, boolean video, Set<String> vistas, List<Item> salida, boolean soloCopiadas) {
         String[] cols = {"_id", "_display_name", "_size", "date_added", "_data", "datetaken"};
         try (Cursor c = ctx.getContentResolver().query(base, cols, null, null, null)) {
             while (c != null && c.moveToNext()) {
@@ -77,7 +89,7 @@ final class CopiaFotos {
                 if (rl.contains("/.trashed") || rl.contains("/.thumbnails") || rl.contains("/.pending")
                     || nombre.startsWith(".")) continue;
                 String clave = (video ? "v" : "i") + id + ":" + tam;
-                if (vistas.contains(clave)) continue;
+                if (vistas.contains(clave) != soloCopiadas) continue;
                 Item it = new Item();
                 it.uri = android.content.ContentUris.withAppendedId(base, id);
                 it.nombre = nombre; it.tam = tam; it.video = video; it.clave = clave;
@@ -126,14 +138,10 @@ final class CopiaFotos {
                 if (cancelar != null && cancelar.get()) break;
                 Item it = lista.get(i);
                 if (p != null) p.alAvanzar(i, lista.size(), it.nombre);
-                Calendar cal = new GregorianCalendar();
-                cal.setTimeInMillis(it.fecha);
-                String anio = String.format(Locale.US, "%04d", cal.get(Calendar.YEAR));
-                String mes = String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1);
-                String dirAnio = CARPETA + "\\" + anio;
-                String dirMes = dirAnio + "\\" + mes;
-                String dir = dirMes + "\\" + it.origen;
-                String destino = dir + "\\" + it.nombre.replaceAll("[\\\\/:*?\"<>|]", "_");
+                String dirAnio = dirAnio(it);
+                String dirMes = dirMes(it);
+                String dir = dirOrigen(it);
+                String destino = destinoDe(it);
                 try {
                     asegurar(disco, creadas, dirAnio);
                     asegurar(disco, creadas, dirMes);
@@ -165,6 +173,67 @@ final class CopiaFotos {
         }
         if (p != null) p.alAvanzar(lista.size(), lista.size(), "");
         return r;
+    }
+
+
+    // ---- Rutas en el NAS ----
+    private static String dirAnio(Item it) {
+        Calendar cal = new GregorianCalendar();
+        cal.setTimeInMillis(it.fecha);
+        return CARPETA + "\\" + String.format(Locale.US, "%04d", cal.get(Calendar.YEAR));
+    }
+    private static String dirMes(Item it) {
+        Calendar cal = new GregorianCalendar();
+        cal.setTimeInMillis(it.fecha);
+        return dirAnio(it) + "\\" + String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1);
+    }
+    private static String dirOrigen(Item it) { return dirMes(it) + "\\" + it.origen; }
+    private static String destinoDe(Item it) {
+        return dirOrigen(it) + "\\" + it.nombre.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    // ---- Liberar espacio: solo lo que está comprobado en el NAS y tiene más de 'dias' días ----
+    static final class Borrables {
+        final ArrayList<Item> items = new ArrayList<>();
+        long bytes;
+        int fotos, videos;
+    }
+
+    static Borrables verificadas(final Context ctx, final int dias) throws Throwable {
+        SharedPreferences sp = ctx.getSharedPreferences("fotos", Context.MODE_PRIVATE);
+        Set<String> vistas = sp.getStringSet("copiadas", new HashSet<String>());
+        final ArrayList<Item> todas = new ArrayList<>();
+        consultar(ctx, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, vistas, todas, true);
+        consultar(ctx, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, vistas, todas, true);
+        final long limite = System.currentTimeMillis() - dias * 24L * 60 * 60 * 1000;
+        final ArrayList<Item> viejas = new ArrayList<>();
+        for (Item it : todas) if (it.fecha < limite) viejas.add(it);
+        final Borrables b = new Borrables();
+        if (viejas.isEmpty()) return b;
+        return conNas(ctx, disco -> {
+            for (Item it : viejas) {
+                try {
+                    String d = destinoDe(it);
+                    if (disco.fileExists(d)
+                        && disco.getFileInformation(d).getStandardInformation().getEndOfFile() == it.tam) {
+                        b.items.add(it); b.bytes += it.tam;
+                        if (it.video) b.videos++; else b.fotos++;
+                    }
+                } catch (Exception e) { android.util.Log.e("KULI_FOTOS", "Comprobando " + it.nombre, e); }
+            }
+            return b;
+        });
+    }
+
+    // Devuelve {borradas, fallidas}
+    static int[] borrar(Context ctx, List<Item> items) {
+        int ok = 0, mal = 0;
+        for (Item it : items) {
+            try {
+                if (ctx.getContentResolver().delete(it.uri, null, null) > 0) ok++; else mal++;
+            } catch (Exception e) { mal++; android.util.Log.e("KULI_FOTOS", "Borrando " + it.nombre, e); }
+        }
+        return new int[]{ok, mal};
     }
 
     private static void asegurar(DiskShare disco, Set<String> creadas, String ruta) {
