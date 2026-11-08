@@ -1869,15 +1869,15 @@ public class MainActivity extends Activity {
         if (tvNombres != null && !tvNombres.isEmpty()) { mostrarCanalesTv(null); return; }
         aviso("Cargando canales…");
         new Thread(() -> {
-            String[] fuentes = {"https://iptv-org.github.io/iptv/countries/es.m3u",
+            String[] fuentes = {"https://www.tdtchannels.com/lists/tv.m3u", "https://iptv-org.github.io/iptv/countries/es.m3u",
                                 "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/es.m3u"};
             final ArrayList<String> nombres = new ArrayList<>(), urls = new ArrayList<>();
+            java.util.HashSet<String> vistos = new java.util.HashSet<>();
             for (String f : fuentes) {
                 try {
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(f).openConnection();
                     c.setConnectTimeout(8000); c.setReadTimeout(15000);
                     c.setRequestProperty("User-Agent", "KULIMusic/3.12");
-                    java.util.HashSet<String> vistos = new java.util.HashSet<>();
                     String nombre = null;
                     try (java.io.BufferedReader r = new java.io.BufferedReader(
                             new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
@@ -1896,12 +1896,10 @@ public class MainActivity extends Activity {
                             }
                         }
                     }
-                    if (!nombres.isEmpty()) break;
                 } catch (Exception e) { android.util.Log.e("KULI_TV", f, e); }
             }
             runOnUiThread(() -> {
                 if (nombres.isEmpty()) aviso("No se pudo cargar la lista pública. Revisa tu conexión.");
-                nombres.add(0, "⭐ Mi lista"); urls.add(0, "http://185.228.155.93:8000/play/a02q/index.m3u8");
                 tvNombres = nombres; tvUrls = urls;
                 mostrarCanalesTv(null);
             });
