@@ -3,3 +3,4 @@ dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_P
 rootProject.name = "KuliMusic"
 include(":app")
 include(":fotos")
+include(":familia")
