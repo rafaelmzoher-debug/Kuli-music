@@ -73,6 +73,10 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show());
         p.addView(repasar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
 
+        Button ver = boton("📂  Ver qué hay en el NAS", false);
+        ver.setOnClickListener(v -> verNas());
+        p.addView(ver, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+
         Button liberar = boton("🧹  Liberar espacio del móvil", false);
         liberar.setOnClickListener(v -> alPulsarLiberar());
         p.addView(liberar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
@@ -205,6 +209,21 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             final int n = CopiaFotos.pendientes(this).size();
             runOnUiThread(() -> { if (!copiando && !isDestroyed() && n > 0) detalle.append("\nQuedan " + n + " por copiar"); });
+        }).start();
+    }
+
+    // ---------- Ver el NAS ----------
+    private void verNas() {
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
+        aviso("Mirando el NAS…");
+        new Thread(() -> {
+            String t; 
+            try { t = CopiaFotos.resumenNas(this); }
+            catch (Throwable e) { t = "No se pudo conectar con el NAS:\n" + e.getClass().getSimpleName()
+                + (e.getMessage() != null ? ": " + e.getMessage() : ""); }
+            final String texto = t;
+            runOnUiThread(() -> { if (!isDestroyed()) new AlertDialog.Builder(this)
+                .setTitle("📂 Lo que hay en el NAS").setMessage(texto).setPositiveButton("CERRAR", null).show(); });
         }).start();
     }
 

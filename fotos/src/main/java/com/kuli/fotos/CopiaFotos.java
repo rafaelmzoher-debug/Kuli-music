@@ -6,6 +6,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.MediaStore;
 import com.hierynomus.msdtyp.AccessMask;
+import com.hierynomus.msfscc.FileAttributes;
+import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation;
+import com.hierynomus.protocol.commons.EnumWithValue;
 import com.hierynomus.mssmb2.SMB2CreateDisposition;
 import com.hierynomus.mssmb2.SMB2CreateOptions;
 import com.hierynomus.mssmb2.SMB2Dialect;
@@ -190,6 +193,45 @@ final class CopiaFotos {
     private static String dirOrigen(Item it) { return dirMes(it) + "\\" + it.origen; }
     private static String destinoDe(Item it) {
         return dirOrigen(it) + "\\" + it.nombre.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    // ---- Qué hay en el NAS ----
+    private static long[] contarDir(DiskShare disco, String ruta) {
+        long[] t = new long[2];
+        try {
+            for (FileIdBothDirectoryInformation f : disco.list(ruta)) {
+                String n = f.getFileName();
+                if (n.equals(".") || n.equals("..")) continue;
+                if (EnumWithValue.EnumUtils.isSet(f.getFileAttributes(), FileAttributes.FILE_ATTRIBUTE_DIRECTORY)) {
+                    long[] r = contarDir(disco, ruta + "\\" + n);
+                    t[0] += r[0]; t[1] += r[1];
+                } else { t[0]++; t[1] += f.getEndOfFile(); }
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_FOTOS", "Listando " + ruta, e); }
+        return t;
+    }
+
+    static String resumenNas(final Context ctx) throws Throwable {
+        return conNas(ctx, disco -> {
+            StringBuilder sb = new StringBuilder("NAS: " + ip(ctx) + "\nCarpeta: Public / " + CARPETA + "\n\n");
+            if (!disco.folderExists(CARPETA)) return sb.append("La carpeta NO existe en el NAS.").toString();
+            long archivos = 0, bytes = 0;
+            ArrayList<String> anios = new ArrayList<>();
+            for (FileIdBothDirectoryInformation f : disco.list(CARPETA)) {
+                String n = f.getFileName();
+                if (n.equals(".") || n.equals("..")) continue;
+                if (EnumWithValue.EnumUtils.isSet(f.getFileAttributes(), FileAttributes.FILE_ATTRIBUTE_DIRECTORY)) anios.add(n);
+            }
+            Collections.sort(anios);
+            for (String a : anios) {
+                long[] r = contarDir(disco, CARPETA + "\\" + a);
+                archivos += r[0]; bytes += r[1];
+                sb.append(a).append(":  ").append(r[0]).append(" archivos\n");
+            }
+            sb.append("\nTotal: ").append(archivos).append(" archivos (")
+              .append(String.format(Locale.US, "%.2f GB", bytes / 1073741824.0)).append(")");
+            return sb.toString();
+        });
     }
 
     // ---- Liberar espacio: solo lo que está comprobado en el NAS y tiene más de 'dias' días ----
