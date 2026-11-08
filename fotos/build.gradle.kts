@@ -6,8 +6,8 @@ android {
         applicationId = "com.kuli.fotos"
         minSdk = 26
         targetSdk = 28
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

@@ -73,6 +73,13 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show());
         p.addView(repasar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
 
+        Button galeria = boton("🖼  Ver fotos del NAS", true);
+        galeria.setOnClickListener(v -> {
+            if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
+            startActivity(new android.content.Intent(this, GaleriaActivity.class));
+        });
+        p.addView(galeria, margen(new LinearLayout.LayoutParams(-1, dp(56)), 12));
+
         Button ver = boton("📂  Ver qué hay en el NAS", false);
         ver.setOnClickListener(v -> verNas());
         p.addView(ver, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
