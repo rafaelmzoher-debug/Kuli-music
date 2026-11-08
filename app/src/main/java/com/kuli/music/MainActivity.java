@@ -1900,7 +1900,8 @@ public class MainActivity extends Activity {
                 } catch (Exception e) { android.util.Log.e("KULI_TV", f, e); }
             }
             runOnUiThread(() -> {
-                if (nombres.isEmpty()) { aviso("No se pudo cargar la lista de canales. Revisa tu conexión."); return; }
+                if (nombres.isEmpty()) aviso("No se pudo cargar la lista pública. Revisa tu conexión.");
+                nombres.add(0, "⭐ Mi lista"); urls.add(0, "http://185.228.155.93:8000/play/a02q/index.m3u8");
                 tvNombres = nombres; tvUrls = urls;
                 mostrarCanalesTv(null);
             });
