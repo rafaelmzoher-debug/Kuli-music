@@ -188,6 +188,14 @@ public class MainActivity extends Activity {
         Button alm = boton("📦  Almacén  (" + almacen.total() + ")", false);
         alm.setOnClickListener(v -> mostrarAlmacen());
         p.addView(alm, margen(-1, dp(50), 10));
+        ArrayList<Almacen.Item> bajos = almacen.bajos();
+        if (!bajos.isEmpty()) {
+            StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
+            for (int k = 0; k < bajos.size(); k++) sb.append(k > 0 ? ", " : "").append(bajos.get(k).nombre).append(" (").append(bajos.get(k).cantidad).append(")");
+            TextView av = texto(sb.toString(), 13, Color.rgb(255, 130, 110), true);
+            av.setPadding(dp(4), dp(4), dp(4), dp(4));
+            p.addView(av);
+        }
 
         p.addView(texto("Órdenes guardadas", 14, GRIS, true), margen(-2, -2, 22));
 
@@ -519,7 +527,9 @@ public class MainActivity extends Activity {
                     tv.setTextColor(Color.WHITE);
                     tv.setTextSize(15);
                     tv.setPadding(dp(14), dp(10), dp(14), dp(10));
-                    tv.setText(it.nombre + "   ×" + it.cantidad + "\n" + it.codigo);
+                    boolean bajo = it.minimo > 0 && it.cantidad <= it.minimo;
+                    tv.setText(it.nombre + "   ×" + it.cantidad + (bajo ? (it.cantidad == 0 ? "   ⚠ AGOTADO" : "   ⚠ POCO") : "") + "\n" + it.codigo);
+                    if (bajo) tv.setTextColor(Color.rgb(255, 130, 110));
                     LinearLayout caja = new LinearLayout(MainActivity.this);
                     caja.setPadding(0, 0, 0, dp(8));
                     caja.addView(tv, new LinearLayout.LayoutParams(-1, -2));
@@ -646,7 +656,7 @@ public class MainActivity extends Activity {
 
     private void opcionesDeMaterial(final Almacen.Item it) {
         new AlertDialog.Builder(this).setTitle(it.nombre + "  ×" + it.cantidad)
-            .setItems(new String[]{"➕ Sumar 1", "➖ Restar 1", "✎ Cambiar nombre", "🗑 Quitar del almacén"}, (d, i) -> {
+            .setItems(new String[]{"➕ Sumar 1", "➖ Restar 1", "✎ Cambiar nombre", "⚠ Avisar cuando quede poco", "🗑 Quitar del almacén"}, (d, i) -> {
                 if (i == 0) { almacen.anadir(it.codigo, it.nombre, 1); mostrarAlmacen(); }
                 else if (i == 1) { almacen.gastar(it.codigo); mostrarAlmacen(); }
                 else if (i == 2) {
@@ -655,6 +665,16 @@ public class MainActivity extends Activity {
                     new AlertDialog.Builder(this).setTitle("Cambiar nombre").setView(n)
                         .setPositiveButton("GUARDAR", (d2, w) -> { almacen.renombrar(it.codigo, n.getText().toString()); mostrarAlmacen(); })
                         .setNegativeButton("CANCELAR", null).show();
+                } else if (i == 3) {
+                    final EditText m = campo("Avisar cuando queden… (0 = no avisar)", InputType.TYPE_CLASS_NUMBER);
+                    m.setText(String.valueOf(it.minimo));
+                    new AlertDialog.Builder(this).setTitle("Aviso de «" + it.nombre + "»").setView(m)
+                        .setPositiveButton("GUARDAR", (d2, w) -> {
+                            int q = 0;
+                            try { q = Math.max(0, Integer.parseInt(m.getText().toString().trim())); } catch (Exception ignorar) { }
+                            almacen.setMinimo(it.codigo, q);
+                            mostrarAlmacen();
+                        }).setNegativeButton("CANCELAR", null).show();
                 } else {
                     new AlertDialog.Builder(this).setTitle("¿Quitar «" + it.nombre + "» del almacén?")
                         .setPositiveButton("QUITAR", (d2, w) -> { almacen.quitar(it.codigo); mostrarAlmacen(); })
@@ -723,8 +743,17 @@ public class MainActivity extends Activity {
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
         anotarMaterial(orden, raw != null ? raw : clave, nombre);
-        aviso("✓ " + nombre + " usado · quedan " + quedan);
-        if (seguir) gastarSeguido(orden); else mostrarOrden(orden);
+        final Runnable seguirR = () -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); };
+        Almacen.Item despues = almacen.buscar(clave);
+        if (despues != null && despues.minimo > 0 && quedan <= despues.minimo) {
+            new AlertDialog.Builder(this).setTitle(quedan == 0 ? "⚠ Se ha acabado" : "⚠ Queda poco")
+                .setMessage(nombre + ": " + (quedan == 0 ? "ya no queda ninguno." : "quedan solo " + quedan + " (aviso a partir de " + despues.minimo + ")."))
+                .setCancelable(false)
+                .setPositiveButton("OK", (d, w) -> seguirR.run()).show();
+        } else {
+            aviso("✓ " + nombre + " usado · quedan " + quedan);
+            seguirR.run();
+        }
     }
 
     private void anotarMaterial(String orden, String codigo, String nombre) {

@@ -15,7 +15,7 @@ import org.json.JSONObject;
 final class Almacen {
     static final class Item {
         String codigo, nombre;
-        int cantidad;
+        int cantidad, minimo; // minimo: avisar cuando queden esas o menos (0 = no avisar)
         long fecha;
         ArrayList<String> raws = new ArrayList<>(); // códigos completos de las cajas ya contadas
     }
@@ -46,6 +46,7 @@ final class Almacen {
                 it.nombre = j.optString("nombre", it.codigo);
                 it.cantidad = j.optInt("cantidad", 1);
                 it.fecha = j.optLong("fecha", 0);
+                it.minimo = j.optInt("minimo", 0);
                 JSONArray rr = j.optJSONArray("raws");
                 if (rr != null) for (int k = 0; k < rr.length(); k++) it.raws.add(rr.getString(k));
                 items.add(it);
@@ -64,6 +65,7 @@ final class Almacen {
                 j.put("nombre", it.nombre);
                 j.put("cantidad", it.cantidad);
                 j.put("fecha", it.fecha);
+                j.put("minimo", it.minimo);
                 JSONArray rr = new JSONArray();
                 for (String r : it.raws) rr.put(r);
                 j.put("raws", rr);
@@ -178,9 +180,20 @@ final class Almacen {
         if (raw != null) it.raws.remove(raw);
         it.cantidad--;
         int quedan = Math.max(it.cantidad, 0);
-        if (it.cantidad <= 0) items.remove(it);
+        if (it.cantidad <= 0) { it.cantidad = 0; if (it.minimo <= 0) items.remove(it); }
         guardar();
         return quedan;
+    }
+
+    synchronized void setMinimo(String codigo, int minimo) {
+        Item it = buscar(codigo);
+        if (it != null) { it.minimo = minimo; guardar(); }
+    }
+
+    synchronized ArrayList<Item> bajos() {
+        ArrayList<Item> r = new ArrayList<>();
+        for (Item it : items) if (it.minimo > 0 && it.cantidad <= it.minimo) r.add(it);
+        return r;
     }
 
     synchronized void quitar(String codigo) {
