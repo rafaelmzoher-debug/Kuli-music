@@ -37,6 +37,8 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -48,6 +50,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
+import java.util.function.Consumer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -70,6 +73,8 @@ public class MainActivity extends Activity {
     private String ordenPendiente = "", notaPendiente = "";
     private String rutaTemporal = null;
     private Dialog visor;
+    private Almacen almacen;
+    private boolean enAlmacen = false;
 
     private final ExecutorService hilos = Executors.newFixedThreadPool(2);
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(30 * 1024 * 1024) {
@@ -81,6 +86,7 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         raiz = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KULI ORDENES");
+        almacen = new Almacen(raiz);
         contenido = new FrameLayout(this);
         contenido.setBackgroundColor(NEGRO);
         setContentView(contenido);
@@ -109,7 +115,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if (ordenAbierta != null) mostrarInicio(); else super.onBackPressed();
+        if (ordenAbierta != null || enAlmacen) mostrarInicio(); else super.onBackPressed();
     }
 
     @Override protected void onDestroy() {
@@ -134,6 +140,7 @@ public class MainActivity extends Activity {
     // ---------- Pantalla de inicio ----------
     private void mostrarInicio() {
         ordenAbierta = null;
+        enAlmacen = false;
         contenido.removeAllViews();
         LinearLayout p = new LinearLayout(this);
         p.setOrientation(LinearLayout.VERTICAL);
@@ -175,6 +182,10 @@ public class MainActivity extends Activity {
         lg.leftMargin = dp(10);
         fila.addView(gal, lg);
         p.addView(fila, margen(-1, -2, 12));
+
+        Button alm = boton("📦  Almacén  (" + almacen.total() + ")", false);
+        alm.setOnClickListener(v -> mostrarAlmacen());
+        p.addView(alm, margen(-1, dp(50), 10));
 
         p.addView(texto("Órdenes guardadas", 14, GRIS, true), margen(-2, -2, 22));
 
@@ -220,11 +231,13 @@ public class MainActivity extends Activity {
         for (File d : dirs) {
             if (!d.isDirectory()) continue;
             File[] fs = d.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
-            if (fs == null || fs.length == 0) continue;
+            File mat = new File(d, "material.txt");
+            if ((fs == null || fs.length == 0) && !mat.exists()) continue;
             Resumen x = new Resumen();
             x.nombre = d.getName();
-            x.fotos = fs.length;
-            for (File f : fs) x.ultima = Math.max(x.ultima, fechaDeArchivo(f));
+            x.fotos = fs == null ? 0 : fs.length;
+            if (fs != null) for (File f : fs) x.ultima = Math.max(x.ultima, fechaDeArchivo(f));
+            if (mat.exists()) x.ultima = Math.max(x.ultima, mat.lastModified());
             r.add(x);
         }
         Collections.sort(r, (a, b) -> Long.compare(b.ultima, a.ultima));
@@ -234,6 +247,7 @@ public class MainActivity extends Activity {
     // ---------- Detalle de una orden ----------
     private void mostrarOrden(final String nombre) {
         ordenAbierta = nombre;
+        enAlmacen = false;
         contenido.removeAllViews();
         LinearLayout p = new LinearLayout(this);
         p.setOrientation(LinearLayout.VERTICAL);
@@ -269,6 +283,18 @@ public class MainActivity extends Activity {
         lc.leftMargin = dp(10);
         fila.addView(comp, lc);
         p.addView(fila, margen(-1, -2, 10));
+
+        Button mat = boton("➖  Material usado (sale del almacén)", false);
+        mat.setOnClickListener(v -> materialUsado(nombre));
+        p.addView(mat, margen(-1, dp(46), 8));
+        final ArrayList<String> usado = leerMaterial(nombre);
+        if (!usado.isEmpty()) {
+            TextView mt = texto("📦 Material usado en esta orden: " + usado.size() + "  (toca para ver)", 13, GRIS, false);
+            mt.setPadding(dp(4), dp(8), dp(4), dp(4));
+            mt.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Material usado · orden " + nombre)
+                .setMessage(android.text.TextUtils.join("\n\n", usado)).setPositiveButton("CERRAR", null).show());
+            p.addView(mt);
+        }
 
         final ArrayList<File> fotos = fotosDe(nombre);
         if (fotos.isEmpty()) {
@@ -407,6 +433,205 @@ public class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    // ---------- Almacén ----------
+    private void escanear(final Consumer<String> alLeer) {
+        try {
+            GmsBarcodeScanner sc = GmsBarcodeScanning.getClient(this);
+            sc.startScan()
+                .addOnSuccessListener(b -> {
+                    String v = b.getRawValue();
+                    if (v == null || v.trim().isEmpty()) aviso("No he podido leer el código");
+                    else alLeer.accept(v.trim());
+                })
+                .addOnFailureListener(e -> {
+                    android.util.Log.e("KULI_ORDENES", "Escáner", e);
+                    aviso("No se pudo abrir el escáner. Prueba a escribir el código a mano.");
+                });
+        } catch (Throwable t) {
+            aviso("El escáner no está disponible en este móvil");
+        }
+    }
+
+    private void mostrarAlmacen() {
+        enAlmacen = true;
+        ordenAbierta = null;
+        contenido.removeAllViews();
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setPadding(dp(14), dp(30), dp(14), dp(8));
+
+        LinearLayout barra = new LinearLayout(this);
+        barra.setGravity(Gravity.CENTER_VERTICAL);
+        Button atras = boton("‹", false);
+        atras.setTextSize(22);
+        atras.setOnClickListener(v -> mostrarInicio());
+        barra.addView(atras, new LinearLayout.LayoutParams(dp(56), dp(46)));
+        TextView t = texto("📦 Almacén", 20, Color.WHITE, true);
+        t.setPadding(dp(12), 0, 0, 0);
+        barra.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+        p.addView(barra);
+
+        final ArrayList<Almacen.Item> items = almacen.lista();
+        p.addView(texto(almacen.total() + " unidades · " + items.size() + " materiales", 13, GRIS, false), margen(-2, -2, 6));
+
+        LinearLayout fila = new LinearLayout(this);
+        Button esc = boton("📷  Escanear y añadir", true);
+        esc.setOnClickListener(v -> escanear(codigo -> sumarEscaneado(codigo)));
+        fila.addView(esc, new LinearLayout.LayoutParams(0, dp(52), 1.4f));
+        Button man = boton("✎  A mano", false);
+        man.setOnClickListener(v -> anadirAMano());
+        LinearLayout.LayoutParams lm = new LinearLayout.LayoutParams(0, dp(52), 1f);
+        lm.leftMargin = dp(10);
+        fila.addView(man, lm);
+        p.addView(fila, margen(-1, -2, 10));
+
+        if (items.isEmpty()) {
+            TextView v = texto("El almacén está vacío.\nEscanea el código de una caja para añadirla.", 14, GRIS, false);
+            v.setGravity(Gravity.CENTER);
+            p.addView(v, margen(-1, -2, 30));
+        } else {
+            ListView lista = new ListView(this);
+            lista.setDivider(null);
+            lista.setAdapter(new BaseAdapter() {
+                @Override public int getCount() { return items.size(); }
+                @Override public Object getItem(int i) { return items.get(i); }
+                @Override public long getItemId(int i) { return i; }
+                @Override public View getView(int i, View v, ViewGroup g) {
+                    Almacen.Item it = items.get(i);
+                    TextView tv = new TextView(MainActivity.this);
+                    tv.setBackgroundColor(TARJETA);
+                    tv.setTextColor(Color.WHITE);
+                    tv.setTextSize(15);
+                    tv.setPadding(dp(14), dp(10), dp(14), dp(10));
+                    tv.setText(it.nombre + "   ×" + it.cantidad + "\n" + it.codigo);
+                    LinearLayout caja = new LinearLayout(MainActivity.this);
+                    caja.setPadding(0, 0, 0, dp(8));
+                    caja.addView(tv, new LinearLayout.LayoutParams(-1, -2));
+                    return caja;
+                }
+            });
+            lista.setOnItemClickListener((a, v, i, id) -> opcionesDeMaterial(items.get(i)));
+            p.addView(lista, new LinearLayout.LayoutParams(-1, 0, 1f));
+        }
+        contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void sumarEscaneado(final String codigo) {
+        Almacen.Item it = almacen.buscar(codigo);
+        if (it != null) {
+            almacen.anadir(codigo, it.nombre, 1);
+            aviso("➕ " + it.nombre + " · ahora hay " + almacen.buscar(codigo).cantidad);
+            mostrarAlmacen();
+            return;
+        }
+        final EditText nombre = campo("¿Qué material es? (ej. Acometida 50 m)", InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this).setTitle("Material nuevo")
+            .setMessage("Código leído:\n" + codigo)
+            .setView(nombre)
+            .setPositiveButton("AÑADIR", (d, w) -> {
+                almacen.anadir(codigo, nombre.getText().toString(), 1);
+                aviso("✓ Añadido al almacén");
+                mostrarAlmacen();
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void anadirAMano() {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(16), dp(8), dp(16), 0);
+        final EditText nombre = campo("Material", InputType.TYPE_CLASS_TEXT);
+        final EditText codigo = campo("Código (opcional)", InputType.TYPE_CLASS_TEXT);
+        final EditText cant = campo("Cantidad", InputType.TYPE_CLASS_NUMBER);
+        cant.setText("1");
+        c.addView(nombre, margen(-1, -2, 4));
+        c.addView(codigo, margen(-1, -2, 8));
+        c.addView(cant, margen(-1, -2, 8));
+        new AlertDialog.Builder(this).setTitle("Añadir a mano").setView(c)
+            .setPositiveButton("AÑADIR", (d, w) -> {
+                String n = nombre.getText().toString().trim();
+                String cod = codigo.getText().toString().trim();
+                int q = 1;
+                try { q = Math.max(1, Integer.parseInt(cant.getText().toString().trim())); } catch (Exception ignorar) { }
+                if (n.isEmpty() && cod.isEmpty()) { aviso("Escribe al menos el nombre"); return; }
+                if (cod.isEmpty()) cod = "MANUAL-" + n.toUpperCase(Locale.ROOT).replaceAll("\\s+", "-");
+                almacen.anadir(cod, n, q);
+                mostrarAlmacen();
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void opcionesDeMaterial(final Almacen.Item it) {
+        new AlertDialog.Builder(this).setTitle(it.nombre + "  ×" + it.cantidad)
+            .setItems(new String[]{"➕ Sumar 1", "➖ Restar 1", "✎ Cambiar nombre", "🗑 Quitar del almacén"}, (d, i) -> {
+                if (i == 0) { almacen.anadir(it.codigo, it.nombre, 1); mostrarAlmacen(); }
+                else if (i == 1) { almacen.gastar(it.codigo); mostrarAlmacen(); }
+                else if (i == 2) {
+                    final EditText n = campo("Nombre", InputType.TYPE_CLASS_TEXT);
+                    n.setText(it.nombre);
+                    new AlertDialog.Builder(this).setTitle("Cambiar nombre").setView(n)
+                        .setPositiveButton("GUARDAR", (d2, w) -> { almacen.renombrar(it.codigo, n.getText().toString()); mostrarAlmacen(); })
+                        .setNegativeButton("CANCELAR", null).show();
+                } else {
+                    new AlertDialog.Builder(this).setTitle("¿Quitar «" + it.nombre + "» del almacén?")
+                        .setPositiveButton("QUITAR", (d2, w) -> { almacen.quitar(it.codigo); mostrarAlmacen(); })
+                        .setNegativeButton("CANCELAR", null).show();
+                }
+            }).setNegativeButton("CERRAR", null).show();
+    }
+
+    // ---------- Material usado en una orden ----------
+    private void materialUsado(final String orden) {
+        new AlertDialog.Builder(this).setTitle("Material usado en la orden " + orden)
+            .setItems(new String[]{"📷 Escanear el código", "📋 Elegir del almacén"}, (d, i) -> {
+                if (i == 0) escanear(c -> gastarCodigo(orden, c));
+                else elegirDelAlmacen(orden);
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void elegirDelAlmacen(final String orden) {
+        final ArrayList<Almacen.Item> items = almacen.lista();
+        if (items.isEmpty()) { aviso("El almacén está vacío"); return; }
+        String[] nombres = new String[items.size()];
+        for (int i = 0; i < nombres.length; i++) nombres[i] = items.get(i).nombre + "  ×" + items.get(i).cantidad;
+        new AlertDialog.Builder(this).setTitle("¿Qué material has usado?")
+            .setItems(nombres, (d, i) -> gastarCodigo(orden, items.get(i).codigo))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void gastarCodigo(final String orden, final String codigo) {
+        Almacen.Item it = almacen.buscar(codigo);
+        if (it == null) {
+            new AlertDialog.Builder(this).setTitle("No está en el almacén")
+                .setMessage("El código " + codigo + " no estaba apuntado en el almacén.\n\n¿Lo apunto igualmente como usado en esta orden?")
+                .setPositiveButton("APUNTAR", (d, w) -> { anotarMaterial(orden, codigo, "(no estaba en el almacén)"); mostrarOrden(orden); })
+                .setNegativeButton("CANCELAR", null).show();
+            return;
+        }
+        String nombre = it.nombre;
+        int quedan = almacen.gastar(codigo);
+        anotarMaterial(orden, codigo, nombre);
+        aviso("✓ " + nombre + " usado · quedan " + quedan);
+        mostrarOrden(orden);
+    }
+
+    private void anotarMaterial(String orden, String codigo, String nombre) {
+        File dir = new File(raiz, limpiar(orden));
+        dir.mkdirs();
+        try (FileOutputStream o = new FileOutputStream(new File(dir, "material.txt"), true)) {
+            o.write((formatoLargo(System.currentTimeMillis()) + " | " + nombre + " | " + codigo + "\n").getBytes("UTF-8"));
+        } catch (Exception e) { aviso("No se pudo apuntar el material"); }
+    }
+
+    private ArrayList<String> leerMaterial(String orden) {
+        ArrayList<String> r = new ArrayList<>();
+        File f = new File(new File(raiz, limpiar(orden)), "material.txt");
+        if (!f.exists()) return r;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            String txt = new String(leerTodo(in), "UTF-8");
+            for (String l : txt.split("\n")) if (!l.trim().isEmpty()) r.add(l.trim());
+        } catch (Throwable ignorar) { }
+        return r;
     }
 
     // ---------- Hacer o elegir foto ----------
