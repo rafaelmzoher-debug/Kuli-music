@@ -33,6 +33,20 @@ final class Albaran {
         {"50080103", "Tarjeta SIM", "1"},
     };
 
+    // Ya instalados el día del albarán (09/11/2026): no entran en el almacén.
+    static final String[] USADOS_SERIE = {"88FEB610BEE0", "88FEB61A6800"};
+    static final String[][] USADOS_CANT = {{"00530170", "1"}};
+
+    static boolean usado(String serie) {
+        for (String u : USADOS_SERIE) if (u.equals(serie)) return true;
+        return false;
+    }
+
+    static int usadosDe(String codigo) {
+        for (String[] f : USADOS_CANT) if (f[0].equals(codigo)) return Integer.parseInt(f[1]);
+        return 0;
+    }
+
     static String nombre(String codigo) {
         for (String[] f : CON_SERIE) if (f[0].equals(codigo)) return f[1];
         for (String[] f : SIN_SERIE) if (f[0].equals(codigo)) return f[1];

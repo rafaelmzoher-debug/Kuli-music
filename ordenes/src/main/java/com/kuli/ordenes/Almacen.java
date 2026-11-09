@@ -120,7 +120,7 @@ final class Almacen {
                 items.add(it);
             }
             for (int k = 2; k < f.length; k++) {
-                if (!it.raws.contains(f[k])) { it.raws.add(f[k]); it.cantidad++; n++; }
+                if (!Albaran.usado(f[k]) && !it.raws.contains(f[k])) { it.raws.add(f[k]); it.cantidad++; n++; }
             }
             it.fecha = ahora;
         }
@@ -129,10 +129,9 @@ final class Almacen {
             Item it = new Item();
             it.codigo = f[0];
             it.nombre = f[1];
-            it.cantidad = Integer.parseInt(f[2]);
+            it.cantidad = Math.max(0, Integer.parseInt(f[2]) - Albaran.usadosDe(f[0]));
             it.fecha = ahora;
-            items.add(it);
-            n += it.cantidad;
+            if (it.cantidad > 0) { items.add(it); n += it.cantidad; }
         }
         guardar();
         return n;
