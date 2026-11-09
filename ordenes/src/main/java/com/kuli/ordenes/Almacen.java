@@ -93,26 +93,49 @@ final class Almacen {
         return null;
     }
 
-    // Se agrupa por las 8 primeras cifras (el código del material).
+    // Se agrupa por las 8 primeras cifras (el código del material). Algunas etiquetas llevan 88… en vez de 00….
     static String clave(String raw) {
         String r = raw.trim();
-        if (esEtiquetaLarga(r)) return r.substring(0, 8);
+        if (!esEtiquetaLarga(r)) return r;
+        r = r.substring(0, 8);
+        if (r.equals("88414936")) return "00414936";
+        if (r.equals("88412547")) return "00412537";
         return r;
     }
 
-    static String nombreConocido(String clave) {
-        switch (clave) {
-            case "00530151": return "Cable exterior 4,5mm 30m";
-            case "00530152": return "Cable exterior 4,5mm 50m";
-            case "00530153": return "Cable exterior 4,5mm 80m";
-            case "00530154": return "Cable exterior 4,5mm 150m";
-            case "00530170": return "Cable interior SC/APC 30m";
-            case "00530171": return "Cable interior SC/APC 50m";
-            case "00530172": return "Cable interior SC/APC 80m";
-            case "00400717": return "Kit fibra FTTR 60m";
-            case "00413012": return "Router WiFi 7";
-            default: return "";
+    static String nombreConocido(String clave) { return Albaran.nombre(clave); }
+
+    // Carga el albarán de la dotación inicial. Devuelve cuántas unidades ha metido.
+    synchronized int cargarAlbaran(boolean vaciar) {
+        if (vaciar) items.clear();
+        int n = 0;
+        long ahora = System.currentTimeMillis();
+        for (String[] f : Albaran.CON_SERIE) {
+            Item it = buscar(f[0]);
+            if (it == null) {
+                it = new Item();
+                it.codigo = f[0];
+                it.nombre = f[1];
+                it.cantidad = 0;
+                items.add(it);
+            }
+            for (int k = 2; k < f.length; k++) {
+                if (!it.raws.contains(f[k])) { it.raws.add(f[k]); it.cantidad++; n++; }
+            }
+            it.fecha = ahora;
         }
+        for (String[] f : Albaran.SIN_SERIE) {
+            if (buscar(f[0]) != null) continue;
+            Item it = new Item();
+            it.codigo = f[0];
+            it.nombre = f[1];
+            it.cantidad = Integer.parseInt(f[2]);
+            it.fecha = ahora;
+            items.add(it);
+            n += it.cantidad;
+        }
+        guardar();
+        return n;
     }
 
     synchronized void crear(String clave, String nombre, String raw) {

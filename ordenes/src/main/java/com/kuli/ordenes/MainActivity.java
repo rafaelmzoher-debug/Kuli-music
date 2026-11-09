@@ -87,7 +87,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        raiz = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KULI ORDENES");
+        File nueva = new File(Environment.getExternalStorageDirectory(), "Almacen de Rafa");
+        File vieja = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KULI ORDENES");
+        if (!nueva.exists() && vieja.exists()) vieja.renameTo(nueva); // pasa lo que ya tenías a la carpeta nueva
+        raiz = (nueva.exists() || nueva.mkdirs()) ? nueva : vieja;
         almacen = new Almacen(raiz);
         contenido = new FrameLayout(this);
         contenido.setBackgroundColor(NEGRO);
@@ -120,6 +123,58 @@ public class MainActivity extends Activity {
         if (ordenAbierta != null || enAlmacen) mostrarInicio(); else super.onBackPressed();
     }
 
+    @Override protected void onPause() {
+        super.onPause();
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
+            long ahora = System.currentTimeMillis();
+            if (ahora - sp.getLong("ult_resp", 0) > 180000) {
+                sp.edit().putLong("ult_resp", ahora).apply();
+                respaldoNas(false);
+            }
+        } catch (Exception ignorar) { }
+    }
+
+    private void respaldoNas(final boolean manual) {
+        if (manual) aviso("Copiando al NAS…");
+        hilos.execute(() -> {
+            try {
+                if (!Respaldo.hayWifi(this)) throw new java.io.IOException("No hay wifi");
+                final int n = Respaldo.subir(this, raiz);
+                if (manual) runOnUiThread(() -> aviso("✓ Copia hecha en el NAS (" + n + " archivos nuevos)"));
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Copia al NAS", t);
+                if (manual) runOnUiThread(() -> aviso("No se pudo copiar al NAS. ¿Estás en el wifi de casa?"));
+            }
+        });
+    }
+
+    private void cargarAlbaran() {
+        final boolean hay = almacen.total() > 0;
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("Cargar albarán " + Albaran.ID)
+            .setMessage("Carga tu dotación inicial del 09/11/2026: routers, decos, amplificadores, cables… con sus números de serie."
+                + (hay ? "\n\nYa tienes cosas en el almacén. ¿Qué hago?" : ""));
+        if (hay) {
+            b.setPositiveButton("VACIAR Y CARGAR", (d, w) -> {
+                int n = almacen.cargarAlbaran(true);
+                aviso("✓ Cargadas " + n + " unidades");
+                mostrarAlmacen();
+            });
+            b.setNeutralButton("AÑADIR", (d, w) -> {
+                int n = almacen.cargarAlbaran(false);
+                aviso("✓ Añadidas " + n + " unidades");
+                mostrarAlmacen();
+            });
+        } else {
+            b.setPositiveButton("CARGAR", (d, w) -> {
+                int n = almacen.cargarAlbaran(false);
+                aviso("✓ Cargadas " + n + " unidades");
+                mostrarAlmacen();
+            });
+        }
+        b.setNegativeButton("CANCELAR", null).show();
+    }
+
     @Override protected void onDestroy() {
         super.onDestroy();
         hilos.shutdown();
@@ -134,7 +189,7 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int cod, String[] p, int[] r) {
         super.onRequestPermissionsResult(cod, p, r);
         if (cod == PERMISO) {
-            if (tienePermiso()) { aviso("Permiso concedido"); if (ordenAbierta == null) mostrarInicio(); }
+            if (tienePermiso()) { aviso("Permiso concedido"); recreate(); }
             else aviso("Sin el permiso no se pueden guardar las fotos");
         }
     }
@@ -507,7 +562,17 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lm = new LinearLayout.LayoutParams(0, dp(52), 1f);
         lm.leftMargin = dp(10);
         fila.addView(man, lm);
-        p.addView(fila, margen(-1, -2, 10));
+        p.addView(fila, margen(-1, -2, 8));
+        LinearLayout fila2 = new LinearLayout(this);
+        Button alb = boton("📥  Cargar albarán", false);
+        alb.setOnClickListener(v -> cargarAlbaran());
+        fila2.addView(alb, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button nas = boton("☁  Copia en el NAS", false);
+        nas.setOnClickListener(v -> respaldoNas(true));
+        LinearLayout.LayoutParams ln = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        ln.leftMargin = dp(10);
+        fila2.addView(nas, ln);
+        p.addView(fila2, margen(-1, -2, 10));
 
         if (items.isEmpty()) {
             TextView v = texto("El almacén está vacío.\nEscanea el código de una caja para añadirla.", 14, GRIS, false);
