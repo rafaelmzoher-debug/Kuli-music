@@ -37,6 +37,8 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.google.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanner;
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
 import java.io.ByteArrayInputStream;
@@ -440,7 +442,11 @@ public class MainActivity extends Activity {
 
     private void escanear(final Consumer<String> alLeer, final Runnable alTerminar) {
         try {
-            GmsBarcodeScanner sc = GmsBarcodeScanning.getClient(this);
+            GmsBarcodeScannerOptions opc = new GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93, Barcode.FORMAT_ITF)
+                .enableAutoZoom()
+                .build();
+            GmsBarcodeScanner sc = GmsBarcodeScanning.getClient(this, opc);
             sc.startScan()
                 .addOnSuccessListener(b -> {
                     String v = b.getRawValue();
