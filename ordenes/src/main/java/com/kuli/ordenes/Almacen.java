@@ -17,6 +17,7 @@ final class Almacen {
         String codigo, nombre;
         int cantidad;
         long fecha;
+        ArrayList<String> raws = new ArrayList<>(); // códigos completos de las cajas ya contadas
     }
 
     private final File archivo;
@@ -45,6 +46,8 @@ final class Almacen {
                 it.nombre = j.optString("nombre", it.codigo);
                 it.cantidad = j.optInt("cantidad", 1);
                 it.fecha = j.optLong("fecha", 0);
+                JSONArray rr = j.optJSONArray("raws");
+                if (rr != null) for (int k = 0; k < rr.length(); k++) it.raws.add(rr.getString(k));
                 items.add(it);
             }
         } catch (Exception e) {
@@ -61,6 +64,9 @@ final class Almacen {
                 j.put("nombre", it.nombre);
                 j.put("cantidad", it.cantidad);
                 j.put("fecha", it.fecha);
+                JSONArray rr = new JSONArray();
+                for (String r : it.raws) rr.put(r);
+                j.put("raws", rr);
                 a.put(j);
             }
             archivo.getParentFile().mkdirs();
@@ -68,6 +74,53 @@ final class Almacen {
         } catch (Exception e) {
             android.util.Log.e("KULI_ORDENES", "Guardando almacén", e);
         }
+    }
+
+    // Etiqueta larga de Movistar: 8 cifras del material + proveedor + pedido + lote (puede acabar en letras, ej. EL26).
+    static boolean esEtiquetaLarga(String raw) {
+        return raw != null && raw.trim().matches("\\d{8}[0-9A-Za-z]{16,}");
+    }
+
+    // Se agrupa por las 8 primeras cifras (el código del material).
+    static String clave(String raw) {
+        String r = raw.trim();
+        if (esEtiquetaLarga(r)) return r.substring(0, 8);
+        return r;
+    }
+
+    static String nombreConocido(String clave) {
+        switch (clave) {
+            case "00530151": return "Cable exterior 4,5mm 30m";
+            case "00530152": return "Cable exterior 4,5mm 50m";
+            case "00530153": return "Cable exterior 4,5mm 80m";
+            case "00530154": return "Cable exterior 4,5mm 150m";
+            case "00530170": return "Cable interior SC/APC 30m";
+            case "00530171": return "Cable interior SC/APC 50m";
+            case "00530172": return "Cable interior SC/APC 80m";
+            case "00400717": return "Kit fibra FTTR 60m";
+            case "00413012": return "Router WiFi 7";
+            default: return "";
+        }
+    }
+
+    synchronized void crear(String clave, String nombre, String raw) {
+        Item it = new Item();
+        it.codigo = clave;
+        it.nombre = nombre == null || nombre.trim().isEmpty() ? clave : nombre.trim();
+        it.cantidad = 1;
+        it.fecha = System.currentTimeMillis();
+        if (raw != null) it.raws.add(raw);
+        items.add(it);
+        guardar();
+    }
+
+    synchronized void sumar(String clave, String raw) {
+        Item it = buscar(clave);
+        if (it == null) return;
+        if (raw != null && !it.raws.contains(raw)) it.raws.add(raw);
+        it.cantidad++;
+        it.fecha = System.currentTimeMillis();
+        guardar();
     }
 
     synchronized ArrayList<Item> lista() {
@@ -107,9 +160,12 @@ final class Almacen {
     }
 
     // Resta una unidad. Devuelve las que quedan, o -1 si ese código no estaba. Si llega a 0, sale del almacén.
-    synchronized int gastar(String codigo) {
+    synchronized int gastar(String codigo) { return gastar(codigo, null); }
+
+    synchronized int gastar(String codigo, String raw) {
         Item it = buscar(codigo);
         if (it == null) return -1;
+        if (raw != null) it.raws.remove(raw);
         it.cantidad--;
         int quedan = Math.max(it.cantidad, 0);
         if (it.cantidad <= 0) items.remove(it);

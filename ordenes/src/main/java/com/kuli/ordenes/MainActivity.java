@@ -436,21 +436,28 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Almacén ----------
-    private void escanear(final Consumer<String> alLeer) {
+    private void escanear(final Consumer<String> alLeer) { escanear(alLeer, null); }
+
+    private void escanear(final Consumer<String> alLeer, final Runnable alTerminar) {
         try {
             GmsBarcodeScanner sc = GmsBarcodeScanning.getClient(this);
             sc.startScan()
                 .addOnSuccessListener(b -> {
                     String v = b.getRawValue();
-                    if (v == null || v.trim().isEmpty()) aviso("No he podido leer el código");
-                    else alLeer.accept(v.trim());
+                    if (v == null || v.trim().isEmpty()) {
+                        aviso("No he podido leer el código");
+                        if (alTerminar != null) alTerminar.run();
+                    } else alLeer.accept(v.trim());
                 })
+                .addOnCanceledListener(() -> { if (alTerminar != null) alTerminar.run(); })
                 .addOnFailureListener(e -> {
                     android.util.Log.e("KULI_ORDENES", "Escáner", e);
                     aviso("No se pudo abrir el escáner. Prueba a escribir el código a mano.");
+                    if (alTerminar != null) alTerminar.run();
                 });
         } catch (Throwable t) {
             aviso("El escáner no está disponible en este móvil");
+            if (alTerminar != null) alTerminar.run();
         }
     }
 
@@ -476,9 +483,10 @@ public class MainActivity extends Activity {
         final ArrayList<Almacen.Item> items = almacen.lista();
         p.addView(texto(almacen.total() + " unidades · " + items.size() + " materiales", 13, GRIS, false), margen(-2, -2, 6));
 
+        p.addView(texto("Escanea una caja tras otra; al terminar pulsa atrás. Las cajas del mismo material se agrupan solas.", 12, GRIS, false), margen(-2, -2, 6));
         LinearLayout fila = new LinearLayout(this);
         Button esc = boton("📷  Escanear y añadir", true);
-        esc.setOnClickListener(v -> escanear(codigo -> sumarEscaneado(codigo)));
+        esc.setOnClickListener(v -> escanearSeguido());
         fila.addView(esc, new LinearLayout.LayoutParams(0, dp(52), 1.4f));
         Button man = boton("✎  A mano", false);
         man.setOnClickListener(v -> anadirAMano());
@@ -518,23 +526,33 @@ public class MainActivity extends Activity {
         contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
     }
 
-    private void sumarEscaneado(final String codigo) {
-        Almacen.Item it = almacen.buscar(codigo);
-        if (it != null) {
-            almacen.anadir(codigo, it.nombre, 1);
-            aviso("➕ " + it.nombre + " · ahora hay " + almacen.buscar(codigo).cantidad);
-            mostrarAlmacen();
-            return;
-        }
-        final EditText nombre = campo("¿Qué material es? (ej. Acometida 50 m)", InputType.TYPE_CLASS_TEXT);
+    private void escanearSeguido() {
+        escanear(raw -> {
+            if (!Almacen.esEtiquetaLarga(raw)) { aviso("Ese no es el código largo. Escanea el de abajo (cifras largas)"); escanearSeguido(); return; }
+            final String clave = Almacen.clave(raw);
+            Almacen.Item it = almacen.buscar(clave);
+            if (it != null) {
+                if (it.raws.contains(raw)) aviso("Esa caja ya estaba contada");
+                else { almacen.sumar(clave, raw); aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad); }
+                escanearSeguido();
+            } else {
+                pedirNombreMaterial(clave, raw);
+            }
+        }, () -> mostrarAlmacen());
+    }
+
+    private void pedirNombreMaterial(final String clave, final String raw) {
+        final EditText nombre = campo("¿Qué material es? (ej. Deco 4K)", InputType.TYPE_CLASS_TEXT);
+        nombre.setText(Almacen.nombreConocido(clave));
         new AlertDialog.Builder(this).setTitle("Material nuevo")
-            .setMessage("Código leído:\n" + codigo)
+            .setMessage("Código del material: " + clave + (clave.equals(raw) ? "" : "\n(leído: " + raw + ")"))
             .setView(nombre)
+            .setCancelable(false)
             .setPositiveButton("AÑADIR", (d, w) -> {
-                almacen.anadir(codigo, nombre.getText().toString(), 1);
+                almacen.crear(clave, nombre.getText().toString(), raw);
                 aviso("✓ Añadido al almacén");
-                mostrarAlmacen();
-            }).setNegativeButton("CANCELAR", null).show();
+                escanearSeguido();
+            }).setNegativeButton("TERMINAR", (d, w) -> mostrarAlmacen()).show();
     }
 
     private void anadirAMano() {
@@ -584,7 +602,7 @@ public class MainActivity extends Activity {
     private void materialUsado(final String orden) {
         new AlertDialog.Builder(this).setTitle("Material usado en la orden " + orden)
             .setItems(new String[]{"📷 Escanear el código", "📋 Elegir del almacén"}, (d, i) -> {
-                if (i == 0) escanear(c -> gastarCodigo(orden, c));
+                if (i == 0) gastarSeguido(orden);
                 else elegirDelAlmacen(orden);
             }).setNegativeButton("CANCELAR", null).show();
     }
@@ -599,20 +617,33 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show();
     }
 
-    private void gastarCodigo(final String orden, final String codigo) {
-        Almacen.Item it = almacen.buscar(codigo);
+    private void gastarSeguido(final String orden) {
+        escanear(raw -> {
+            if (!Almacen.esEtiquetaLarga(raw)) { aviso("Ese no es el código largo. Escanea el de abajo (cifras largas)"); gastarSeguido(orden); return; }
+            gastarCodigo(orden, Almacen.clave(raw), raw, true);
+        }, () -> mostrarOrden(orden));
+    }
+
+    private void gastarCodigo(final String orden, final String codigo) { gastarCodigo(orden, codigo, null, false); }
+
+    private void gastarCodigo(final String orden, final String clave, final String raw, final boolean seguir) {
+        Almacen.Item it = almacen.buscar(clave);
         if (it == null) {
             new AlertDialog.Builder(this).setTitle("No está en el almacén")
-                .setMessage("El código " + codigo + " no estaba apuntado en el almacén.\n\n¿Lo apunto igualmente como usado en esta orden?")
-                .setPositiveButton("APUNTAR", (d, w) -> { anotarMaterial(orden, codigo, "(no estaba en el almacén)"); mostrarOrden(orden); })
-                .setNegativeButton("CANCELAR", null).show();
+                .setMessage("El código " + clave + " no estaba apuntado en el almacén.\n\n¿Lo apunto igualmente como usado en esta orden?")
+                .setCancelable(false)
+                .setPositiveButton("APUNTAR", (d, w) -> {
+                    anotarMaterial(orden, clave, "(no estaba en el almacén)");
+                    if (seguir) gastarSeguido(orden); else mostrarOrden(orden);
+                })
+                .setNegativeButton("NO", (d, w) -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); }).show();
             return;
         }
         String nombre = it.nombre;
-        int quedan = almacen.gastar(codigo);
-        anotarMaterial(orden, codigo, nombre);
+        int quedan = almacen.gastar(clave, raw);
+        anotarMaterial(orden, clave, nombre);
         aviso("✓ " + nombre + " usado · quedan " + quedan);
-        mostrarOrden(orden);
+        if (seguir) gastarSeguido(orden); else mostrarOrden(orden);
     }
 
     private void anotarMaterial(String orden, String codigo, String nombre) {
