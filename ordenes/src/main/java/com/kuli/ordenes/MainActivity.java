@@ -150,29 +150,46 @@ public class MainActivity extends Activity {
     }
 
     private void cargarAlbaran() {
-        final boolean hay = almacen.total() > 0;
-        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("Cargar albarán " + Albaran.ID)
-            .setMessage("Carga tu dotación inicial del 09/11/2026: routers, decos, amplificadores, cables… con sus números de serie."
-                + (hay ? "\n\nYa tienes cosas en el almacén. ¿Qué hago?" : ""));
-        if (hay) {
-            b.setPositiveButton("VACIAR Y CARGAR", (d, w) -> {
-                int n = almacen.cargarAlbaran(true);
-                aviso("✓ Cargadas " + n + " unidades");
-                mostrarAlmacen();
-            });
-            b.setNeutralButton("AÑADIR", (d, w) -> {
-                int n = almacen.cargarAlbaran(false);
-                aviso("✓ Añadidas " + n + " unidades");
-                mostrarAlmacen();
-            });
-        } else {
-            b.setPositiveButton("CARGAR", (d, w) -> {
-                int n = almacen.cargarAlbaran(false);
-                aviso("✓ Cargadas " + n + " unidades");
-                mostrarAlmacen();
-            });
+        final File dir = new File(raiz, "Albaranes");
+        dir.mkdirs();
+        File hoy = new File(dir, "albaran_1925340.txt");
+        if (!hoy.exists()) {
+            try (FileOutputStream o = new FileOutputStream(hoy)) { o.write(Albaran.comoTexto().getBytes("UTF-8")); }
+            catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Creando albarán", e); }
         }
-        b.setNegativeButton("CANCELAR", null).show();
+        final File[] fs = dir.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".txt"));
+        if (fs == null || fs.length == 0) {
+            new AlertDialog.Builder(this).setTitle("No hay albaranes")
+                .setMessage("Guarda el archivo del albarán en la carpeta «Almacen de Rafa / Albaranes» del móvil y vuelve a pulsar.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
+        Arrays.sort(fs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        String[] nombres = new String[fs.length];
+        for (int i = 0; i < fs.length; i++) nombres[i] = fs[i].getName();
+        new AlertDialog.Builder(this).setTitle("¿Qué albarán cargo?")
+            .setItems(nombres, (d, i) -> confirmarAlbaran(fs[i]))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void confirmarAlbaran(final File f) {
+        new AlertDialog.Builder(this).setTitle("Cargar " + f.getName())
+            .setMessage("Se suma a lo que ya tienes en el almacén. Los equipos ya contados no se repiten.")
+            .setPositiveButton("CARGAR", (d, w) -> hacerAlbaran(f, false))
+            .setNeutralButton("VACIAR Y CARGAR", (d, w) -> hacerAlbaran(f, true))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void hacerAlbaran(File f, boolean vaciar) {
+        try {
+            aviso("✓ " + almacen.importarAlbaran(f, vaciar));
+        } catch (IllegalStateException e) {
+            aviso("Ese albarán ya estaba cargado");
+        } catch (Exception e) {
+            android.util.Log.e("KULI_ORDENES", "Leyendo albarán", e);
+            aviso("No he podido leer ese archivo");
+        }
+        mostrarAlmacen();
     }
 
     @Override protected void onDestroy() {

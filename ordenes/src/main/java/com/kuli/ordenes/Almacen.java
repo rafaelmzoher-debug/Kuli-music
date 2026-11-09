@@ -137,6 +137,89 @@ final class Almacen {
         return n;
     }
 
+    // ---- Albaranes desde archivo de texto ----
+    private java.util.HashSet<String> leerCargados() {
+        java.util.HashSet<String> r = new java.util.HashSet<>();
+        try {
+            File f = new File(archivo.getParentFile(), "albaranes_cargados.txt");
+            if (!f.exists()) return r;
+            for (String l : leerLineas(f)) if (!l.trim().isEmpty()) r.add(l.trim());
+        } catch (Exception ignorar) { }
+        return r;
+    }
+
+    private void guardarCargados(java.util.HashSet<String> c) {
+        try {
+            archivo.getParentFile().mkdirs();
+            try (FileOutputStream o = new FileOutputStream(new File(archivo.getParentFile(), "albaranes_cargados.txt"))) {
+                o.write(android.text.TextUtils.join("\n", c).getBytes("UTF-8"));
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Guardando albaranes cargados", e); }
+    }
+
+    private static ArrayList<String> leerLineas(File f) throws Exception {
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+        }
+        String t = new String(o.toByteArray(), "UTF-8").replace("\uFEFF", "");
+        ArrayList<String> r = new ArrayList<>();
+        for (String l : t.split("\\r?\\n")) r.add(l);
+        return r;
+    }
+
+    // Suma al almacén lo que dice el archivo. Lanza IllegalStateException si ya estaba cargado.
+    synchronized String importarAlbaran(File f, boolean vaciar) throws Exception {
+        String id = f.getName();
+        java.util.HashSet<String> usadosS = new java.util.HashSet<>();
+        java.util.HashMap<String, Integer> usadosC = new java.util.HashMap<>();
+        ArrayList<String[]> lineas = new ArrayList<>();
+        for (String l : leerLineas(f)) {
+            l = l.trim();
+            if (l.isEmpty() || l.startsWith("#")) continue;
+            String[] p = l.split(";");
+            for (int i = 0; i < p.length; i++) p[i] = p[i].trim();
+            if (p[0].equals("ALBARAN") && p.length > 1) id = p[1];
+            else if (p[0].equals("U") && p.length > 1) usadosS.add(p[1].toUpperCase(Locale.ROOT));
+            else if (p[0].equals("UC") && p.length > 2) usadosC.put(p[1], Integer.parseInt(p[2]));
+            else lineas.add(p);
+        }
+        java.util.HashSet<String> cargados = leerCargados();
+        if (vaciar) { items.clear(); cargados.clear(); }
+        else if (cargados.contains(id)) throw new IllegalStateException("ya cargado");
+        int anadidas = 0, saltadas = 0;
+        long ahora = System.currentTimeMillis();
+        for (String[] p : lineas) {
+            if (p.length < 4) continue;
+            if (p[0].equals("S")) {
+                String serie = p[3].toUpperCase(Locale.ROOT);
+                if (usadosS.contains(serie) || buscarPorRaw(serie) != null) { saltadas++; continue; }
+                Item it = buscar(p[1]);
+                if (it == null) { it = new Item(); it.codigo = p[1]; it.nombre = p[2]; it.cantidad = 0; items.add(it); }
+                it.raws.add(serie);
+                it.cantidad++;
+                it.fecha = ahora;
+                anadidas++;
+            } else if (p[0].equals("C")) {
+                int cant = Integer.parseInt(p[3]);
+                Integer u = usadosC.get(p[1]);
+                if (u != null) cant -= u;
+                if (cant <= 0) continue;
+                Item it = buscar(p[1]);
+                if (it == null) { it = new Item(); it.codigo = p[1]; it.nombre = p[2]; it.cantidad = 0; items.add(it); }
+                it.cantidad += cant;
+                it.fecha = ahora;
+                anadidas += cant;
+            }
+        }
+        cargados.add(id);
+        guardarCargados(cargados);
+        guardar();
+        return "Añadidas " + anadidas + " unidades" + (saltadas > 0 ? " (" + saltadas + " ya estaban o ya usadas)" : "");
+    }
+
     synchronized void crear(String clave, String nombre, String raw) {
         Item it = new Item();
         it.codigo = clave;

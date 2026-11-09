@@ -47,6 +47,20 @@ final class Albaran {
         return 0;
     }
 
+    // El albarán de hoy escrito como archivo de texto (el mismo formato que usaré para los siguientes).
+    static String comoTexto() {
+        StringBuilder b = new StringBuilder();
+        b.append("# Albarán ").append(ID).append(" - dotación inicial 09/11/2026\n");
+        b.append("# S;código;nombre;serie   C;código;nombre;cantidad   U;serie (ya usado)   UC;código;cantidad usada\n");
+        b.append("ALBARAN;").append(ID).append("\n");
+        for (String[] f : CON_SERIE) for (int k = 2; k < f.length; k++)
+            b.append("S;").append(f[0]).append(';').append(f[1]).append(';').append(f[k]).append('\n');
+        for (String[] f : SIN_SERIE)
+            b.append("C;").append(f[0]).append(';').append(f[1]).append(';').append(f[2]).append('\n');
+        for (String u : USADOS_SERIE) b.append("U;").append(u).append('\n');
+        return b.toString();
+    }
+
     static String nombre(String codigo) {
         for (String[] f : CON_SERIE) if (f[0].equals(codigo)) return f[1];
         for (String[] f : SIN_SERIE) if (f[0].equals(codigo)) return f[1];
