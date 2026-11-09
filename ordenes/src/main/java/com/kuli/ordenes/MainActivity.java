@@ -489,7 +489,7 @@ public class MainActivity extends Activity {
         final ArrayList<Almacen.Item> items = almacen.lista();
         p.addView(texto(almacen.total() + " unidades · " + items.size() + " materiales", 13, GRIS, false), margen(-2, -2, 6));
 
-        p.addView(texto("Escanea una caja tras otra; al terminar pulsa atrás. Las cajas del mismo material se agrupan solas.", 12, GRIS, false), margen(-2, -2, 6));
+        p.addView(texto("Escanea el código corto (serie) de cada equipo, o el largo de las cajas de cable. Al terminar pulsa atrás.", 12, GRIS, false), margen(-2, -2, 6));
         LinearLayout fila = new LinearLayout(this);
         Button esc = boton("📷  Escanear y añadir", true);
         esc.setOnClickListener(v -> escanearSeguido());
@@ -532,19 +532,78 @@ public class MainActivity extends Activity {
         contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
     }
 
+    private String ultMaterial = null; // último material elegido al escanear series
+
     private void escanearSeguido() {
         escanear(raw -> {
-            if (!Almacen.esEtiquetaLarga(raw)) { aviso("Ese no es el código largo. Escanea el de abajo (cifras largas)"); escanearSeguido(); return; }
-            final String clave = Almacen.clave(raw);
-            Almacen.Item it = almacen.buscar(clave);
-            if (it != null) {
-                if (it.raws.contains(raw)) aviso("Esa caja ya estaba contada");
-                else { almacen.sumar(clave, raw); aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad); }
-                escanearSeguido();
+            if (Almacen.esEtiquetaLarga(raw)) {
+                final String clave = Almacen.clave(raw);
+                Almacen.Item it = almacen.buscar(clave);
+                if (it != null) {
+                    if (it.raws.contains(raw)) aviso("Esa caja ya estaba contada");
+                    else { almacen.sumar(clave, raw); aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad); }
+                    ultMaterial = clave;
+                    escanearSeguido();
+                } else {
+                    pedirNombreMaterial(clave, raw);
+                }
+            } else if (Almacen.esSerie(raw)) {
+                serieAlmacen(raw.trim().toUpperCase(Locale.ROOT));
             } else {
-                pedirNombreMaterial(clave, raw);
+                aviso("No reconozco ese código. Prueba con el de rayas.");
+                escanearSeguido();
             }
         }, () -> mostrarAlmacen());
+    }
+
+    // Se ha leído el número de serie de un equipo: se cuenta esa unidad y se le asigna material.
+    private void serieAlmacen(final String serie) {
+        Almacen.Item ya = almacen.buscarPorRaw(serie);
+        if (ya != null) { aviso("Esa unidad ya estaba contada · " + ya.nombre); escanearSeguido(); return; }
+        final Almacen.Item ult = ultMaterial == null ? null : almacen.buscar(ultMaterial);
+        if (ult == null) { elegirMaterialSerie(serie); return; }
+        new AlertDialog.Builder(this).setTitle("Serie " + serie)
+            .setMessage("¿Es «" + ult.nombre + "»?")
+            .setCancelable(false)
+            .setPositiveButton("SÍ", (d, w) -> {
+                almacen.sumar(ult.codigo, serie);
+                aviso("➕ " + ult.nombre + " · ahora hay " + ult.cantidad);
+                escanearSeguido();
+            })
+            .setNeutralButton("OTRO", (d, w) -> elegirMaterialSerie(serie))
+            .setNegativeButton("TERMINAR", (d, w) -> mostrarAlmacen()).show();
+    }
+
+    private void elegirMaterialSerie(final String serie) {
+        final ArrayList<Almacen.Item> items = almacen.lista();
+        String[] nombres = new String[items.size() + 1];
+        for (int i = 0; i < items.size(); i++) nombres[i] = items.get(i).nombre + "  ×" + items.get(i).cantidad;
+        nombres[items.size()] = "➕ Material nuevo";
+        new AlertDialog.Builder(this).setTitle("¿Qué es? · serie " + serie)
+            .setCancelable(false)
+            .setItems(nombres, (d, i) -> {
+                if (i < items.size()) {
+                    Almacen.Item it = items.get(i);
+                    almacen.sumar(it.codigo, serie);
+                    ultMaterial = it.codigo;
+                    aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad);
+                    escanearSeguido();
+                } else {
+                    final EditText nombre = campo("Nombre (ej. Router WiFi 7)", InputType.TYPE_CLASS_TEXT);
+                    new AlertDialog.Builder(this).setTitle("Material nuevo").setView(nombre).setCancelable(false)
+                        .setPositiveButton("AÑADIR", (d2, w) -> {
+                            String n = nombre.getText().toString().trim();
+                            if (n.isEmpty()) n = "Sin nombre";
+                            String clave = "MAT-" + n.toUpperCase(Locale.ROOT).replaceAll("\\s+", "-");
+                            if (almacen.buscar(clave) != null) almacen.sumar(clave, serie);
+                            else almacen.crear(clave, n, serie);
+                            ultMaterial = clave;
+                            aviso("✓ Añadido al almacén");
+                            escanearSeguido();
+                        }).setNegativeButton("TERMINAR", (d2, w) -> mostrarAlmacen()).show();
+                }
+            })
+            .setNegativeButton("TERMINAR", (d, w) -> mostrarAlmacen()).show();
     }
 
     private void pedirNombreMaterial(final String clave, final String raw) {
@@ -625,8 +684,24 @@ public class MainActivity extends Activity {
 
     private void gastarSeguido(final String orden) {
         escanear(raw -> {
-            if (!Almacen.esEtiquetaLarga(raw)) { aviso("Ese no es el código largo. Escanea el de abajo (cifras largas)"); gastarSeguido(orden); return; }
-            gastarCodigo(orden, Almacen.clave(raw), raw, true);
+            if (Almacen.esEtiquetaLarga(raw)) {
+                gastarCodigo(orden, Almacen.clave(raw), raw, true);
+            } else if (Almacen.esSerie(raw)) {
+                final String serie = raw.trim().toUpperCase(Locale.ROOT);
+                Almacen.Item it = almacen.buscarPorRaw(serie);
+                if (it != null) {
+                    gastarCodigo(orden, it.codigo, serie, true);
+                } else {
+                    new AlertDialog.Builder(this).setTitle("No estaba en el almacén")
+                        .setMessage("La unidad con serie " + serie + " no estaba contada.\n\n¿La apunto igualmente como usada en esta orden?")
+                        .setCancelable(false)
+                        .setPositiveButton("APUNTAR", (d, w) -> { anotarMaterial(orden, serie, "(no estaba en el almacén)"); gastarSeguido(orden); })
+                        .setNegativeButton("NO", (d, w) -> gastarSeguido(orden)).show();
+                }
+            } else {
+                aviso("No reconozco ese código. Prueba con el de rayas.");
+                gastarSeguido(orden);
+            }
         }, () -> mostrarOrden(orden));
     }
 
@@ -647,7 +722,7 @@ public class MainActivity extends Activity {
         }
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
-        anotarMaterial(orden, clave, nombre);
+        anotarMaterial(orden, raw != null ? raw : clave, nombre);
         aviso("✓ " + nombre + " usado · quedan " + quedan);
         if (seguir) gastarSeguido(orden); else mostrarOrden(orden);
     }

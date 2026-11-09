@@ -81,6 +81,16 @@ final class Almacen {
         return raw != null && raw.trim().matches("\\d{8}[0-9A-Za-z]{16,}");
     }
 
+    // Número de serie corto de cada equipo (ej. 88FEB6268920): único de cada unidad.
+    static boolean esSerie(String raw) {
+        return raw != null && raw.trim().matches("[0-9A-Za-z]{8,20}") && !esEtiquetaLarga(raw);
+    }
+
+    synchronized Item buscarPorRaw(String raw) {
+        for (Item it : items) if (it.raws.contains(raw)) return it;
+        return null;
+    }
+
     // Se agrupa por las 8 primeras cifras (el código del material).
     static String clave(String raw) {
         String r = raw.trim();
