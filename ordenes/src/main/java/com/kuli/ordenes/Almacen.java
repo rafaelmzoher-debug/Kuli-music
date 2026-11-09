@@ -85,7 +85,7 @@ final class Almacen {
 
     // Número de serie corto de cada equipo (ej. 88FEB6268920): único de cada unidad.
     static boolean esSerie(String raw) {
-        return raw != null && raw.trim().matches("[0-9A-Za-z]{8,20}") && !esEtiquetaLarga(raw);
+        return raw != null && raw.trim().matches("[0-9A-Za-z/\\-]{8,20}") && !esEtiquetaLarga(raw);
     }
 
     synchronized Item buscarPorRaw(String raw) {
