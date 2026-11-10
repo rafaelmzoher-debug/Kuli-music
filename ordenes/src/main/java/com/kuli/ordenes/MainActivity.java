@@ -240,7 +240,16 @@ public class MainActivity extends Activity {
         p.addView(hintOrden, margen(-2, -2, 2));
         revisarOrden(ultOrden, hintOrden);
 
-        final EditText nota = campo("Material (opcional)", InputType.TYPE_CLASS_TEXT);
+        Button esc0 = boton("🔲  Escanear equipo de esta orden", true);
+        esc0.setOnClickListener(v -> {
+            String o = ultOrden.trim().toUpperCase(Locale.ROOT);
+            if (!datosValidos(o)) return;
+            ultOrden = o;
+            gastarSeguido(o);
+        });
+        p.addView(esc0, margen(-1, dp(54), 10));
+
+        final EditText nota = campo("Material (se rellena solo al escanear)", InputType.TYPE_CLASS_TEXT);
         nota.setText(ultNota);
         nota.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence a, int b, int c, int d) { }
@@ -353,6 +362,8 @@ public class MainActivity extends Activity {
 
     // ---------- Detalle de una orden ----------
     private void mostrarOrden(final String nombre) {
+        String auto = notaAuto(nombre);
+        if (!nombre.equals(ordenAbierta) || !auto.isEmpty()) ultNota = auto; // el material escaneado pasa solo a la casilla
         ordenAbierta = nombre;
         enAlmacen = false;
         contenido.removeAllViews();
@@ -371,7 +382,7 @@ public class MainActivity extends Activity {
         barra.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         p.addView(barra);
 
-        final EditText nota = campo("Material (opcional)", InputType.TYPE_CLASS_TEXT);
+        final EditText nota = campo("Material (se rellena solo al escanear)", InputType.TYPE_CLASS_TEXT);
         nota.setText(ultNota);
         nota.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence a, int b, int c, int d) { }
@@ -391,7 +402,7 @@ public class MainActivity extends Activity {
         fila.addView(comp, lc);
         p.addView(fila, margen(-1, -2, 10));
 
-        Button mat = boton("➖  Material usado (sale del almacén)", false);
+        Button mat = boton("🔲  Escanear equipo usado (sale del almacén)", false);
         mat.setOnClickListener(v -> materialUsado(nombre));
         p.addView(mat, margen(-1, dp(46), 8));
         LinearLayout filaB = new LinearLayout(this);
@@ -987,6 +998,7 @@ public class MainActivity extends Activity {
             try (FileOutputStream o = new FileOutputStream(f)) {
                 o.write((ls.isEmpty() ? "" : android.text.TextUtils.join("\n", ls) + "\n").getBytes("UTF-8"));
             }
+            ultNota = notaAuto(orden);
         } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Quitando línea", t); }
     }
 
@@ -1218,6 +1230,27 @@ public class MainActivity extends Activity {
         try (FileOutputStream o = new FileOutputStream(new File(dir, "material.txt"), true)) {
             o.write((formatoLargo(System.currentTimeMillis()) + " | " + nombre + " | " + codigo + "\n").getBytes("UTF-8"));
         } catch (Exception e) { aviso("No se pudo apuntar el material"); }
+        ultNota = notaAuto(orden);
+    }
+
+    // Nombres del material escaneado en la orden, para la casilla «Material» y la foto: «Router WiFi 7 ×2, Deco H2».
+    private String notaAuto(String orden) {
+        java.util.LinkedHashMap<String, Integer> m = new java.util.LinkedHashMap<>();
+        for (String l : leerMaterial(orden)) {
+            String[] p = l.split(" \\| ");
+            if (p.length < 2) continue;
+            String n = p[1].trim();
+            if (n.startsWith("RETIRADO") || n.startsWith("(no estaba")) continue;
+            Integer c = m.get(n);
+            m.put(n, c == null ? 1 : c + 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, Integer> e : m.entrySet()) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.getKey());
+            if (e.getValue() > 1) sb.append(" ×").append(e.getValue());
+        }
+        return sb.toString();
     }
 
     private ArrayList<String> leerMaterial(String orden) {
