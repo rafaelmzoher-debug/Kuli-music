@@ -29,6 +29,11 @@ public class AutoService extends MediaBrowserService {
     static AutoService instancia;
     private static final String RAIZ = "kuli_raiz";
     private static final String CANAL = "kuli_auto";
+    private static final String FAVS = "kuli_favs";
+    private static final String RADIO = "kuli_radio";
+    private boolean modoFav = false; // true = suenan las favoritas del móvil; false = radio
+    private final ArrayList<String> favIds = new ArrayList<>();
+    private final ArrayList<String> favNombres = new ArrayList<>();
 
     private MediaSession sesion;
     private MediaPlayer mp;
@@ -56,8 +61,16 @@ public class AutoService extends MediaBrowserService {
             @Override public void onSkipToNext() { saltar(1); }
             @Override public void onSkipToPrevious() { saltar(-1); }
             @Override public void onPlayFromMediaId(String id, Bundle extras) {
-                int i = urls.indexOf(id);
-                reproducir(i >= 0 ? nombres.get(i) : "Radio", id);
+                if (id.startsWith("http")) {
+                    modoFav = false;
+                    int i = urls.indexOf(id);
+                    reproducir(i >= 0 ? nombres.get(i) : "Radio", id);
+                } else {
+                    modoFav = true;
+                    cargarFavoritas();
+                    int i = favIds.indexOf(id);
+                    reproducir(i >= 0 ? favNombres.get(i) : "Favorita", id);
+                }
             }
         });
         setSessionToken(sesion.getSessionToken());
@@ -65,6 +78,7 @@ public class AutoService extends MediaBrowserService {
         SharedPreferences sp = getSharedPreferences("kuli_auto", MODE_PRIVATE);
         nombreActual = sp.getString("nombre", null);
         urlActual = sp.getString("url", null);
+        modoFav = urlActual != null && !urlActual.startsWith("http");
         poner(urlActual == null ? PlaybackState.STATE_NONE : PlaybackState.STATE_PAUSED);
         ponerDatos();
         sesion.setActive(true);
@@ -88,7 +102,9 @@ public class AutoService extends MediaBrowserService {
     }
 
     @Override public void onLoadChildren(String padre, final Result<List<MediaBrowser.MediaItem>> resultado) {
-        if (!RAIZ.equals(padre)) { resultado.sendResult(new ArrayList<MediaBrowser.MediaItem>()); return; }
+        if (RAIZ.equals(padre)) { resultado.sendResult(carpetas()); return; }
+        if (FAVS.equals(padre)) { cargarFavoritas(); resultado.sendResult(elementosFav()); return; }
+        if (!RADIO.equals(padre)) { resultado.sendResult(new ArrayList<MediaBrowser.MediaItem>()); return; }
         if (!urls.isEmpty()) { resultado.sendResult(elementos()); return; }
         resultado.detach();
         new Thread(() -> {
@@ -96,6 +112,50 @@ public class AutoService extends MediaBrowserService {
             final List<MediaBrowser.MediaItem> l = elementos();
             h.post(() -> resultado.sendResult(l));
         }).start();
+    }
+
+    private List<MediaBrowser.MediaItem> carpetas() {
+        ArrayList<MediaBrowser.MediaItem> l = new ArrayList<>();
+        l.add(new MediaBrowser.MediaItem(new MediaDescription.Builder()
+                .setMediaId(FAVS).setTitle("♥ Favoritas").setSubtitle("Música guardada en el móvil").build(),
+                MediaBrowser.MediaItem.FLAG_BROWSABLE));
+        l.add(new MediaBrowser.MediaItem(new MediaDescription.Builder()
+                .setMediaId(RADIO).setTitle("Radio").setSubtitle("Emisoras en directo").build(),
+                MediaBrowser.MediaItem.FLAG_BROWSABLE));
+        return l;
+    }
+
+    // Favoritas que suenan sin NAS: las del móvil, y las del NAS que ya estén descargadas en la caché.
+    private synchronized void cargarFavoritas() {
+        final java.util.Map<String, ?> datos = getSharedPreferences("kuli_favoritos", MODE_PRIVATE).getAll();
+        ArrayList<String> claves = new ArrayList<>();
+        for (String k : datos.keySet()) {
+            if (k.startsWith("nas://")) {
+                java.io.File f = archivoNas(k);
+                if (f == null || !f.exists() || f.length() == 0) continue;
+            }
+            claves.add(k);
+        }
+        java.util.Collections.sort(claves, (a, b) ->
+                String.valueOf(datos.get(a)).compareToIgnoreCase(String.valueOf(datos.get(b))));
+        favIds.clear(); favNombres.clear();
+        for (String k : claves) { favIds.add(k); favNombres.add(String.valueOf(datos.get(k))); }
+    }
+
+    private java.io.File archivoNas(String clave) {
+        String nombre = android.net.Uri.parse(clave).getLastPathSegment();
+        if (nombre == null) return null;
+        return new java.io.File(new java.io.File(getCacheDir(), "nas"), nombre.replace('/', '_'));
+    }
+
+    private synchronized List<MediaBrowser.MediaItem> elementosFav() {
+        ArrayList<MediaBrowser.MediaItem> l = new ArrayList<>();
+        for (int i = 0; i < favIds.size(); i++) {
+            MediaDescription d = new MediaDescription.Builder()
+                    .setMediaId(favIds.get(i)).setTitle(favNombres.get(i)).setSubtitle("Favorita").build();
+            l.add(new MediaBrowser.MediaItem(d, MediaBrowser.MediaItem.FLAG_PLAYABLE));
+        }
+        return l;
     }
 
     private synchronized List<MediaBrowser.MediaItem> elementos() {
@@ -158,7 +218,10 @@ public class AutoService extends MediaBrowserService {
             mp.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
             mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
-            mp.setDataSource(url);
+            if (url.startsWith("http")) mp.setDataSource(url);
+            else if (url.startsWith("nas://")) mp.setDataSource(archivoNas(url).getAbsolutePath());
+            else mp.setDataSource(getApplicationContext(), android.net.Uri.parse(url));
+            mp.setOnCompletionListener(x -> { if (modoFav) saltar(1); });
             mp.setOnPreparedListener(x -> {
                 try { x.start(); } catch (Exception ignorar) { }
                 sonando = true;
@@ -203,6 +266,14 @@ public class AutoService extends MediaBrowserService {
     }
 
     private void saltar(int d) {
+        if (modoFav) {
+            if (favIds.isEmpty()) cargarFavoritas();
+            if (favIds.isEmpty()) return;
+            int j = favIds.indexOf(urlActual);
+            j = j < 0 ? 0 : (j + d + favIds.size()) % favIds.size();
+            reproducir(favNombres.get(j), favIds.get(j));
+            return;
+        }
         if (urls.isEmpty()) return;
         int i = urls.indexOf(urlActual);
         i = i < 0 ? 0 : (i + d + urls.size()) % urls.size();
@@ -248,7 +319,7 @@ public class AutoService extends MediaBrowserService {
         if (nombreActual == null) return;
         sesion.setMetadata(new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, nombreActual)
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, "Radio en directo")
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, modoFav ? "Favorita" : "Radio en directo")
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, urlActual)
                 .build());
     }
@@ -256,7 +327,7 @@ public class AutoService extends MediaBrowserService {
     private Notification notificacion() {
         return new Notification.Builder(this, CANAL)
                 .setContentTitle(nombreActual == null ? "KULI MUSIC" : nombreActual)
-                .setContentText("Radio en directo")
+                .setContentText(modoFav ? "Favorita" : "Radio en directo")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setStyle(new Notification.MediaStyle().setMediaSession(sesion.getSessionToken()))
                 .build();
