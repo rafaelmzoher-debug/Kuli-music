@@ -194,6 +194,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         super.onDestroy();
+        if (tono != null) tono.release();
         hilos.shutdown();
     }
 
@@ -228,13 +229,16 @@ public class MainActivity extends Activity {
         p.addView(s);
 
         final EditText orden = campo("Nº de orden", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        final TextView hintOrden = texto("", 12, GRIS, false);
         orden.setText(ultOrden);
         orden.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence a, int b, int c, int d) { }
             public void onTextChanged(CharSequence a, int b, int c, int d) { }
-            public void afterTextChanged(Editable e) { ultOrden = e.toString(); }
+            public void afterTextChanged(Editable e) { ultOrden = e.toString(); revisarOrden(e.toString(), hintOrden); }
         });
         p.addView(orden, margen(-1, -2, 18));
+        p.addView(hintOrden, margen(-2, -2, 2));
+        revisarOrden(ultOrden, hintOrden);
 
         final EditText nota = campo("Material (opcional)", InputType.TYPE_CLASS_TEXT);
         nota.setText(ultNota);
@@ -263,6 +267,16 @@ public class MainActivity extends Activity {
         Button bus = boton("🔎  Buscar equipo (serie)", false);
         bus.setOnClickListener(v -> buscarEquipo());
         p.addView(bus, margen(-1, dp(46), 8));
+        LinearLayout filaC = new LinearLayout(this);
+        Button med = boton("🧾 A medias", false);
+        med.setOnClickListener(v -> ordenesAMedias());
+        filaC.addView(med, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button mes = boton("📊 Resumen del mes", false);
+        mes.setOnClickListener(v -> resumenMes(0));
+        LinearLayout.LayoutParams lmes = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lmes.leftMargin = dp(10);
+        filaC.addView(mes, lmes);
+        p.addView(filaC, margen(-1, -2, 4));
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -272,10 +286,18 @@ public class MainActivity extends Activity {
             p.addView(av);
         }
 
-        p.addView(texto("Órdenes guardadas", 14, GRIS, true), margen(-2, -2, 22));
 
+        final android.content.SharedPreferences prefs = getSharedPreferences("ordenes", MODE_PRIVATE);
+        final boolean plegada = prefs.getBoolean("plegada", false);
         final ArrayList<Resumen> ordenes = listarOrdenes();
-        if (ordenes.isEmpty()) {
+        TextView cab = texto((plegada ? "▶  " : "▼  ") + "Órdenes guardadas (" + ordenes.size() + ")", 15, GRIS, true);
+        cab.setPadding(dp(4), dp(10), dp(4), dp(10));
+        cab.setOnClickListener(v -> { prefs.edit().putBoolean("plegada", !plegada).apply(); mostrarInicio(); });
+        p.addView(cab, margen(-2, -2, 14));
+
+        if (plegada) {
+            // lista cerrada: se abre tocando el título
+        } else if (ordenes.isEmpty()) {
             TextView v = texto("Todavía no hay ninguna.\nEscribe un nº de orden y pulsa «Hacer foto».", 14, GRIS, false);
             v.setGravity(Gravity.CENTER);
             p.addView(v, margen(-1, -2, 30));
@@ -623,7 +645,10 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lz = new LinearLayout.LayoutParams(0, dp(46), 1f);
         lz.leftMargin = dp(8);
         fila3.addView(des3, lz);
-        p.addView(fila3, margen(-1, -2, 10));
+        p.addView(fila3, margen(-1, -2, 8));
+        Button rec = boton("⬇  Recuperar copia del NAS", false);
+        rec.setOnClickListener(v -> recuperarNas());
+        p.addView(rec, margen(-1, dp(46), 8));
 
         if (items.isEmpty()) {
             TextView v = texto("El almacén está vacío.\nEscanea el código de una caja para añadirla.", 14, GRIS, false);
@@ -801,6 +826,118 @@ public class MainActivity extends Activity {
                         .setNegativeButton("CANCELAR", null).show();
                 }
             }).setNegativeButton("CERRAR", null).show();
+    }
+
+    // ---------- Aviso con sonido y vibración ----------
+    private android.media.ToneGenerator tono;
+
+    private void pitar(boolean ok) {
+        try {
+            if (tono == null) tono = new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 70);
+            tono.startTone(ok ? android.media.ToneGenerator.TONE_PROP_ACK : android.media.ToneGenerator.TONE_PROP_NACK, ok ? 120 : 300);
+            android.os.Vibrator vb = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (vb != null) vb.vibrate(ok ? 60 : 250);
+        } catch (Throwable ignorar) { }
+    }
+
+    // ---------- Revisar el nº de orden ----------
+    private void revisarOrden(String t, TextView hint) {
+        t = t.trim().toUpperCase(Locale.ROOT);
+        if (t.isEmpty()) { hint.setText(""); return; }
+        if (t.matches("WK\\d{12}")) { hint.setText("✓ Formato correcto"); hint.setTextColor(Color.rgb(120, 200, 140)); }
+        else { hint.setText("⚠ Las órdenes son WK + 12 cifras. Revisa que esté bien escrito."); hint.setTextColor(Color.rgb(255, 130, 110)); }
+    }
+
+    // ---------- Órdenes a medias ----------
+    private void ordenesAMedias() {
+        StringBuilder sinFoto = new StringBuilder(), sinMat = new StringBuilder();
+        File[] dirs = raiz.listFiles();
+        if (dirs != null) {
+            Arrays.sort(dirs);
+            for (File d : dirs) {
+                if (!d.isDirectory() || d.getName().equals("Albaranes")) continue;
+                int fotos = fotosDe(d.getName()).size();
+                int mat = leerMaterial(d.getName()).size();
+                if (fotos == 0 && mat > 0) sinFoto.append("• ").append(d.getName()).append("\n");
+                else if (fotos > 0 && mat == 0) sinMat.append("• ").append(d.getName()).append("\n");
+            }
+        }
+        String m = "";
+        if (sinFoto.length() > 0) m += "📷 Con material pero SIN foto:\n" + sinFoto + "\n";
+        if (sinMat.length() > 0) m += "📦 Con foto pero SIN material apuntado:\n" + sinMat;
+        new AlertDialog.Builder(this).setTitle(m.isEmpty() ? "✔ Todas las órdenes completas" : "🧾 Órdenes a medias")
+            .setMessage(m.isEmpty() ? "Todas tus órdenes tienen foto y material apuntado." : m.trim())
+            .setPositiveButton("CERRAR", null).show();
+    }
+
+    // ---------- Resumen del mes ----------
+    private void resumenMes(final int atras) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.add(java.util.Calendar.MONTH, -atras);
+        final String clave = new SimpleDateFormat("MM/yyyy", Locale.US).format(cal.getTime());
+        final String titulo = new SimpleDateFormat("MMMM yyyy", new Locale("es", "ES")).format(cal.getTime());
+        java.util.HashMap<String, Integer> cuenta = new java.util.HashMap<>();
+        int ordenes = 0, retirados = 0, total = 0;
+        File[] dirs = raiz.listFiles();
+        if (dirs != null) {
+            for (File d : dirs) {
+                if (!d.isDirectory()) continue;
+                boolean hay = false;
+                for (String l : leerMaterial(d.getName())) {
+                    String[] p = l.split(" \\| ");
+                    if (p.length < 2) continue;
+                    String fecha = p[0].trim();
+                    if (fecha.length() < 10 || !fecha.substring(3, 10).equals(clave)) continue;
+                    hay = true;
+                    String nom = p[1].trim();
+                    if (nom.startsWith("RETIRADO")) { retirados++; continue; }
+                    if (nom.startsWith("(no estaba")) nom = "Sin identificar";
+                    Integer c = cuenta.get(nom);
+                    cuenta.put(nom, c == null ? 1 : c + 1);
+                    total++;
+                }
+                if (hay) ordenes++;
+            }
+        }
+        ArrayList<java.util.Map.Entry<String, Integer>> lista = new ArrayList<>(cuenta.entrySet());
+        Collections.sort(lista, (a, b) -> b.getValue() - a.getValue());
+        final StringBuilder sb = new StringBuilder("📊 " + titulo + "\n\nÓrdenes con material: " + ordenes + "\nUnidades usadas: " + total + "\n");
+        if (retirados > 0) sb.append("Equipos retirados: ").append(retirados).append("\n");
+        sb.append("\n");
+        for (java.util.Map.Entry<String, Integer> e : lista) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+        if (lista.isEmpty()) sb.append("No hay material apuntado en este mes.");
+        new AlertDialog.Builder(this).setTitle("📊 " + titulo).setMessage(sb.toString().substring(sb.toString().indexOf("\n\n") + 2))
+            .setPositiveButton("CERRAR", null)
+            .setNeutralButton(atras == 0 ? "MES ANTERIOR" : "ESTE MES", (d, w) -> resumenMes(atras == 0 ? 1 : 0))
+            .setNegativeButton("ENVIAR", (d, w) -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, sb.toString());
+                startActivity(Intent.createChooser(i, "Enviar resumen del mes"));
+            }).show();
+    }
+
+    // ---------- Recuperar la copia del NAS ----------
+    private void recuperarNas() {
+        new AlertDialog.Builder(this).setTitle("Recuperar del NAS")
+            .setMessage("Trae del NAS las órdenes, fotos y albaranes que falten en este móvil.\n\n«Solo lo que falta» no toca tu almacén actual. «Traer todo» lo sustituye por el que hay en la copia del NAS.")
+            .setPositiveButton("SOLO LO QUE FALTA", (d, w) -> bajarNas(false))
+            .setNeutralButton("TRAER TODO", (d, w) -> bajarNas(true))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void bajarNas(final boolean reemplazar) {
+        aviso("Recuperando del NAS…");
+        hilos.execute(() -> {
+            try {
+                if (!Respaldo.hayWifi(this)) throw new java.io.IOException("No hay wifi");
+                final int n = Respaldo.bajar(this, raiz, reemplazar);
+                runOnUiThread(() -> { almacen.cargar(); aviso("✓ Recuperados " + n + " archivos"); mostrarAlmacen(); });
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Recuperando del NAS", t);
+                runOnUiThread(() -> aviso("No se pudo recuperar. ¿Estás en el wifi de casa y hay copia en el NAS?"));
+            }
+        });
     }
 
     // ---------- Deshacer ----------
@@ -1328,5 +1465,9 @@ public class MainActivity extends Activity {
     }
 
     private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
-    private void aviso(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+    private void aviso(String s) {
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+        if (s.startsWith("Esa ") || s.startsWith("Ese ") || s.startsWith("No ") || s.startsWith("Escanea")) pitar(false);
+        else if (s.startsWith("➕") || s.startsWith("✓") || s.startsWith("↩") || s.startsWith("↶")) pitar(true);
+    }
 }
