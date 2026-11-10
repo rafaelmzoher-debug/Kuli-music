@@ -260,6 +260,9 @@ public class MainActivity extends Activity {
         Button alm = boton("📦  Almacén  (" + almacen.total() + ")", false);
         alm.setOnClickListener(v -> mostrarAlmacen());
         p.addView(alm, margen(-1, dp(50), 10));
+        Button bus = boton("🔎  Buscar equipo (serie)", false);
+        bus.setOnClickListener(v -> buscarEquipo());
+        p.addView(bus, margen(-1, dp(46), 8));
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -369,6 +372,16 @@ public class MainActivity extends Activity {
         Button mat = boton("➖  Material usado (sale del almacén)", false);
         mat.setOnClickListener(v -> materialUsado(nombre));
         p.addView(mat, margen(-1, dp(46), 8));
+        LinearLayout filaB = new LinearLayout(this);
+        Button ret = boton("↩  Equipo retirado", false);
+        ret.setOnClickListener(v -> retirarSeguido(nombre));
+        filaB.addView(ret, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button des = boton("↶  Deshacer", false);
+        des.setOnClickListener(v -> deshacer());
+        LinearLayout.LayoutParams ld = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        ld.leftMargin = dp(10);
+        filaB.addView(des, ld);
+        p.addView(filaB, margen(-1, -2, 4));
         final ArrayList<String> usado = leerMaterial(nombre);
         if (!usado.isEmpty()) {
             TextView mt = texto("📦 Material usado en esta orden: " + usado.size() + "  (toca para ver)", 13, GRIS, false);
@@ -493,7 +506,13 @@ public class MainActivity extends Activity {
 
     // ---------- Compartir ----------
     private void compartir(ArrayList<File> fotos, final String orden) {
-        if (fotos.isEmpty()) { aviso("No hay fotos que compartir"); return; }
+        if (fotos.isEmpty()) {
+            Intent t = new Intent(Intent.ACTION_SEND);
+            t.setType("text/plain");
+            t.putExtra(Intent.EXTRA_TEXT, resumenOrden(orden));
+            startActivity(Intent.createChooser(t, "Enviar resumen de la orden " + orden));
+            return;
+        }
         String[] rutas = new String[fotos.size()];
         for (int i = 0; i < rutas.length; i++) rutas[i] = fotos.get(i).getAbsolutePath();
         final ArrayList<Uri> uris = new ArrayList<>();
@@ -507,7 +526,7 @@ public class MainActivity extends Activity {
                     if (uris.isEmpty()) { aviso("No se pudieron preparar las fotos"); return; }
                     Intent i = new Intent(uris.size() == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
                     i.setType("image/*");
-                    i.putExtra(Intent.EXTRA_TEXT, "Orden " + orden);
+                    i.putExtra(Intent.EXTRA_TEXT, resumenOrden(orden));
                     if (uris.size() == 1) i.putExtra(Intent.EXTRA_STREAM, uris.get(0));
                     else i.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
                     i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -589,7 +608,22 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams ln = new LinearLayout.LayoutParams(0, dp(46), 1f);
         ln.leftMargin = dp(10);
         fila2.addView(nas, ln);
-        p.addView(fila2, margen(-1, -2, 10));
+        p.addView(fila2, margen(-1, -2, 8));
+        LinearLayout fila3 = new LinearLayout(this);
+        Button inf = boton("📄 Informe", false);
+        inf.setOnClickListener(v -> informeAlmacen());
+        fila3.addView(inf, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button cua = boton("✔ Cuadre", false);
+        cua.setOnClickListener(v -> cuadreAlbaranes());
+        LinearLayout.LayoutParams lq = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lq.leftMargin = dp(8);
+        fila3.addView(cua, lq);
+        Button des3 = boton("↶ Deshacer", false);
+        des3.setOnClickListener(v -> deshacer());
+        LinearLayout.LayoutParams lz = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lz.leftMargin = dp(8);
+        fila3.addView(des3, lz);
+        p.addView(fila3, margen(-1, -2, 10));
 
         if (items.isEmpty()) {
             TextView v = texto("El almacén está vacío.\nEscanea el código de una caja para añadirla.", 14, GRIS, false);
@@ -633,7 +667,7 @@ public class MainActivity extends Activity {
                 Almacen.Item it = almacen.buscar(clave);
                 if (it != null) {
                     if (it.raws.contains(raw)) aviso("Esa caja ya estaba contada");
-                    else { almacen.sumar(clave, raw); aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad); }
+                    else { almacen.sumar(clave, raw); pila("ENTRA", "", clave, it.nombre, raw); aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad); }
                     ultMaterial = clave;
                     escanearSeguido();
                 } else {
@@ -659,6 +693,7 @@ public class MainActivity extends Activity {
             .setCancelable(false)
             .setPositiveButton("SÍ", (d, w) -> {
                 almacen.sumar(ult.codigo, serie);
+                pila("ENTRA", "", ult.codigo, ult.nombre, serie);
                 aviso("➕ " + ult.nombre + " · ahora hay " + ult.cantidad);
                 escanearSeguido();
             })
@@ -677,6 +712,7 @@ public class MainActivity extends Activity {
                 if (i < items.size()) {
                     Almacen.Item it = items.get(i);
                     almacen.sumar(it.codigo, serie);
+                    pila("ENTRA", "", it.codigo, it.nombre, serie);
                     ultMaterial = it.codigo;
                     aviso("➕ " + it.nombre + " · ahora hay " + it.cantidad);
                     escanearSeguido();
@@ -689,6 +725,7 @@ public class MainActivity extends Activity {
                             String clave = "MAT-" + n.toUpperCase(Locale.ROOT).replaceAll("\\s+", "-");
                             if (almacen.buscar(clave) != null) almacen.sumar(clave, serie);
                             else almacen.crear(clave, n, serie);
+                            pila("ENTRA", "", clave, n, serie);
                             ultMaterial = clave;
                             aviso("✓ Añadido al almacén");
                             escanearSeguido();
@@ -707,6 +744,7 @@ public class MainActivity extends Activity {
             .setCancelable(false)
             .setPositiveButton("AÑADIR", (d, w) -> {
                 almacen.crear(clave, nombre.getText().toString(), raw);
+                pila("ENTRA", "", clave, nombre.getText().toString().trim(), raw);
                 aviso("✓ Añadido al almacén");
                 escanearSeguido();
             }).setNegativeButton("TERMINAR", (d, w) -> mostrarAlmacen()).show();
@@ -763,6 +801,204 @@ public class MainActivity extends Activity {
                         .setNegativeButton("CANCELAR", null).show();
                 }
             }).setNegativeButton("CERRAR", null).show();
+    }
+
+    // ---------- Deshacer ----------
+    private final ArrayList<String[]> acciones = new ArrayList<>(); // {tipo, orden, codigo, nombre, raw}
+
+    private void pila(String tipo, String orden, String codigo, String nombre, String raw) {
+        acciones.add(new String[]{tipo, orden == null ? "" : orden, codigo, nombre == null ? "" : nombre, raw == null ? "" : raw});
+        while (acciones.size() > 50) acciones.remove(0);
+    }
+
+    private void deshacer() {
+        if (acciones.isEmpty()) { aviso("No hay nada que deshacer"); return; }
+        final String[] a = acciones.get(acciones.size() - 1);
+        String txt = a[0].equals("USA") ? "Devolver al almacén: " + a[3]
+            : a[0].equals("BAJA") ? "Quitar del almacén (equipo retirado): " + a[3]
+            : "Quitar del almacén: " + a[3];
+        if (!a[4].isEmpty()) txt += "\n" + a[4];
+        if (a[0].equals("USA") || a[0].equals("BAJA")) txt += "\n(orden " + a[1] + ")";
+        new AlertDialog.Builder(this).setTitle("¿Deshacer lo último?").setMessage(txt)
+            .setPositiveButton("DESHACER", (d, w) -> {
+                acciones.remove(acciones.size() - 1);
+                String raw = a[4].isEmpty() ? null : a[4];
+                if (a[0].equals("USA")) {
+                    if (almacen.buscar(a[2]) == null) almacen.crear(a[2], a[3], raw); else almacen.sumar(a[2], raw);
+                    quitarUltimaLinea(a[1]);
+                } else {
+                    almacen.gastar(a[2], raw);
+                    if (a[0].equals("BAJA")) quitarUltimaLinea(a[1]);
+                }
+                aviso("↶ Deshecho");
+                if (ordenAbierta != null) mostrarOrden(ordenAbierta);
+                else if (enAlmacen) mostrarAlmacen();
+                else mostrarInicio();
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void quitarUltimaLinea(String orden) {
+        try {
+            File f = new File(new File(raiz, limpiar(orden)), "material.txt");
+            if (!f.exists()) return;
+            String txt;
+            try (InputStream in = new java.io.FileInputStream(f)) { txt = new String(leerTodo(in), "UTF-8"); }
+            ArrayList<String> ls = new ArrayList<>();
+            for (String l : txt.split("\n")) if (!l.trim().isEmpty()) ls.add(l);
+            if (ls.isEmpty()) return;
+            ls.remove(ls.size() - 1);
+            try (FileOutputStream o = new FileOutputStream(f)) {
+                o.write((ls.isEmpty() ? "" : android.text.TextUtils.join("\n", ls) + "\n").getBytes("UTF-8"));
+            }
+        } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Quitando línea", t); }
+    }
+
+    // ---------- Equipo retirado (BAJA): vuelve al almacén ----------
+    private void elegirMaterial(final String titulo, final Runnable cancelar, final java.util.function.BiConsumer<String, String> elegido) {
+        final ArrayList<Almacen.Item> items = almacen.lista();
+        String[] nombres = new String[items.size() + 1];
+        for (int i = 0; i < items.size(); i++) nombres[i] = items.get(i).nombre + "  ×" + items.get(i).cantidad;
+        nombres[items.size()] = "➕ Material nuevo";
+        new AlertDialog.Builder(this).setTitle(titulo).setCancelable(false)
+            .setItems(nombres, (d, i) -> {
+                if (i < items.size()) {
+                    elegido.accept(items.get(i).codigo, items.get(i).nombre);
+                } else {
+                    final EditText nombre = campo("Nombre (ej. Router WiFi 7)", InputType.TYPE_CLASS_TEXT);
+                    new AlertDialog.Builder(this).setTitle("Material nuevo").setView(nombre).setCancelable(false)
+                        .setPositiveButton("AÑADIR", (d2, w) -> {
+                            String n = nombre.getText().toString().trim();
+                            if (n.isEmpty()) n = "Sin nombre";
+                            elegido.accept("MAT-" + n.toUpperCase(Locale.ROOT).replaceAll("\\s+", "-"), n);
+                        }).setNegativeButton("CANCELAR", (d2, w) -> cancelar.run()).show();
+                }
+            })
+            .setNegativeButton("CANCELAR", (d, w) -> cancelar.run()).show();
+    }
+
+    private void retirarSeguido(final String orden) {
+        escanear(raw -> {
+            if (!Almacen.esSerie(raw)) { aviso("Escanea el código corto (serie) del equipo retirado"); retirarSeguido(orden); return; }
+            final String serie = raw.trim().toUpperCase(Locale.ROOT);
+            if (almacen.buscarPorRaw(serie) != null) { aviso("Ese equipo ya está en el almacén"); retirarSeguido(orden); return; }
+            elegirMaterial("Equipo retirado · serie " + serie, () -> mostrarOrden(orden), (clave, nombre) -> {
+                if (almacen.buscar(clave) != null) almacen.sumar(clave, serie); else almacen.crear(clave, nombre, serie);
+                anotarMaterial(orden, serie, "RETIRADO · " + nombre);
+                pila("BAJA", orden, clave, nombre, serie);
+                aviso("↩ " + nombre + " vuelve al almacén");
+                retirarSeguido(orden);
+            });
+        }, () -> mostrarOrden(orden));
+    }
+
+    // ---------- Buscar un equipo ----------
+    private void buscarEquipo() {
+        final EditText q = campo("Serie, código o nombre", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        new AlertDialog.Builder(this).setTitle("🔎 Buscar equipo").setView(q)
+            .setPositiveButton("BUSCAR", (d, w) -> resultadoBusqueda(q.getText().toString().trim()))
+            .setNeutralButton("ESCANEAR", (d, w) -> escanear(raw -> resultadoBusqueda(raw.trim()), null))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void resultadoBusqueda(String t) {
+        if (t.isEmpty()) return;
+        String b = t.toLowerCase(Locale.ROOT);
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (Almacen.Item it : almacen.lista()) {
+            boolean ok = it.codigo.toLowerCase(Locale.ROOT).contains(b) || it.nombre.toLowerCase(Locale.ROOT).contains(b);
+            for (String r : it.raws) if (r.toLowerCase(Locale.ROOT).contains(b)) ok = true;
+            if (ok && n < 30) { sb.append("📦 En el almacén: ").append(it.nombre).append(" ×").append(it.cantidad).append("\n\n"); n++; }
+        }
+        File[] dirs = raiz.listFiles();
+        if (dirs != null) {
+            Arrays.sort(dirs);
+            for (File d : dirs) {
+                if (!d.isDirectory()) continue;
+                for (String l : leerMaterial(d.getName())) {
+                    if (l.toLowerCase(Locale.ROOT).contains(b) && n < 30) {
+                        sb.append("🧾 Orden ").append(d.getName()).append("\n").append(l).append("\n\n");
+                        n++;
+                    }
+                }
+            }
+        }
+        new AlertDialog.Builder(this).setTitle("«" + t + "»")
+            .setMessage(n == 0 ? "No lo encuentro ni en el almacén ni en ninguna orden." : sb.toString().trim())
+            .setPositiveButton("CERRAR", null).show();
+    }
+
+    // ---------- Resumen de la orden (se envía con las fotos) ----------
+    private String resumenOrden(String orden) {
+        StringBuilder sb = new StringBuilder("Orden " + orden + "\n");
+        ArrayList<File> fs = fotosDe(orden);
+        sb.append("Fotos: ").append(fs.size()).append("\n");
+        ArrayList<String> u = leerMaterial(orden);
+        if (u.isEmpty()) sb.append("Material: (ninguno apuntado)");
+        else sb.append("Material:\n").append(android.text.TextUtils.join("\n", u));
+        return sb.toString();
+    }
+
+    // ---------- Informe del almacén ----------
+    private void informeAlmacen() {
+        StringBuilder sb = new StringBuilder("📦 ALMACÉN · " + formatoLargo(System.currentTimeMillis()) + "\n\n");
+        for (Almacen.Item it : almacen.lista()) {
+            sb.append("• ").append(it.nombre).append(" ×").append(it.cantidad).append("  (").append(it.codigo).append(")\n");
+            ArrayList<String> series = new ArrayList<>();
+            for (String r : it.raws) if (r.length() <= 20) series.add(r);
+            if (!series.isEmpty()) sb.append("   ").append(android.text.TextUtils.join(", ", series)).append("\n");
+        }
+        sb.append("\nTotal: ").append(almacen.total()).append(" unidades\n");
+        ArrayList<Almacen.Item> bajos = almacen.bajos();
+        if (!bajos.isEmpty()) {
+            sb.append("\n⚠ HAY QUE PEDIR:\n");
+            for (Almacen.Item it : bajos)
+                sb.append("• ").append(it.nombre).append(": quedan ").append(it.cantidad).append(" (mínimo ").append(it.minimo).append(")\n");
+        }
+        Intent i = new Intent(Intent.ACTION_SEND);
+        i.setType("text/plain");
+        i.putExtra(Intent.EXTRA_TEXT, sb.toString());
+        startActivity(Intent.createChooser(i, "Enviar informe del almacén"));
+    }
+
+    // ---------- Cuadre con los albaranes ----------
+    private void cuadreAlbaranes() {
+        File dir = new File(raiz, "Albaranes");
+        File[] fs = dir.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".txt"));
+        if (fs == null || fs.length == 0) { aviso("No hay albaranes en la carpeta Albaranes"); return; }
+        StringBuilder usado = new StringBuilder();
+        File[] dirs = raiz.listFiles();
+        if (dirs != null) for (File d : dirs) if (d.isDirectory()) usado.append(android.text.TextUtils.join("\n", leerMaterial(d.getName()))).append("\n");
+        String todo = usado.toString().toLowerCase(Locale.ROOT);
+        int total = 0, bien = 0;
+        StringBuilder falta = new StringBuilder();
+        for (File f : fs) {
+            try {
+                String txt;
+                try (InputStream in = new java.io.FileInputStream(f)) { txt = new String(leerTodo(in), "UTF-8").replace("\uFEFF", ""); }
+                java.util.HashSet<String> usados = new java.util.HashSet<>();
+                ArrayList<String[]> series = new ArrayList<>();
+                for (String l : txt.split("\\r?\\n")) {
+                    l = l.trim();
+                    if (l.isEmpty() || l.startsWith("#")) continue;
+                    String[] p = l.split(";");
+                    for (int i = 0; i < p.length; i++) p[i] = p[i].trim();
+                    if (p[0].equals("U") && p.length > 1) usados.add(p[1].toUpperCase(Locale.ROOT));
+                    else if (p[0].equals("S") && p.length > 3) series.add(p);
+                }
+                for (String[] p : series) {
+                    String serie = p[3].toUpperCase(Locale.ROOT);
+                    if (usados.contains(serie)) continue;
+                    total++;
+                    if (almacen.buscarPorRaw(serie) != null || todo.contains(serie.toLowerCase(Locale.ROOT))) bien++;
+                    else falta.append("• ").append(p[2]).append(" · ").append(serie).append("\n");
+                }
+            } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Cuadre", t); }
+        }
+        new AlertDialog.Builder(this).setTitle(falta.length() == 0 ? "✔ Todo cuadra" : "⚠ Hay equipos sin localizar")
+            .setMessage("Equipos con serie de los albaranes: " + total + "\nLocalizados (en el almacén o usados en una orden): " + bien
+                + (falta.length() == 0 ? "" : "\n\nNo aparecen en el almacén ni en ninguna orden:\n" + falta))
+            .setPositiveButton("CERRAR", null).show();
     }
 
     // ---------- Material usado en una orden ----------
@@ -824,6 +1060,7 @@ public class MainActivity extends Activity {
         }
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
+        pila("USA", orden, clave, nombre, raw == null ? "" : raw);
         anotarMaterial(orden, raw != null ? raw : clave, nombre);
         final Runnable seguirR = () -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); };
         Almacen.Item despues = almacen.buscar(clave);
