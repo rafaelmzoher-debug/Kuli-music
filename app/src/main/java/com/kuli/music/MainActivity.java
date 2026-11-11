@@ -1058,6 +1058,13 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
         super.onRequestPermissionsResult(codigo, permisos, resultados);
+        if (codigo == 201) {
+            ArrayList<String> r = pendienteMovil;
+            pendienteMovil = null;
+            if (r != null && resultados.length > 0 && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) llevarAlMovil(r);
+            else aviso("Sin permiso para guardar no puedo copiar la música");
+            return;
+        }
         if (codigo == 200 && resultados.length > 0
                 && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) revisarYMusic();
     }
@@ -1514,7 +1521,7 @@ public class MainActivity extends Activity {
             .setItems(items, (d, i) -> mostrarCancionesNas(claves.get(i), grupos.get(claves.get(i)), grupos))
             .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
             .setNeutralButton("🔍 BUSCAR", (d, w) -> buscarEnNas(grupos))
-            .setNegativeButton("CERRAR", null).show();
+            .setNegativeButton("📥 AL MÓVIL", (d, w) -> elegirParaMovil(grupos)).show();
         // Mantener pulsada una carpeta: suena entera, en aleatorio.
         dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
             dlg.dismiss();
@@ -1522,6 +1529,70 @@ public class MainActivity extends Activity {
             return true;
         });
         aviso("Toca una carpeta para verla · mantenla pulsada para oírla entera en aleatorio");
+    }
+
+    // ---------- Llevar canciones del NAS al móvil ----------
+    private java.io.File carpetaMovil() {
+        return new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+    }
+
+    private void elegirParaMovil(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
+        final boolean[] marcadas = new boolean[claves.size()];
+        String[] items = new String[claves.size()];
+        for (int i = 0; i < items.length; i++) items[i] = claves.get(i) + "  (" + grupos.get(claves.get(i)).size() + ")";
+        new AlertDialog.Builder(this).setTitle("📥 ¿Qué carpetas llevo al móvil?")
+            .setMultiChoiceItems(items, marcadas, (d, i, v) -> marcadas[i] = v)
+            .setPositiveButton("LLEVAR", (d, w) -> {
+                ArrayList<String> rutas = new ArrayList<>();
+                for (int i = 0; i < marcadas.length; i++) if (marcadas[i]) rutas.addAll(grupos.get(claves.get(i)));
+                if (rutas.isEmpty()) { aviso("No has marcado ninguna carpeta"); return; }
+                llevarAlMovil(rutas);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private ArrayList<String> pendienteMovil = null;
+
+    private void llevarAlMovil(final ArrayList<String> rutas) {
+        if (android.os.Build.VERSION.SDK_INT < 33
+                && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendienteMovil = rutas;
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 201);
+            return;
+        }
+        final java.io.File base = carpetaMovil();
+        aviso("Copiando " + rutas.size() + " canciones… puedes seguir usando el móvil");
+        new Thread(() -> {
+            int hechas = 0, saltadas = 0, fallos = 0;
+            for (int i = 0; i < rutas.size(); i++) {
+                final String ruta = rutas.get(i);
+                final int n = i + 1;
+                runOnUiThread(() -> estado.setText("📥 AL MÓVIL " + n + "/" + rutas.size()));
+                java.io.File destino = new java.io.File(base, ruta.replace('\\', '/'));
+                if (destino.exists() && destino.length() > 0) { saltadas++; continue; }
+                try {
+                    destino.getParentFile().mkdirs();
+                    descargarDelNas(ruta, destino);
+                    hechas++;
+                } catch (Throwable e) {
+                    fallos++;
+                    if (fallos >= 3 && hechas == 0) break; // el NAS no responde
+                }
+            }
+            final String msg = "Copiadas: " + hechas + (saltadas > 0 ? " · ya estaban: " + saltadas : "")
+                    + (fallos > 0 ? " · con error: " + fallos : "");
+            runOnUiThread(() -> {
+                estado.setText("");
+                if (isDestroyed()) return;
+                new AlertDialog.Builder(this).setTitle("📥 Listo")
+                    .setMessage(msg + "\n\nEstán en Música › KULI MUSIC.\nAhora pulsa «📂 Carpeta de música del móvil» y elige esa carpeta (solo la primera vez).")
+                    .setPositiveButton("ELEGIR CARPETA", (d, w) -> elegirCarpetaMusica())
+                    .setNegativeButton("CERRAR", null).show();
+            });
+        }).start();
     }
 
     private void reproducirAleatorio(List<String> rutas) {
