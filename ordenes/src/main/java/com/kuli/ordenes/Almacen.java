@@ -18,6 +18,15 @@ final class Almacen {
         int cantidad, minimo; // minimo: avisar cuando queden esas o menos (0 = no avisar)
         long fecha;
         ArrayList<String> raws = new ArrayList<>(); // códigos completos de las cajas ya contadas
+        java.util.HashMap<String, Long> fechas = new java.util.HashMap<>(); // cuándo entró cada unidad con serie
+    }
+
+    static final String NOMBRE_ALMACEN = "TESA I+M MALAGA";
+
+    // Fecha en que entró una unidad (o, si no tiene serie, la del material).
+    long fechaDe(Item it, String raw) {
+        Long f = raw == null ? null : it.fechas.get(raw);
+        return f != null ? f : it.fecha;
     }
 
     private final File archivo;
@@ -49,6 +58,12 @@ final class Almacen {
                 it.minimo = j.optInt("minimo", 0);
                 JSONArray rr = j.optJSONArray("raws");
                 if (rr != null) for (int k = 0; k < rr.length(); k++) it.raws.add(rr.getString(k));
+                JSONObject ff = j.optJSONObject("fechas");
+                if (ff != null) {
+                    java.util.Iterator<String> ks = ff.keys();
+                    while (ks.hasNext()) { String k = ks.next(); it.fechas.put(k, ff.optLong(k, it.fecha)); }
+                }
+                for (String r : it.raws) if (!it.fechas.containsKey(r)) it.fechas.put(r, it.fecha > 0 ? it.fecha : System.currentTimeMillis());
                 items.add(it);
             }
         } catch (Exception e) {
@@ -67,8 +82,15 @@ final class Almacen {
                 j.put("fecha", it.fecha);
                 j.put("minimo", it.minimo);
                 JSONArray rr = new JSONArray();
-                for (String r : it.raws) rr.put(r);
+                JSONObject ff = new JSONObject();
+                for (String r : it.raws) {
+                    rr.put(r);
+                    Long f = it.fechas.get(r);
+                    if (f == null) { f = System.currentTimeMillis(); it.fechas.put(r, f); }
+                    ff.put(r, f.longValue());
+                }
                 j.put("raws", rr);
+                j.put("fechas", ff);
                 a.put(j);
             }
             archivo.getParentFile().mkdirs();
@@ -216,6 +238,7 @@ final class Almacen {
         String id = f.getName();
         java.util.HashSet<String> usadosS = new java.util.HashSet<>();
         java.util.HashMap<String, Integer> usadosC = new java.util.HashMap<>();
+        long fechaAlb = 0;
         ArrayList<String> gastarS = new ArrayList<>();
         ArrayList<String[]> gastarC = new ArrayList<>();
         ArrayList<String[]> lineas = new ArrayList<>();
@@ -225,6 +248,10 @@ final class Almacen {
             String[] p = l.split(";");
             for (int i = 0; i < p.length; i++) p[i] = p[i].trim();
             if (p[0].equals("ALBARAN") && p.length > 1) id = p[1];
+            else if (p[0].equals("FECHA") && p.length > 1) {
+                try { fechaAlb = new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.ROOT).parse(p[1]).getTime(); }
+                catch (Exception ignorar) { }
+            }
             else if (p[0].equals("U") && p.length > 1) usadosS.add(p[1].toUpperCase(Locale.ROOT));
             else if (p[0].equals("UC") && p.length > 2) usadosC.put(p[1], Integer.parseInt(p[2]));
             else if (p[0].equals("G") && p.length > 1) gastarS.add(p[1].toUpperCase(Locale.ROOT));
@@ -244,6 +271,7 @@ final class Almacen {
                 Item it = buscar(p[1]);
                 if (it == null) { it = new Item(); it.codigo = p[1]; it.nombre = p[2]; it.cantidad = 0; items.add(it); }
                 it.raws.add(serie);
+                if (fechaAlb > 0) it.fechas.put(serie, fechaAlb);
                 it.cantidad++;
                 it.fecha = ahora;
                 anadidas++;

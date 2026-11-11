@@ -607,6 +607,120 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ---------- Existencias: una tarjeta por unidad, lo más antiguo primero (como la app de Movistar) ----------
+    private String sinAcentos(String t) {
+        String n = java.text.Normalizer.normalize(t == null ? "" : t, java.text.Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private ArrayList<String[]> filasExistencias(String filtro) {
+        String q = sinAcentos(filtro.trim());
+        long ahora = System.currentTimeMillis();
+        ArrayList<String[]> filas = new ArrayList<>();
+        for (Almacen.Item it : almacen.lista()) {
+            for (String raw : it.raws) {
+                if (q.length() >= 3 && !sinAcentos(it.nombre + " " + it.codigo + " " + raw).contains(q)) continue;
+                long dias = Math.max(0, (ahora - almacen.fechaDe(it, raw)) / 86400000L);
+                filas.add(new String[]{it.codigo, it.nombre, raw, "1", String.valueOf(dias)});
+            }
+            int sinSerie = it.cantidad - it.raws.size();
+            if (sinSerie > 0 && (q.length() < 3 || sinAcentos(it.nombre + " " + it.codigo).contains(q))) {
+                long dias = Math.max(0, (ahora - it.fecha) / 86400000L);
+                filas.add(new String[]{it.codigo, it.nombre, "", String.valueOf(sinSerie), String.valueOf(dias)});
+            }
+        }
+        Collections.sort(filas, (a, b) -> Long.compare(Long.parseLong(b[4]), Long.parseLong(a[4])));
+        return filas;
+    }
+
+    private void mostrarExistencias() {
+        enAlmacen = true;
+        ordenAbierta = null;
+        contenido.removeAllViews();
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setPadding(dp(14), dp(30), dp(14), dp(8));
+        LinearLayout barra = new LinearLayout(this);
+        barra.setGravity(Gravity.CENTER_VERTICAL);
+        Button atras = boton("‹", false);
+        atras.setTextSize(22);
+        atras.setOnClickListener(v -> mostrarAlmacen());
+        barra.addView(atras, new LinearLayout.LayoutParams(dp(56), dp(46)));
+        TextView t = texto("📋 Existencias", 20, Color.WHITE, true);
+        t.setPadding(dp(12), 0, 0, 0);
+        barra.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+        p.addView(barra);
+
+        final EditText buscar = new EditText(this);
+        buscar.setHint("Material a buscar (mínimo 3 caracteres)");
+        buscar.setSingleLine(true);
+        buscar.setTextColor(Color.WHITE);
+        buscar.setHintTextColor(GRIS);
+        p.addView(buscar, margen(-1, -2, 6));
+
+        TextView banner = texto("ATENCIÓN:\nEs obligatorio instalar, en primer lugar, el material más antiguo", 13, Color.rgb(150, 40, 50), true);
+        banner.setGravity(Gravity.CENTER);
+        banner.setBackgroundColor(Color.rgb(250, 228, 230));
+        banner.setPadding(dp(10), dp(8), dp(10), dp(8));
+        p.addView(banner, margen(-1, -2, 8));
+
+        final ArrayList<String[]> filas = filasExistencias("");
+        final TextView total = texto("", 12, GRIS, false);
+        p.addView(total, margen(-2, -2, 6));
+        final BaseAdapter adaptador = new BaseAdapter() {
+            @Override public int getCount() { return filas.size(); }
+            @Override public Object getItem(int i) { return filas.get(i); }
+            @Override public long getItemId(int i) { return i; }
+            @Override public View getView(int i, View v, ViewGroup g) {
+                String[] f = filas.get(i);
+                long dias = Long.parseLong(f[4]);
+                int color = dias >= 90 ? Color.rgb(214, 40, 40) : dias >= 30 ? Color.rgb(230, 140, 0) : Color.rgb(46, 125, 50);
+                LinearLayout caja = new LinearLayout(MainActivity.this);
+                caja.setPadding(0, 0, 0, dp(8));
+                LinearLayout tarjeta = new LinearLayout(MainActivity.this);
+                TextView cod = new TextView(MainActivity.this);
+                cod.setText(f[0]);
+                cod.setTextColor(Color.rgb(40, 30, 10));
+                cod.setTypeface(Typeface.DEFAULT_BOLD);
+                cod.setTextSize(15);
+                cod.setGravity(Gravity.CENTER);
+                cod.setBackgroundColor(Color.rgb(247, 167, 56));
+                tarjeta.addView(cod, new LinearLayout.LayoutParams(dp(96), -1));
+                TextView det = new TextView(MainActivity.this);
+                det.setBackgroundColor(Color.rgb(238, 238, 243));
+                det.setTextColor(Color.rgb(30, 30, 35));
+                det.setTextSize(14);
+                det.setPadding(dp(12), dp(8), dp(10), dp(8));
+                String txt = f[1] + "\n" + (f[2].isEmpty() ? "" : "Serie: " + f[2] + "\n")
+                    + "Unidades: " + f[3] + "\nAlmacén: " + Almacen.NOMBRE_ALMACEN + "\n● Antigüedad: " + dias + (dias == 1 ? " día" : " días");
+                android.text.SpannableString sp = new android.text.SpannableString(txt);
+                int punto = txt.lastIndexOf('●');
+                sp.setSpan(new android.text.style.ForegroundColorSpan(color), punto, punto + 1, 0);
+                sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, f[1].length(), 0);
+                det.setText(sp);
+                tarjeta.addView(det, new LinearLayout.LayoutParams(0, -2, 1f));
+                caja.addView(tarjeta, new LinearLayout.LayoutParams(-1, -2));
+                return caja;
+            }
+        };
+        total.setText(filas.size() + " unidades · la más antigua arriba");
+        ListView lista = new ListView(this);
+        lista.setDivider(null);
+        lista.setAdapter(adaptador);
+        p.addView(lista, new LinearLayout.LayoutParams(-1, 0, 1f));
+        buscar.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) {
+                filas.clear();
+                filas.addAll(filasExistencias(s.toString()));
+                total.setText(filas.size() + " unidades · la más antigua arriba");
+                adaptador.notifyDataSetChanged();
+            }
+        });
+        contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
+    }
+
     private void mostrarAlmacen() {
         enAlmacen = true;
         ordenAbierta = null;
@@ -650,6 +764,9 @@ public class MainActivity extends Activity {
         ln.leftMargin = dp(10);
         fila2.addView(nas, ln);
         p.addView(fila2, margen(-1, -2, 8));
+        Button exi = boton("📋  Existencias (por antigüedad)", false);
+        exi.setOnClickListener(v -> mostrarExistencias());
+        p.addView(exi, margen(-1, dp(46), 8));
         LinearLayout fila3 = new LinearLayout(this);
         Button inf = boton("📄 Informe", false);
         inf.setOnClickListener(v -> informeAlmacen());
@@ -1218,7 +1335,7 @@ public class MainActivity extends Activity {
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
         pila("USA", orden, clave, nombre, raw == null ? "" : raw);
-        anotarMaterial(orden, raw != null ? raw : clave, nombre);
+        anotarMaterial(orden, raw != null ? raw : clave, nombre, clave);
         final Runnable seguirR = () -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); };
         Almacen.Item despues = almacen.buscar(clave);
         if (despues != null && despues.minimo > 0 && quedan <= despues.minimo) {
@@ -1227,16 +1344,20 @@ public class MainActivity extends Activity {
                 .setCancelable(false)
                 .setPositiveButton("OK", (d, w) -> seguirR.run()).show();
         } else {
-            aviso("✓ " + nombre + " usado · quedan " + quedan);
+            avisoLargo("✓ " + nombre + "\nCódigo " + clave + (raw != null ? " · Serie " + raw : "") + "\nQuedan " + quedan);
             seguirR.run();
         }
     }
 
-    private void anotarMaterial(String orden, String codigo, String nombre) {
+    private void anotarMaterial(String orden, String codigo, String nombre) { anotarMaterial(orden, codigo, nombre, null); }
+
+    private void avisoLargo(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
+
+    private void anotarMaterial(String orden, String codigo, String nombre, String codMaterial) {
         File dir = new File(raiz, limpiar(orden));
         dir.mkdirs();
         try (FileOutputStream o = new FileOutputStream(new File(dir, "material.txt"), true)) {
-            o.write((formatoLargo(System.currentTimeMillis()) + " | " + nombre + " | " + codigo + "\n").getBytes("UTF-8"));
+            o.write((formatoLargo(System.currentTimeMillis()) + " | " + nombre + " | " + codigo + (codMaterial != null && !codMaterial.equals(codigo) ? " | " + codMaterial : "") + "\n").getBytes("UTF-8"));
         } catch (Exception e) { aviso("No se pudo apuntar el material"); }
         ultNota = notaAuto(orden);
     }
