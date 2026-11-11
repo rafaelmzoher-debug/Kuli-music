@@ -23,6 +23,8 @@ jobs:
         with:
           gradle-version: 8.9
 
+      - name: Firma fija (para poder actualizar sin desinstalar)
+        run: mkdir -p ~/.android && cp .kuli/debug.keystore ~/.android/debug.keystore
       - name: Compilar
         run: gradle assembleDebug --no-daemon --console=plain
 
