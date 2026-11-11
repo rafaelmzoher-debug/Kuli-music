@@ -575,7 +575,8 @@ public class MainActivity extends Activity {
     private void escanear(final Consumer<String> alLeer, final Runnable alTerminar) {
         try {
             GmsBarcodeScannerOptions opc = new GmsBarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93, Barcode.FORMAT_ITF)
+                .setBarcodeFormats(Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93, Barcode.FORMAT_ITF,
+                    Barcode.FORMAT_DATA_MATRIX, Barcode.FORMAT_QR_CODE)
                 .enableAutoZoom()
                 .build();
             GmsBarcodeScanner sc = GmsBarcodeScanning.getClient(this, opc);
@@ -585,7 +586,14 @@ public class MainActivity extends Activity {
                     if (v == null || v.trim().isEmpty()) {
                         aviso("No he podido leer el código");
                         if (alTerminar != null) alTerminar.run();
-                    } else alLeer.accept(v.trim());
+                    } else {
+                        String limpio = almacen.limpiarLectura(v);
+                        if (!limpio.equals(v.trim())) {
+                            String visto = v.trim().replace('\n', ' ');
+                            aviso("Leído: " + (visto.length() > 70 ? visto.substring(0, 70) + "…" : visto) + "\n→ " + limpio);
+                        }
+                        alLeer.accept(limpio);
+                    }
                 })
                 .addOnCanceledListener(() -> { if (alTerminar != null) alTerminar.run(); })
                 .addOnFailureListener(e -> {

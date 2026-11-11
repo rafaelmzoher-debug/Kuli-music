@@ -78,6 +78,47 @@ final class Almacen {
         }
     }
 
+    // Lee lo que devuelve el escáner. Las etiquetas de acometida (cables) llevan un DataMatrix cuyo texto
+    // mezcla código, fabricante y serie: aquí se saca el número de serie de la unidad.
+    private static final String[] FABRICANTES = {"PRYSMIAN", "COMMSCOPE", "TELNET", "ELECTROSON"};
+
+    String limpiarLectura(String raw) {
+        if (raw == null) return null;
+        String r = raw.trim();
+        if (r.isEmpty()) return r;
+        String mayus = r.toUpperCase(java.util.Locale.ROOT);
+        // 1) Electroson: S/N 26/009103
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?<!\\d)(\\d{2}/\\d{5,7})(?!\\d)").matcher(mayus);
+        boolean tieneFab = false;
+        for (String f : FABRICANTES) if (mayus.contains(f)) tieneFab = true;
+        if (m.find() && (tieneFab || mayus.contains("S/N") || mayus.length() > 12)) return m.group(1);
+        // 2) Prysmian / CommScope / Telnet: código + fabricante + serie
+        if (tieneFab) {
+            String t = mayus;
+            for (String f : FABRICANTES) t = t.replace(f, " ");
+            java.util.regex.Matcher c = java.util.regex.Pattern.compile("0053\\d{4}|(?<!\\d)53\\d{4}(?!\\d)").matcher(t);
+            String resto = t;
+            if (c.find()) resto = t.substring(0, c.start()) + " " + t.substring(c.end());
+            String mejor = null;
+            for (String tok : resto.split("[^0-9A-Z]+")) {
+                if (tok.length() < 6 || !tok.matches(".*\\d.*")) continue;
+                if (mejor == null || tok.length() > mejor.length()) mejor = tok;
+            }
+            if (mejor == null) {   // el texto venía sin separadores: 01 + serie, ej. "01 260002700138"
+                String junto = resto.replaceAll("[^0-9A-Z]", "");
+                if (junto.length() >= 8) mejor = junto;
+            }
+            if (mejor != null) return mejor;
+        }
+        // 3) Texto con varias partes (equipos con DataMatrix): se busca una serie que ya conozcamos
+        String[] partes = mayus.split("[\\s;|,\\u001d]+");
+        if (partes.length > 1) {
+            for (String p : partes) if (buscarPorRaw(p) != null) return p;
+            for (String p : partes) if (p.matches("[0-9A-F]{12}")) return p;
+        }
+        return r;
+    }
+
     // Etiqueta larga de Movistar: 8 cifras del material + proveedor + pedido + lote (puede acabar en letras, ej. EL26).
     static boolean esEtiquetaLarga(String raw) {
         return raw != null && raw.trim().matches("\\d{8}[0-9A-Za-z]{16,}");
@@ -175,6 +216,8 @@ final class Almacen {
         String id = f.getName();
         java.util.HashSet<String> usadosS = new java.util.HashSet<>();
         java.util.HashMap<String, Integer> usadosC = new java.util.HashMap<>();
+        ArrayList<String> gastarS = new ArrayList<>();
+        ArrayList<String[]> gastarC = new ArrayList<>();
         ArrayList<String[]> lineas = new ArrayList<>();
         for (String l : leerLineas(f)) {
             l = l.trim();
@@ -184,6 +227,8 @@ final class Almacen {
             if (p[0].equals("ALBARAN") && p.length > 1) id = p[1];
             else if (p[0].equals("U") && p.length > 1) usadosS.add(p[1].toUpperCase(Locale.ROOT));
             else if (p[0].equals("UC") && p.length > 2) usadosC.put(p[1], Integer.parseInt(p[2]));
+            else if (p[0].equals("G") && p.length > 1) gastarS.add(p[1].toUpperCase(Locale.ROOT));
+            else if (p[0].equals("GC") && p.length > 2) gastarC.add(new String[]{p[1], p[2]});
             else lineas.add(p);
         }
         java.util.HashSet<String> cargados = leerCargados();
@@ -214,10 +259,25 @@ final class Almacen {
                 anadidas += cant;
             }
         }
+        // G = equipo gastado (por serie) · GC = cantidad gastada de un material sin serie
+        int gastadas = 0, noEncontradas = 0;
+        for (String serie : gastarS) {
+            Item it = buscarPorRaw(serie);
+            if (it == null) { noEncontradas++; continue; }
+            gastar(it.codigo, serie);
+            gastadas++;
+        }
+        for (String[] g : gastarC) {
+            Item it = buscar(g[0]);
+            int n = Integer.parseInt(g[1]);
+            if (it == null) { noEncontradas += n; continue; }
+            for (int k = 0; k < n; k++) { gastar(it.codigo); gastadas++; }
+        }
         cargados.add(id);
         guardarCargados(cargados);
         guardar();
-        return "Añadidas " + anadidas + " unidades" + (saltadas > 0 ? " (" + saltadas + " ya estaban o ya usadas)" : "");
+        return "Añadidas " + anadidas + " unidades" + (saltadas > 0 ? " (" + saltadas + " ya estaban o ya usadas)" : "")
+            + (gastadas + noEncontradas > 0 ? " · Restadas " + gastadas + (noEncontradas > 0 ? " (" + noEncontradas + " no estaban en el almacén)" : "") : "");
     }
 
     synchronized void crear(String clave, String nombre, String raw) {
