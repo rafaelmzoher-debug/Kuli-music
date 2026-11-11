@@ -1302,7 +1302,26 @@ public class MainActivity extends Activity {
                 final String serie = raw.trim().toUpperCase(Locale.ROOT);
                 Almacen.Item it = almacen.buscarPorRaw(serie);
                 if (it != null) {
-                    gastarCodigo(orden, it.codigo, serie, true);
+                    // FIFO: si hay otra unidad del mismo material más antigua, se avisa.
+                    long mia = almacen.fechaDe(it, serie), masVieja = mia;
+                    String serieVieja = null;
+                    for (String r : it.raws) {
+                        long f = almacen.fechaDe(it, r);
+                        if (f < masVieja) { masVieja = f; serieVieja = r; }
+                    }
+                    long difDias = (mia - masVieja) / 86400000L;
+                    if (serieVieja != null && difDias >= 1) {
+                        final Almacen.Item itF = it;
+                        final String vieja = serieVieja;
+                        new AlertDialog.Builder(this).setTitle("⚠ Hay uno más antiguo")
+                            .setMessage("Del mismo material (" + it.nombre + ") tienes uno con " + difDias
+                                + " día(s) más de antigüedad:\n\nSerie " + vieja + "\n\nEs obligatorio instalar primero el más antiguo. ¿Usas este igualmente?")
+                            .setCancelable(false)
+                            .setPositiveButton("USAR ESTE", (d, w) -> gastarCodigo(orden, itF.codigo, serie, true))
+                            .setNegativeButton("ESCANEAR OTRO", (d, w) -> gastarSeguido(orden)).show();
+                    } else {
+                        gastarCodigo(orden, it.codigo, serie, true);
+                    }
                 } else {
                     new AlertDialog.Builder(this).setTitle("No estaba en el almacén")
                         .setMessage("La unidad con serie " + serie + " no estaba contada.\n\n¿La apunto igualmente como usada en esta orden?")
