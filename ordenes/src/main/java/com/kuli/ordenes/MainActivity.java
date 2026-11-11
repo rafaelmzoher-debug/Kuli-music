@@ -572,7 +572,31 @@ public class MainActivity extends Activity {
     // ---------- Almacén ----------
     private void escanear(final Consumer<String> alLeer) { escanear(alLeer, null); }
 
+    private Consumer<String> escAlLeer;
+    private Runnable escAlTerminar;
+    static final int PIDE_ESCANER = 4;
+
+    // Escáner propio (cámara en alta resolución). Si falla, se puede cambiar al de Google desde su pantalla.
     private void escanear(final Consumer<String> alLeer, final Runnable alTerminar) {
+        escAlLeer = alLeer;
+        escAlTerminar = alTerminar;
+        try {
+            startActivityForResult(new Intent(this, ScanActivity.class), PIDE_ESCANER);
+        } catch (Throwable t) {
+            escanearGoogle(alLeer, alTerminar);
+        }
+    }
+
+    private void recibirLectura(String v, Consumer<String> alLeer) {
+        String limpio = almacen.limpiarLectura(v);
+        if (!limpio.equals(v.trim())) {
+            String visto = v.trim().replace('\n', ' ');
+            aviso("Leído: " + (visto.length() > 70 ? visto.substring(0, 70) + "…" : visto) + "\n→ " + limpio);
+        }
+        alLeer.accept(limpio);
+    }
+
+    private void escanearGoogle(final Consumer<String> alLeer, final Runnable alTerminar) {
         try {
             GmsBarcodeScannerOptions opc = new GmsBarcodeScannerOptions.Builder()
                 .setBarcodeFormats(Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93, Barcode.FORMAT_ITF,
@@ -587,12 +611,7 @@ public class MainActivity extends Activity {
                         aviso("No he podido leer el código");
                         if (alTerminar != null) alTerminar.run();
                     } else {
-                        String limpio = almacen.limpiarLectura(v);
-                        if (!limpio.equals(v.trim())) {
-                            String visto = v.trim().replace('\n', ' ');
-                            aviso("Leído: " + (visto.length() > 70 ? visto.substring(0, 70) + "…" : visto) + "\n→ " + limpio);
-                        }
-                        alLeer.accept(limpio);
+                        recibirLectura(v.trim(), alLeer);
                     }
                 })
                 .addOnCanceledListener(() -> { if (alTerminar != null) alTerminar.run(); })
@@ -1437,6 +1456,11 @@ public class MainActivity extends Activity {
         i.setClipData(ClipData.newRawUri("foto", uri));
         i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
         if (i.resolveActivity(getPackageManager()) == null) { aviso("No encuentro la cámara"); return; }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 301);
+            aviso("Da permiso a la cámara y vuelve a pulsar");
+            return;
+        }
         startActivityForResult(i, PIDE_FOTO);
     }
 
@@ -1451,6 +1475,15 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int cod, int res, Intent datos) {
         super.onActivityResult(cod, res, datos);
+        if (cod == PIDE_ESCANER) {
+            Consumer<String> l = escAlLeer;
+            Runnable t = escAlTerminar;
+            String raw = datos == null ? null : datos.getStringExtra("raw");
+            if (res == RESULT_OK && raw != null && !raw.trim().isEmpty() && l != null) recibirLectura(raw.trim(), l);
+            else if (res == RESULT_FIRST_USER && l != null) escanearGoogle(l, t);
+            else if (t != null) t.run();
+            return;
+        }
         if (res != RESULT_OK) return;
         if (cod == PIDE_FOTO && rutaTemporal != null) {
             final File tmp = new File(rutaTemporal);
