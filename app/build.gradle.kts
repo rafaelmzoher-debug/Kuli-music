@@ -6,8 +6,8 @@ android {
         applicationId = "com.kuli.music"
         minSdk = 26
         targetSdk = 28
-        versionCode = 32
-        versionName = "3.20"
+        versionCode = 33
+        versionName = "3.21"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

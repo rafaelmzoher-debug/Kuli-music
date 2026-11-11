@@ -60,6 +60,7 @@ import java.util.Collections;
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 100;
     private static final int PICK_SUBIR = 101;
+    private static final int PICK_CARPETA = 102;
     static MainActivity instancia;
     private static final String NAS_IP_DEFECTO = "192.168.1.46";
     private String nasIp() {
@@ -278,6 +279,12 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lpFilaNas = new LinearLayout.LayoutParams(-1, -2);
         lpFilaNas.topMargin = dp(10);
         pantalla.addView(filaNas, lpFilaNas);
+        Button carpeta = pastilla("📂  Carpeta de música del móvil", CONTORNO);
+        LinearLayout.LayoutParams lpCarp = new LinearLayout.LayoutParams(-1, dp(48));
+        lpCarp.topMargin = dp(10);
+        pantalla.addView(carpeta, lpCarp);
+        carpeta.setOnClickListener(v -> abrirCarpetaMusica());
+        carpeta.setOnLongClickListener(v -> { elegirCarpetaMusica(); return true; });
         nas.setOnClickListener(v -> abrirListaNas());
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
@@ -482,6 +489,15 @@ public class MainActivity extends Activity {
             ofrecerSubida(uris, null, null);
             return;
         }
+        if (requestCode == PICK_CARPETA && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri arbol = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(arbol, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) { }
+            getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("carpeta_musica", arbol.toString()).apply();
+            abrirCarpetaMusica();
+            return;
+        }
         if (requestCode == PICK_AUDIO && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             try {
@@ -491,6 +507,58 @@ public class MainActivity extends Activity {
             reproducir(uri);
         }
     }
+    // ---------- Carpeta de música del móvil ----------
+    private void elegirCarpetaMusica() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, PICK_CARPETA);
+    }
+
+    private void abrirCarpetaMusica() {
+        String guardada = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getString("carpeta_musica", null);
+        if (guardada == null) { aviso("Elige la carpeta donde tienes la música"); elegirCarpetaMusica(); return; }
+        final Uri arbol = Uri.parse(guardada);
+        aviso("Leyendo la carpeta…");
+        new Thread(() -> {
+            final ArrayList<String[]> canciones = CarpetaMusica.listar(getContentResolver(), arbol);
+            runOnUiThread(() -> mostrarCarpetaMusica(canciones));
+        }).start();
+    }
+
+    private void mostrarCarpetaMusica(final ArrayList<String[]> canciones) {
+        if (isDestroyed()) return;
+        if (canciones.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("No hay canciones")
+                .setMessage("No he encontrado música en esa carpeta (ni en sus subcarpetas).")
+                .setPositiveButton("ELEGIR OTRA", (d, w) -> elegirCarpetaMusica())
+                .setNegativeButton("CERRAR", null).show();
+            return;
+        }
+        listaFavoritas.clear();
+        String[] nombres = new String[canciones.size()];
+        for (int n = 0; n < canciones.size(); n++) {
+            nombres[n] = canciones.get(n)[0];
+            listaFavoritas.add(canciones.get(n)[1]);
+        }
+        new AlertDialog.Builder(this).setTitle("📂 MÚSICA DEL MÓVIL · " + canciones.size() + " canciones")
+            .setItems(nombres, (dialog, index) -> {
+                modoLista = true;
+                posicionFavorita = index;
+                reproducir(Uri.parse(listaFavoritas.get(index)));
+            })
+            .setPositiveButton("▶ TODAS", (dialog, which) -> {
+                modoLista = true;
+                posicionFavorita = 0;
+                reproducir(Uri.parse(listaFavoritas.get(0)));
+            })
+            .setNeutralButton("🔀 AL AZAR", (dialog, which) -> {
+                modoLista = true;
+                posicionFavorita = new java.util.Random().nextInt(listaFavoritas.size());
+                reproducir(Uri.parse(listaFavoritas.get(posicionFavorita)));
+            })
+            .setNegativeButton("📁 OTRA CARPETA", (dialog, which) -> elegirCarpetaMusica()).show();
+    }
+
     private void reproducir(Uri uri) {
         if ("nas".equals(uri.getScheme())) { reproducirDelNas(uri); return; }
         reproducirArchivo(uri, uri);

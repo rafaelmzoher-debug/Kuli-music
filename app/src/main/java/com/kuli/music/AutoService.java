@@ -31,6 +31,10 @@ public class AutoService extends MediaBrowserService {
     private static final String CANAL = "kuli_auto";
     private static final String FAVS = "kuli_favs";
     private static final String RADIO = "kuli_radio";
+    private static final String CARPETA = "kuli_carpeta";
+    private final ArrayList<String> carIds = new ArrayList<>();
+    private final ArrayList<String> carNombres = new ArrayList<>();
+    private String cola = null; // "fav" o "car": de qué lista salen anterior y siguiente
     private boolean modoFav = false; // true = suenan las favoritas del móvil; false = radio
     private final ArrayList<String> favIds = new ArrayList<>();
     private final ArrayList<String> favNombres = new ArrayList<>();
@@ -67,9 +71,18 @@ public class AutoService extends MediaBrowserService {
                     reproducir(i >= 0 ? nombres.get(i) : "Radio", id);
                 } else {
                     modoFav = true;
-                    cargarFavoritas();
-                    int i = favIds.indexOf(id);
-                    reproducir(i >= 0 ? favNombres.get(i) : "Favorita", id);
+                    boolean car = "car".equals(cola) || (cola == null && id.contains("/tree/"));
+                    if (car) {
+                        cola = "car";
+                        if (!carIds.contains(id)) cargarCarpeta();
+                        int i = carIds.indexOf(id);
+                        reproducir(i >= 0 ? carNombres.get(i) : "Canción", id);
+                    } else {
+                        cola = "fav";
+                        cargarFavoritas();
+                        int i = favIds.indexOf(id);
+                        reproducir(i >= 0 ? favNombres.get(i) : "Favorita", id);
+                    }
                 }
             }
         });
@@ -103,7 +116,17 @@ public class AutoService extends MediaBrowserService {
 
     @Override public void onLoadChildren(String padre, final Result<List<MediaBrowser.MediaItem>> resultado) {
         if (RAIZ.equals(padre)) { resultado.sendResult(carpetas()); return; }
-        if (FAVS.equals(padre)) { cargarFavoritas(); resultado.sendResult(elementosFav()); return; }
+        if (FAVS.equals(padre)) { cola = "fav"; cargarFavoritas(); resultado.sendResult(elementosFav()); return; }
+        if (CARPETA.equals(padre)) {
+            cola = "car";
+            resultado.detach();
+            new Thread(() -> {
+                cargarCarpeta();
+                final List<MediaBrowser.MediaItem> l = elementosCar();
+                h.post(() -> resultado.sendResult(l));
+            }).start();
+            return;
+        }
         if (!RADIO.equals(padre)) { resultado.sendResult(new ArrayList<MediaBrowser.MediaItem>()); return; }
         if (!urls.isEmpty()) { resultado.sendResult(elementos()); return; }
         resultado.detach();
@@ -119,6 +142,11 @@ public class AutoService extends MediaBrowserService {
         l.add(new MediaBrowser.MediaItem(new MediaDescription.Builder()
                 .setMediaId(FAVS).setTitle("♥ Favoritas").setSubtitle("Música guardada en el móvil").build(),
                 MediaBrowser.MediaItem.FLAG_BROWSABLE));
+        if (getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getString("carpeta_musica", null) != null) {
+            l.add(new MediaBrowser.MediaItem(new MediaDescription.Builder()
+                    .setMediaId(CARPETA).setTitle("📂 Música del móvil").setSubtitle("La carpeta que elegiste").build(),
+                    MediaBrowser.MediaItem.FLAG_BROWSABLE));
+        }
         l.add(new MediaBrowser.MediaItem(new MediaDescription.Builder()
                 .setMediaId(RADIO).setTitle("Radio").setSubtitle("Emisoras en directo").build(),
                 MediaBrowser.MediaItem.FLAG_BROWSABLE));
@@ -146,6 +174,25 @@ public class AutoService extends MediaBrowserService {
         String nombre = android.net.Uri.parse(clave).getLastPathSegment();
         if (nombre == null) return null;
         return new java.io.File(new java.io.File(getCacheDir(), "nas"), nombre.replace('/', '_'));
+    }
+
+    private synchronized void cargarCarpeta() {
+        carIds.clear(); carNombres.clear();
+        String arbol = getSharedPreferences("kuli_ajustes", MODE_PRIVATE).getString("carpeta_musica", null);
+        if (arbol == null) return;
+        for (String[] p : CarpetaMusica.listar(getContentResolver(), android.net.Uri.parse(arbol))) {
+            carNombres.add(p[0]); carIds.add(p[1]);
+        }
+    }
+
+    private synchronized List<MediaBrowser.MediaItem> elementosCar() {
+        ArrayList<MediaBrowser.MediaItem> l = new ArrayList<>();
+        for (int i = 0; i < carIds.size(); i++) {
+            MediaDescription d = new MediaDescription.Builder()
+                    .setMediaId(carIds.get(i)).setTitle(carNombres.get(i)).setSubtitle("Música del móvil").build();
+            l.add(new MediaBrowser.MediaItem(d, MediaBrowser.MediaItem.FLAG_PLAYABLE));
+        }
+        return l;
     }
 
     private synchronized List<MediaBrowser.MediaItem> elementosFav() {
@@ -267,6 +314,15 @@ public class AutoService extends MediaBrowserService {
 
     private void saltar(int d) {
         if (modoFav) {
+            boolean car = "car".equals(cola) || (cola == null && urlActual != null && urlActual.contains("/tree/"));
+            if (car) {
+                if (carIds.isEmpty()) cargarCarpeta();
+                if (carIds.isEmpty()) return;
+                int k = carIds.indexOf(urlActual);
+                k = k < 0 ? 0 : (k + d + carIds.size()) % carIds.size();
+                reproducir(carNombres.get(k), carIds.get(k));
+                return;
+            }
             if (favIds.isEmpty()) cargarFavoritas();
             if (favIds.isEmpty()) return;
             int j = favIds.indexOf(urlActual);
