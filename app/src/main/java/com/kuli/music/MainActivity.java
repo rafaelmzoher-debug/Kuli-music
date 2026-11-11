@@ -285,6 +285,11 @@ public class MainActivity extends Activity {
         pantalla.addView(carpeta, lpCarp);
         carpeta.setOnClickListener(v -> abrirCarpetaMusica());
         carpeta.setOnLongClickListener(v -> { elegirCarpetaMusica(); return true; });
+        Button ordenar = pastilla("🧹  Ordenar música (álbumes · sueltas · duplicadas)", CONTORNO);
+        LinearLayout.LayoutParams lpOrd = new LinearLayout.LayoutParams(-1, dp(48));
+        lpOrd.topMargin = dp(10);
+        pantalla.addView(ordenar, lpOrd);
+        ordenar.setOnClickListener(v -> ordenarMusica());
         nas.setOnClickListener(v -> abrirListaNas());
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
@@ -1058,6 +1063,11 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
         super.onRequestPermissionsResult(codigo, permisos, resultados);
+        if (codigo == 202) {
+            if (resultados.length > 0 && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) ordenarMusica();
+            else aviso("Sin permiso no puedo ordenar la música");
+            return;
+        }
         if (codigo == 201) {
             ArrayList<String> r = pendienteMovil;
             pendienteMovil = null;
@@ -1554,6 +1564,73 @@ public class MainActivity extends Activity {
     }
 
     private ArrayList<String> pendienteMovil = null;
+
+    // ---------- Ordenar música: Álbumes / Sueltas / Duplicadas ----------
+    private void ordenarMusica() {
+        if (android.os.Build.VERSION.SDK_INT < 33
+                && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 202);
+            return;
+        }
+        final java.io.File base = carpetaMovil();
+        if (!base.exists()) { aviso("Aún no existe Música › KULI MUSIC"); return; }
+        aviso("Mirando tu música…");
+        new Thread(() -> {
+            final OrdenarMusica.Plan plan = OrdenarMusica.planear(base);
+            runOnUiThread(() -> resumenOrdenar(base, plan));
+        }).start();
+    }
+
+    private void resumenOrdenar(final java.io.File base, final OrdenarMusica.Plan plan) {
+        if (isDestroyed()) return;
+        final int guardadas = OrdenarMusica.duplicadasGuardadas(base).size();
+        String msg = plan.total + " canciones en Música › KULI MUSIC.\n\n"
+            + "• Álbumes: " + plan.enAlbumes + " canciones en " + plan.nAlbumes + " álbumes\n"
+            + "• Sueltas: " + plan.enSueltas + "\n"
+            + "• Repetidas: " + plan.duplicadas.size() + " (se apartan en «Duplicadas», no se borran)\n\n"
+            + "Se moverán " + (plan.mover.size() + plan.duplicadas.size()) + " archivos."
+            + (guardadas > 0 ? "\n\nYa hay " + guardadas + " en «Duplicadas» esperando a que las borres." : "");
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("🧹 Ordenar música").setMessage(msg)
+            .setNegativeButton("CANCELAR", null);
+        if (plan.mover.size() + plan.duplicadas.size() > 0) {
+            b.setPositiveButton("ORDENAR", (d, w) -> {
+                aviso("Ordenando… no cierres la app");
+                new Thread(() -> {
+                    int[] fallos = {0};
+                    java.util.ArrayList<String> rutas = OrdenarMusica.ejecutar(plan, base, fallos);
+                    android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null);
+                    final int nf = fallos[0];
+                    runOnUiThread(() -> {
+                        aviso(nf == 0 ? "✓ Música ordenada" : "Ordenada, pero " + nf + " archivos no se pudieron mover");
+                        if (!isDestroyed() && !OrdenarMusica.duplicadasGuardadas(base).isEmpty()) revisarDuplicadas(base);
+                    });
+                }).start();
+            });
+        }
+        if (guardadas > 0) b.setNeutralButton("🗑 DUPLICADAS", (d, w) -> revisarDuplicadas(base));
+        b.show();
+    }
+
+    private void revisarDuplicadas(final java.io.File base) {
+        final java.util.ArrayList<java.io.File> l = OrdenarMusica.duplicadasGuardadas(base);
+        if (l.isEmpty()) { aviso("No hay duplicadas"); return; }
+        String[] nombres = new String[l.size()];
+        for (int i = 0; i < nombres.length; i++) nombres[i] = l.get(i).getName();
+        new AlertDialog.Builder(this).setTitle("🗑 " + l.size() + " canciones repetidas")
+            .setItems(nombres, null)
+            .setPositiveButton("BORRAR TODAS", (d, w) -> new AlertDialog.Builder(this)
+                .setTitle("¿Seguro?").setMessage("Se borrarán " + l.size() + " canciones repetidas. No se pueden recuperar.")
+                .setPositiveButton("BORRAR", (d2, w2) -> {
+                    int n = 0;
+                    java.util.ArrayList<String> rutas = new java.util.ArrayList<>();
+                    for (java.io.File f : l) { rutas.add(f.getAbsolutePath()); if (f.delete()) n++; }
+                    android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null);
+                    aviso("Borradas " + n);
+                })
+                .setNegativeButton("NO", null).show())
+            .setNegativeButton("DEJARLAS", null).show();
+    }
 
     private void llevarAlMovil(final ArrayList<String> rutas) {
         if (android.os.Build.VERSION.SDK_INT < 33
