@@ -1,13 +1,27 @@
 plugins { id("com.android.application") }
 android {
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file(".kuli/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+    packaging {
+        resources {
+            excludes += setOf("META-INF/versions/**", "META-INF/DEPENDENCIES", "META-INF/INDEX.LIST", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module")
+            pickFirsts += setOf("META-INF/MANIFEST.MF", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        }
+    }
     namespace = "com.kuli.ordenes"
     compileSdk = 35
     defaultConfig {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
         targetSdk = 28
-        versionCode = 22
-        versionName = "2.11"
+        versionCode = 23
+        versionName = "2.12"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -22,5 +36,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("androidx.activity:activity:1.9.3")
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") { exclude(group = "org.bouncycastle") }
 }
