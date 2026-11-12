@@ -269,6 +269,46 @@ public class MainActivity extends Activity {
             + (faltan == 0 ? "\nTodo lo apuntado como gastado está repuesto." : "\nTe faltan " + faltan + " por reponer.");
     }
 
+    // ---------- Historial de albaranes cargados (día y hora) ----------
+    private File fHistorial() { return new File(raiz, "Historial_albaranes.txt"); }
+
+    private String datoDe(File f, String clave) {
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            for (String l : new String(leerTodo(in), "UTF-8").split("\\r?\\n")) {
+                l = l.trim();
+                if (l.startsWith(clave + ";")) return l.substring(clave.length() + 1).trim();
+            }
+        } catch (Exception ignorar) { }
+        return "";
+    }
+
+    private void apuntarHistorial(File f, int antes, int despues, boolean pdf) {
+        try {
+            String id = datoDe(f, "ALBARAN");
+            String fecha = datoDe(f, "FECHA");
+            String linea = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ROOT).format(new Date())
+                + " | " + (id.isEmpty() ? f.getName() : id)
+                + (fecha.isEmpty() ? "" : " | albarán del " + fecha)
+                + " | " + (despues >= antes ? "+" : "") + (despues - antes) + " unidades"
+                + " | " + (pdf ? "PDF" : "texto") + "\n";
+            try (FileOutputStream o = new FileOutputStream(fHistorial(), true)) { o.write(linea.getBytes("UTF-8")); }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Historial", e); }
+    }
+
+    private void mostrarHistorial() {
+        ArrayList<String> ls = new ArrayList<>();
+        try {
+            if (fHistorial().exists()) try (InputStream in = new java.io.FileInputStream(fHistorial())) {
+                for (String l : new String(leerTodo(in), "UTF-8").split("\\r?\\n")) if (!l.trim().isEmpty()) ls.add(l.trim());
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Leyendo historial", e); }
+        Collections.reverse(ls);
+        new AlertDialog.Builder(this).setTitle("🕒 Albaranes cargados")
+            .setMessage(ls.isEmpty() ? "Todavía no hay ninguno apuntado. Se apuntan solos al cargar un albarán, con el día y la hora."
+                : android.text.TextUtils.join("\n\n", ls))
+            .setPositiveButton("CERRAR", null).show();
+    }
+
     private void hacerAlbaran(File f, boolean vaciar, AlbaranPdf.Resultado pdf) {
         try {
             java.util.TreeMap<String, Integer> antes = fotoAlmacen();
@@ -290,6 +330,8 @@ public class MainActivity extends Activity {
             sb.append("\nAlmacén: ").append(totalAntes).append(" → ").append(almacen.total()).append(" unidades");
             if (pdf != null) sb.append(comprobarReposicion(pdf));
             aviso("✓ " + r);
+            apuntarHistorial(f, totalAntes, almacen.total(), pdf != null);
+            sb.insert(0, "Cargado el " + new SimpleDateFormat("dd/MM/yyyy 'a las' HH:mm", Locale.ROOT).format(new Date()) + "\n\n");
             new AlertDialog.Builder(this).setTitle("✓ Albarán cargado").setMessage(sb.toString()).setPositiveButton("OK", null).show();
         } catch (IllegalStateException e) {
             aviso("Ese albarán ya estaba cargado");
@@ -1025,14 +1067,19 @@ public class MainActivity extends Activity {
         fila3.addView(des3, lz);
         p.addView(fila3, margen(-1, -2, 8));
         LinearLayout fila4 = new LinearLayout(this);
-        Button rec = boton("⬇  Copia del NAS", false);
+        Button rec = boton("⬇ NAS", false);
         rec.setOnClickListener(v -> recuperarNas());
         fila4.addView(rec, new LinearLayout.LayoutParams(0, dp(46), 1f));
-        Button cop = boton("🛟  Copias", false);
+        Button cop = boton("🛟 Copias", false);
         cop.setOnClickListener(v -> mostrarCopias());
         LinearLayout.LayoutParams lc = new LinearLayout.LayoutParams(0, dp(46), 1f);
-        lc.leftMargin = dp(10);
+        lc.leftMargin = dp(8);
         fila4.addView(cop, lc);
+        Button his = boton("🕒 Albaranes", false);
+        his.setOnClickListener(v -> mostrarHistorial());
+        LinearLayout.LayoutParams lh = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lh.leftMargin = dp(8);
+        fila4.addView(his, lh);
         p.addView(fila4, margen(-1, -2, 8));
 
         if (items.isEmpty()) {
