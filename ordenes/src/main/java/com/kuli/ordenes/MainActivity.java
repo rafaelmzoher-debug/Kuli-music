@@ -208,7 +208,68 @@ public class MainActivity extends Activity {
         return m;
     }
 
-    private void hacerAlbaran(File f, boolean vaciar) {
+    private void hacerAlbaran(File f, boolean vaciar) { hacerAlbaran(f, vaciar, null); }
+
+    // ---------- Gastos pendientes de reponer ----------
+    private File fGastos() { return new File(raiz, "gastos_pendientes.txt"); }
+
+    private ArrayList<String> leerGastos() {
+        ArrayList<String> r = new ArrayList<>();
+        try {
+            if (!fGastos().exists()) return r;
+            try (InputStream in = new java.io.FileInputStream(fGastos())) {
+                for (String l : new String(leerTodo(in), "UTF-8").split("\\r?\\n")) if (!l.trim().isEmpty()) r.add(l.trim());
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Leyendo gastos", e); }
+        return r;
+    }
+
+    private void escribirGastos(ArrayList<String> ls) {
+        try (FileOutputStream o = new FileOutputStream(fGastos())) {
+            o.write((android.text.TextUtils.join("\n", ls) + (ls.isEmpty() ? "" : "\n")).getBytes("UTF-8"));
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Guardando gastos", e); }
+    }
+
+    private void apuntarGasto(String codigo, String orden) {
+        ArrayList<String> ls = leerGastos();
+        ls.add(codigo + ";" + orden + ";" + new SimpleDateFormat("dd/MM/yyyy", Locale.ROOT).format(new Date()));
+        escribirGastos(ls);
+    }
+
+    private void quitarGasto(String codigo, String orden) {
+        ArrayList<String> ls = leerGastos();
+        for (int i = ls.size() - 1; i >= 0; i--) {
+            String[] p = ls.get(i).split(";");
+            if (p.length > 1 && p[0].equals(codigo) && p[1].equals(orden)) { ls.remove(i); break; }
+        }
+        escribirGastos(ls);
+    }
+
+    // Compara lo que has gastado en tus órdenes con lo que trae el albarán, y apunta lo que sigue pendiente.
+    private String comprobarReposicion(AlbaranPdf.Resultado r) {
+        ArrayList<String> ls = leerGastos();
+        java.util.TreeMap<String, Integer> g = new java.util.TreeMap<>();
+        for (String l : ls) { String c = l.split(";")[0]; Integer n = g.get(c); g.put(c, n == null ? 1 : n + 1); }
+        java.util.TreeSet<String> codigos = new java.util.TreeSet<>(g.keySet());
+        codigos.addAll(r.entregado.keySet());
+        StringBuilder sb = new StringBuilder();
+        int faltan = 0;
+        for (String c : codigos) {
+            int gas = g.containsKey(c) ? g.get(c) : 0, rep = r.entregado.containsKey(c) ? r.entregado.get(c) : 0;
+            String nom = r.nombres.containsKey(c) ? r.nombres.get(c) : (almacen.buscar(c) != null ? almacen.buscar(c).nombre : c);
+            if (gas == 0) { sb.append("ℹ ").append(nom).append(": llegan ").append(rep).append(" (sin gasto apuntado)\n"); continue; }
+            if (rep >= gas) sb.append("✓ ").append(nom).append(": gastado ").append(gas).append(" · repuesto ").append(rep)
+                .append(rep > gas ? " (sobran " + (rep - gas) + ")" : "").append("\n");
+            else { sb.append("⚠ ").append(nom).append(": gastado ").append(gas).append(" · repuesto ").append(rep).append(" → FALTAN ").append(gas - rep).append("\n"); faltan += gas - rep; }
+            int quitar = Math.min(gas, rep);
+            for (int i = ls.size() - 1; i >= 0 && quitar > 0; i--) if (ls.get(i).split(";")[0].equals(c)) { ls.remove(i); quitar--; }
+        }
+        escribirGastos(ls);
+        return "\n\nREPOSICIÓN (lo gastado en tus órdenes contra este albarán):\n" + sb
+            + (faltan == 0 ? "\nTodo lo apuntado como gastado está repuesto." : "\nTe faltan " + faltan + " por reponer.");
+    }
+
+    private void hacerAlbaran(File f, boolean vaciar, AlbaranPdf.Resultado pdf) {
         try {
             java.util.TreeMap<String, Integer> antes = fotoAlmacen();
             int totalAntes = almacen.total();
@@ -227,6 +288,7 @@ public class MainActivity extends Activity {
             }
             if (cambios == 0) sb.append("Ninguno.\n");
             sb.append("\nAlmacén: ").append(totalAntes).append(" → ").append(almacen.total()).append(" unidades");
+            if (pdf != null) sb.append(comprobarReposicion(pdf));
             aviso("✓ " + r);
             new AlertDialog.Builder(this).setTitle("✓ Albarán cargado").setMessage(sb.toString()).setPositiveButton("OK", null).show();
         } catch (IllegalStateException e) {
@@ -274,7 +336,7 @@ public class MainActivity extends Activity {
                         o.write(("Albarán " + r.id + " (" + r.fecha + ")\n" + r.trabajos).getBytes("UTF-8"));
                     }
                 }
-                runOnUiThread(() -> hacerAlbaran(f, false));
+                runOnUiThread(() -> hacerAlbaran(f, false, r));
             } catch (Throwable t) {
                 android.util.Log.e("KULI_ORDENES", "Leyendo PDF", t);
                 runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("No he podido leer el PDF")
@@ -1286,6 +1348,7 @@ public class MainActivity extends Activity {
                 if (a[0].equals("USA")) {
                     if (almacen.buscar(a[2]) == null) almacen.crear(a[2], a[3], raw); else almacen.sumar(a[2], raw);
                     quitarUltimaLinea(a[1]);
+                    quitarGasto(a[2], a[1]);
                 } else {
                     almacen.gastar(a[2], raw);
                     if (a[0].equals("BAJA")) quitarUltimaLinea(a[1]);
@@ -1541,6 +1604,7 @@ public class MainActivity extends Activity {
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
         pila("USA", orden, clave, nombre, raw == null ? "" : raw);
+        apuntarGasto(clave, orden);
         anotarMaterial(orden, raw != null ? raw : clave, nombre, clave);
         final Runnable seguirR = () -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); };
         Almacen.Item despues = almacen.buscar(clave);

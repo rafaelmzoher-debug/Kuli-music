@@ -15,6 +15,8 @@ final class AlbaranPdf {
         String texto = "";        // formato del almacén (ALBARAN; S; C)
         String trabajos = "";     // trabajo | dirección | material
         int series, cantidades;
+        java.util.LinkedHashMap<String, Integer> entregado = new java.util.LinkedHashMap<>(); // código -> unidades que llegan
+        java.util.HashMap<String, String> nombres = new java.util.HashMap<>();
     }
 
     private static final Pattern ENT = Pattern.compile("^(\\d{8})\\s*-\\s*(.+?)\\s+(\\d+)\\s+UD\\b.*$");
@@ -95,6 +97,12 @@ final class AlbaranPdf {
             r.cantidades += Integer.parseInt(e.getValue()[1]);
         }
         r.texto = b.toString();
+        for (String[] x : ser) { Integer c = r.entregado.get(x[0]); r.entregado.put(x[0], c == null ? 1 : c + 1); r.nombres.put(x[0], x[1]); }
+        for (java.util.Map.Entry<String, String[]> e : ent.entrySet()) {
+            if (conSerie.contains(e.getKey())) continue;
+            r.entregado.put(e.getKey(), Integer.parseInt(e.getValue()[1]));
+            r.nombres.put(e.getKey(), e.getValue()[0]);
+        }
 
         StringBuilder tr = new StringBuilder();
         for (java.util.Map.Entry<String, String> e : dir.entrySet())
