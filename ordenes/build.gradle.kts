@@ -6,12 +6,14 @@ android {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
         targetSdk = 28
-        versionCode = 19
-        versionName = "2.8"
+        versionCode = 20
+        versionName = "2.9"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
+    // Una sola versión de Kotlin para todas las librerías (evita "Duplicate class kotlin...").
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22"))
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.hierynomus:smbj:0.13.0")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
