@@ -169,6 +169,27 @@ public class MainActivity extends Activity {
         for (int i = 0; i < fs.length; i++) nombres[i] = fs[i].getName();
         new AlertDialog.Builder(this).setTitle("¿Qué albarán cargo?")
             .setItems(nombres, (d, i) -> confirmarAlbaran(fs[i]))
+            .setNeutralButton("📋 PEGAR TEXTO", (d, w) -> pegarAlbaran(dir))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    // Sin pasar archivos: se copia el texto del albarán o de los gastos desde el chat y se pega aquí.
+    private void pegarAlbaran(final File dir) {
+        final EditText campo = new EditText(this);
+        campo.setHint("Pega aquí el texto (empieza por «ALBARAN;…»)");
+        campo.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        campo.setMinLines(6);
+        campo.setGravity(Gravity.TOP);
+        campo.setTextSize(13);
+        new AlertDialog.Builder(this).setTitle("Pegar texto del albarán").setView(campo)
+            .setPositiveButton("CARGAR", (d, w) -> {
+                String t = campo.getText().toString().trim();
+                if (t.isEmpty()) { aviso("No has pegado nada"); return; }
+                File f = new File(dir, "pegado_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(new Date()) + ".txt");
+                try (FileOutputStream o = new FileOutputStream(f)) { o.write((t + "\n").getBytes("UTF-8")); }
+                catch (Exception e) { aviso("No he podido guardar el texto"); return; }
+                hacerAlbaran(f, false);
+            })
             .setNegativeButton("CANCELAR", null).show();
     }
 
