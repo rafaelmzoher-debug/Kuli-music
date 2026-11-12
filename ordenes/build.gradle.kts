@@ -1,5 +1,13 @@
 plugins { id("com.android.application") }
 android {
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file(".kuli/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     namespace = "com.kuli.ordenes"
     compileSdk = 35
     defaultConfig {
