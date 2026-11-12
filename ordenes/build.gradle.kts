@@ -6,8 +6,8 @@ android {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
         targetSdk = 28
-        versionCode = 21
-        versionName = "2.10"
+        versionCode = 22
+        versionName = "2.11"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -22,4 +22,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("androidx.activity:activity:1.9.3")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }

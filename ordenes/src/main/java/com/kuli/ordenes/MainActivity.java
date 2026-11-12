@@ -169,6 +169,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < fs.length; i++) nombres[i] = fs[i].getName();
         new AlertDialog.Builder(this).setTitle("¿Qué albarán cargo?")
             .setItems(nombres, (d, i) -> confirmarAlbaran(fs[i]))
+            .setPositiveButton("📄 DESDE PDF", (d, w) -> elegirPdf())
             .setNeutralButton("📋 PEGAR TEXTO", (d, w) -> pegarAlbaran(dir))
             .setNegativeButton("CANCELAR", null).show();
     }
@@ -201,9 +202,33 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show();
     }
 
+    private java.util.TreeMap<String, Integer> fotoAlmacen() {
+        java.util.TreeMap<String, Integer> m = new java.util.TreeMap<>();
+        for (Almacen.Item it : almacen.lista()) m.put(it.nombre + "|" + it.codigo, it.cantidad);
+        return m;
+    }
+
     private void hacerAlbaran(File f, boolean vaciar) {
         try {
-            aviso("✓ " + almacen.importarAlbaran(f, vaciar));
+            java.util.TreeMap<String, Integer> antes = fotoAlmacen();
+            int totalAntes = almacen.total();
+            String r = almacen.importarAlbaran(f, vaciar);
+            java.util.TreeMap<String, Integer> despues = fotoAlmacen();
+            StringBuilder sb = new StringBuilder(r).append("\n\nCambios por material:\n");
+            java.util.TreeSet<String> claves = new java.util.TreeSet<>(antes.keySet());
+            claves.addAll(despues.keySet());
+            int cambios = 0;
+            for (String k : claves) {
+                int a = antes.containsKey(k) ? antes.get(k) : 0, d = despues.containsKey(k) ? despues.get(k) : 0;
+                if (a == d) continue;
+                cambios++;
+                sb.append(d > a ? "➕ " : "➖ ").append(k.substring(0, k.indexOf('|'))).append(": ").append(d > a ? "+" : "").append(d - a)
+                  .append("  (ahora ").append(d).append(")\n");
+            }
+            if (cambios == 0) sb.append("Ninguno.\n");
+            sb.append("\nAlmacén: ").append(totalAntes).append(" → ").append(almacen.total()).append(" unidades");
+            aviso("✓ " + r);
+            new AlertDialog.Builder(this).setTitle("✓ Albarán cargado").setMessage(sb.toString()).setPositiveButton("OK", null).show();
         } catch (IllegalStateException e) {
             aviso("Ese albarán ya estaba cargado");
         } catch (Exception e) {
@@ -211,6 +236,118 @@ public class MainActivity extends Activity {
             aviso("No he podido leer ese archivo");
         }
         mostrarAlmacen();
+    }
+
+    // ---------- Albarán desde el PDF ----------
+    private void elegirPdf() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/pdf");
+        try { startActivityForResult(i, PIDE_PDF); }
+        catch (Exception e) { aviso("No se pudo abrir el selector de archivos"); }
+    }
+
+    private void importarPdf(final Uri uri) {
+        aviso("Leyendo el PDF…");
+        hilos.execute(() -> {
+            try {
+                com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(getApplicationContext());
+                InputStream in = getContentResolver().openInputStream(uri);
+                byte[] datos;
+                try { datos = leerTodo(in); } finally { in.close(); }
+                final AlbaranPdf.Resultado r = AlbaranPdf.leer(datos);
+                if (r.series + r.cantidades == 0) {
+                    runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("No he encontrado material")
+                        .setMessage("No he podido leer materiales en ese PDF. Mándame una captura del PDF y lo miro.")
+                        .setPositiveButton("OK", null).show());
+                    return;
+                }
+                File dir = new File(raiz, "Albaranes");
+                dir.mkdirs();
+                String nombre = "pdf_" + r.id.replace('/', '_') + ".txt";
+                final File f = new File(dir, nombre);
+                try (FileOutputStream o = new FileOutputStream(f)) { o.write(r.texto.getBytes("UTF-8")); }
+                if (!r.trabajos.isEmpty()) {
+                    File td = new File(raiz, "Trabajos");
+                    td.mkdirs();
+                    try (FileOutputStream o = new FileOutputStream(new File(td, r.id.replace('/', '_') + ".txt"))) {
+                        o.write(("Albarán " + r.id + " (" + r.fecha + ")\n" + r.trabajos).getBytes("UTF-8"));
+                    }
+                }
+                runOnUiThread(() -> hacerAlbaran(f, false));
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Leyendo PDF", t);
+                runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("No he podido leer el PDF")
+                    .setMessage("Error: " + t.getClass().getSimpleName() + ". Usa «PEGAR TEXTO» mientras lo arreglo.")
+                    .setPositiveButton("OK", null).show());
+            }
+        });
+    }
+
+    // ---------- Copias de seguridad del almacén ----------
+    private void mostrarCopias() {
+        final ArrayList<File> cs = almacen.copias();
+        if (cs.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("🛟 Copias del almacén")
+                .setMessage("Todavía no hay copias. Se hacen solas cada vez que cambias el almacén.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
+        String[] nombres = new String[cs.size()];
+        for (int i = 0; i < nombres.length; i++) {
+            String n = cs.get(i).getName().replace("almacen_", "").replace(".json", "");
+            String bonito = n.length() >= 15 ? n.substring(6, 8) + "/" + n.substring(4, 6) + "  " + n.substring(9, 11) + ":" + n.substring(11, 13) : n;
+            int u = almacen.unidadesDe(cs.get(i));
+            nombres[i] = bonito + "  ·  " + (u < 0 ? "?" : String.valueOf(u)) + " unidades";
+        }
+        new AlertDialog.Builder(this).setTitle("🛟 Volver a una copia")
+            .setItems(nombres, (d, i) -> new AlertDialog.Builder(this).setTitle("¿Volver a esta copia?")
+                .setMessage(nombres[i] + "\n\nAntes de cambiar se guarda una copia de lo de ahora.")
+                .setPositiveButton("VOLVER", (d2, w) -> {
+                    boolean ok = almacen.restaurar(cs.get(i));
+                    aviso(ok ? "✓ Almacén recuperado" : "No se pudo recuperar");
+                    mostrarAlmacen();
+                })
+                .setNegativeButton("CANCELAR", null).show())
+            .setNegativeButton("CERRAR", null).show();
+    }
+
+    // ---------- Resumen de trabajos ----------
+    private void resumenTrabajos() {
+        StringBuilder sb = new StringBuilder("📍 TRABAJOS · " + formatoLargo(System.currentTimeMillis()) + "\n\n");
+        sb.append("ÓRDENES (WK) CON MATERIAL:\n");
+        int n = 0;
+        for (Resumen r : listarOrdenes()) {
+            ArrayList<String> mat = leerMaterial(r.nombre);
+            if (mat.isEmpty()) continue;
+            n++;
+            sb.append("• ").append(r.nombre).append("\n");
+            for (String l : mat) {
+                String[] p = l.split(" \\| ");
+                if (p.length < 2) continue;
+                sb.append("    - ").append(p[1].trim());
+                if (p.length > 2 && !p[2].trim().isEmpty()) sb.append(" (").append(p[2].trim()).append(")");
+                sb.append("\n");
+            }
+        }
+        if (n == 0) sb.append("(ninguna con material apuntado)\n");
+        File td = new File(raiz, "Trabajos");
+        File[] fs = td.listFiles((x, nm) -> nm.endsWith(".txt"));
+        if (fs != null && fs.length > 0) {
+            Arrays.sort(fs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            sb.append("\nTRABAJOS DEL ÚLTIMO ALBARÁN PDF (dirección):\n");
+            try (InputStream in = new java.io.FileInputStream(fs[0])) { sb.append(new String(leerTodo(in), "UTF-8")); }
+            catch (Exception e) { sb.append("(no se pudo leer)\n"); }
+        }
+        final String texto = sb.toString();
+        new AlertDialog.Builder(this).setTitle("📍 Resumen de trabajos").setMessage(texto)
+            .setPositiveButton("ENVIAR", (d, w) -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, texto);
+                startActivity(Intent.createChooser(i, "Enviar resumen"));
+            })
+            .setNegativeButton("CERRAR", null).show();
     }
 
     @Override protected void onDestroy() {
@@ -307,6 +444,9 @@ public class MainActivity extends Activity {
         lmes.leftMargin = dp(10);
         filaC.addView(mes, lmes);
         p.addView(filaC, margen(-1, -2, 4));
+        Button res = boton("📍 Resumen de trabajos (WK y direcciones)", false);
+        res.setOnClickListener(v -> resumenTrabajos());
+        p.addView(res, margen(-1, dp(46), 4));
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -595,7 +735,7 @@ public class MainActivity extends Activity {
 
     private Consumer<String> escAlLeer;
     private Runnable escAlTerminar;
-    static final int PIDE_ESCANER = 4;
+    static final int PIDE_ESCANER = 4, PIDE_PDF = 5;
 
     // Escáner propio (cámara en alta resolución). Si falla, se puede cambiar al de Google desde su pantalla.
     private void escanear(final Consumer<String> alLeer, final Runnable alTerminar) {
@@ -822,9 +962,16 @@ public class MainActivity extends Activity {
         lz.leftMargin = dp(8);
         fila3.addView(des3, lz);
         p.addView(fila3, margen(-1, -2, 8));
-        Button rec = boton("⬇  Recuperar copia del NAS", false);
+        LinearLayout fila4 = new LinearLayout(this);
+        Button rec = boton("⬇  Copia del NAS", false);
         rec.setOnClickListener(v -> recuperarNas());
-        p.addView(rec, margen(-1, dp(46), 8));
+        fila4.addView(rec, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button cop = boton("🛟  Copias", false);
+        cop.setOnClickListener(v -> mostrarCopias());
+        LinearLayout.LayoutParams lc = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lc.leftMargin = dp(10);
+        fila4.addView(cop, lc);
+        p.addView(fila4, margen(-1, -2, 8));
 
         if (items.isEmpty()) {
             TextView v = texto("El almacén está vacío.\nEscanea el código de una caja para añadirla.", 14, GRIS, false);
@@ -1503,6 +1650,10 @@ public class MainActivity extends Activity {
             if (res == RESULT_OK && raw != null && !raw.trim().isEmpty() && l != null) recibirLectura(raw.trim(), l);
             else if (res == RESULT_FIRST_USER && l != null) escanearGoogle(l, t);
             else if (t != null) t.run();
+            return;
+        }
+        if (cod == PIDE_PDF) {
+            if (res == RESULT_OK && datos != null && datos.getData() != null) importarPdf(datos.getData());
             return;
         }
         if (res != RESULT_OK) return;

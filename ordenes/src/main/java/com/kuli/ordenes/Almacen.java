@@ -40,7 +40,7 @@ final class Almacen {
     synchronized void cargar() {
         items.clear();
         try {
-            if (!archivo.exists()) return;
+            if (!archivo.exists()) { restaurarUltimaSiHay(); return; }
             ByteArrayOutputStream o = new ByteArrayOutputStream();
             try (InputStream in = new FileInputStream(archivo)) {
                 byte[] buf = new byte[8192];
@@ -68,7 +68,113 @@ final class Almacen {
             }
         } catch (Exception e) {
             android.util.Log.e("KULI_ORDENES", "Leyendo almacén", e);
+            items.clear();
+            // el archivo está roto: se aparta y se vuelve a la última copia buena
+            try { archivo.renameTo(new File(archivo.getParentFile(), "almacen_roto_" + marca() + ".json")); } catch (Exception ignorar) { }
+            restaurarUltimaSiHay();
         }
+    }
+
+    // ---- Copias de seguridad ----
+    private static String marca() { return new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(new java.util.Date()); }
+
+    File carpetaCopias() { return new File(archivo.getParentFile(), "Copias"); }
+
+    synchronized ArrayList<File> copias() {
+        ArrayList<File> r = new ArrayList<>();
+        File[] fs = carpetaCopias().listFiles((x, n) -> n.startsWith("almacen_") && n.endsWith(".json"));
+        if (fs != null) for (File f : fs) r.add(f);
+        Collections.sort(r, (a, b) -> b.getName().compareTo(a.getName()));
+        return r;
+    }
+
+    // Cuenta las unidades de una copia (para enseñarlo en la lista).
+    int unidadesDe(File f) {
+        try {
+            ByteArrayOutputStream o = new ByteArrayOutputStream();
+            try (InputStream in = new FileInputStream(f)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+            }
+            JSONArray a = new JSONArray(new String(o.toByteArray(), "UTF-8"));
+            int t = 0;
+            for (int i = 0; i < a.length(); i++) t += a.getJSONObject(i).optInt("cantidad", 0);
+            return t;
+        } catch (Exception e) { return -1; }
+    }
+
+    private void copiarArchivo(File de, File a) throws Exception {
+        a.getParentFile().mkdirs();
+        try (InputStream in = new FileInputStream(de); FileOutputStream o = new FileOutputStream(a)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+        }
+    }
+
+    // Guarda una copia del almacén tal como estaba antes de cambiarlo (como mucho una cada 3 minutos, y siempre si se va a vaciar).
+    private void copiaAntesDeGuardar(boolean vaciando) {
+        try {
+            if (!archivo.exists() || archivo.length() < 3) return;
+            ArrayList<File> cs = copias();
+            if (!vaciando && !cs.isEmpty() && System.currentTimeMillis() - cs.get(0).lastModified() < 3 * 60 * 1000L) return;
+            copiarArchivo(archivo, new File(carpetaCopias(), "almacen_" + marca() + ".json"));
+            cs = copias();
+            for (int i = 40; i < cs.size(); i++) cs.get(i).delete();
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Copia del almacén", e); }
+    }
+
+    // Devuelve el almacén a una copia. Antes guarda una copia de lo actual.
+    synchronized boolean restaurar(File copia) {
+        try {
+            copiaAntesDeGuardar(true);
+            copiarArchivo(copia, archivo);
+            cargar();
+            return true;
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Restaurando", e); return false; }
+    }
+
+    private void restaurarUltimaSiHay() {
+        try {
+            for (File c : copias()) {
+                if (unidadesDe(c) <= 0) continue;
+                copiarArchivo(c, archivo);
+                cargarSinRestaurar();
+                return;
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Restaurando última copia", e); }
+    }
+
+    private void cargarSinRestaurar() {
+        try {
+            ByteArrayOutputStream o = new ByteArrayOutputStream();
+            try (InputStream in = new FileInputStream(archivo)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+            }
+            JSONArray a = new JSONArray(new String(o.toByteArray(), "UTF-8"));
+            items.clear();
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject j = a.getJSONObject(i);
+                Item it = new Item();
+                it.codigo = j.getString("codigo");
+                it.nombre = j.optString("nombre", it.codigo);
+                it.cantidad = j.optInt("cantidad", 1);
+                it.fecha = j.optLong("fecha", 0);
+                it.minimo = j.optInt("minimo", 0);
+                JSONArray rr = j.optJSONArray("raws");
+                if (rr != null) for (int k = 0; k < rr.length(); k++) it.raws.add(rr.getString(k));
+                JSONObject ff = j.optJSONObject("fechas");
+                if (ff != null) {
+                    java.util.Iterator<String> ks = ff.keys();
+                    while (ks.hasNext()) { String k = ks.next(); it.fechas.put(k, ff.optLong(k, it.fecha)); }
+                }
+                for (String r : it.raws) if (!it.fechas.containsKey(r)) it.fechas.put(r, it.fecha > 0 ? it.fecha : System.currentTimeMillis());
+                items.add(it);
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Leyendo copia", e); items.clear(); }
     }
 
     synchronized void guardar() {
@@ -94,7 +200,16 @@ final class Almacen {
                 a.put(j);
             }
             archivo.getParentFile().mkdirs();
-            try (FileOutputStream o = new FileOutputStream(archivo)) { o.write(a.toString().getBytes("UTF-8")); }
+            copiaAntesDeGuardar(items.isEmpty());
+            File tmp = new File(archivo.getParentFile(), "almacen.json.tmp");
+            try (FileOutputStream o = new FileOutputStream(tmp)) {
+                o.write(a.toString().getBytes("UTF-8"));
+                o.getFD().sync();
+            }
+            if (!tmp.renameTo(archivo)) {
+                try (FileOutputStream o = new FileOutputStream(archivo)) { o.write(a.toString().getBytes("UTF-8")); }
+                tmp.delete();
+            }
         } catch (Exception e) {
             android.util.Log.e("KULI_ORDENES", "Guardando almacén", e);
         }
