@@ -60,7 +60,7 @@ import java.util.Collections;
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 100;
     private static final int PICK_SUBIR = 101;
-    private static final int PICK_CARPETA = 102;
+    private static final int PICK_CARPETA = 102, PICK_DESCARGAS = 104;
     static MainActivity instancia;
     private static final String NAS_IP_DEFECTO = "192.168.1.46";
     private String nasIp() {
@@ -375,6 +375,13 @@ public class MainActivity extends Activity {
         lpAjustes.topMargin = dp(0);
         pantalla.addView(filaAjustes, lpAjustes);
 
+        TextView descargas = texto("🆕  Clasificar descargas (Prism · NoTube)", 13, DORADO);
+        descargas.setPadding(dp(12), dp(6), dp(12), dp(6));
+        descargas.setGravity(Gravity.CENTER_HORIZONTAL);
+        descargas.setOnClickListener(v -> clasificarDescargas());
+        descargas.setOnLongClickListener(v -> { elegirCarpetaDescargas(); return true; });
+        pantalla.addView(descargas, new LinearLayout.LayoutParams(-1, -2));
+
         TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
         pie.setAlpha(0.7f);
         pie.setLetterSpacing(0.2f);
@@ -531,6 +538,15 @@ public class MainActivity extends Activity {
             abrirCarpetaMusica();
             return;
         }
+        if (requestCode == PICK_DESCARGAS && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri arbol = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(arbol, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) { }
+            getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("carpeta_descargas", arbol.toString()).apply();
+            clasificarDescargas();
+            return;
+        }
         if (requestCode == PICK_AUDIO && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             try {
@@ -540,6 +556,60 @@ public class MainActivity extends Activity {
             reproducir(uri);
         }
     }
+    // ---------- Clasificar las descargas de Prism / NoTube en las carpetas del NAS ----------
+    private void elegirCarpetaDescargas() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, PICK_DESCARGAS);
+    }
+
+    private synchronized void marcarDescargaHecha(Uri uri) {
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        java.util.HashSet<String> hechas = new java.util.HashSet<>(aj.getStringSet("descargas_hechas", new java.util.HashSet<String>()));
+        hechas.add(uri.toString());
+        aj.edit().putStringSet("descargas_hechas", hechas).apply();
+    }
+
+    private void clasificarDescargas() {
+        if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para subir al NAS"); return; }
+        final SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        String guardada = aj.getString("carpeta_descargas", null);
+        if (guardada == null) { aviso("Elige la carpeta donde Prism y NoTube guardan las canciones"); elegirCarpetaDescargas(); return; }
+        final Uri arbol = Uri.parse(guardada);
+        aviso("Buscando canciones nuevas…");
+        new Thread(() -> {
+            ArrayList<String[]> todas = CarpetaMusica.listar(getContentResolver(), arbol);
+            java.util.Set<String> hechas = new java.util.HashSet<>(aj.getStringSet("descargas_hechas", new java.util.HashSet<String>()));
+            final ArrayList<String[]> nuevas = new ArrayList<>();
+            for (String[] c : todas) if (!hechas.contains(c[1])) nuevas.add(c);
+            runOnUiThread(() -> mostrarDescargasNuevas(nuevas));
+        }).start();
+    }
+
+    private void mostrarDescargasNuevas(final ArrayList<String[]> nuevas) {
+        if (nuevas.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("🆕 Descargas")
+                .setMessage("No hay canciones nuevas en esa carpeta. Si no es la carpeta correcta, elige otra.")
+                .setPositiveButton("OK", null)
+                .setNeutralButton("📂 OTRA CARPETA", (d, w) -> elegirCarpetaDescargas()).show();
+            return;
+        }
+        final String[] nombres = new String[nuevas.size()];
+        final boolean[] marcadas = new boolean[nuevas.size()];
+        for (int i = 0; i < nombres.length; i++) { nombres[i] = nuevas.get(i)[0]; marcadas[i] = true; }
+        new AlertDialog.Builder(this).setTitle("🆕 " + nuevas.size() + (nuevas.size() == 1 ? " canción nueva" : " canciones nuevas"))
+            .setMultiChoiceItems(nombres, marcadas, (d, i, v) -> marcadas[i] = v)
+            .setPositiveButton("ELEGIR ESTILO", (d, w) -> {
+                final ArrayList<Uri> elegidas = new ArrayList<>();
+                for (int i = 0; i < marcadas.length; i++) if (marcadas[i]) elegidas.add(Uri.parse(nuevas.get(i)[1]));
+                if (elegidas.isEmpty()) { aviso("No has marcado ninguna"); return; }
+                elegirEstilo("¿De qué estilo son estas " + elegidas.size() + "?",
+                    estilo -> subirVariasAlNas(elegidas, estilo, uri -> marcarDescargaHecha(uri), null));
+            })
+            .setNeutralButton("📂 OTRA CARPETA", (d, w) -> elegirCarpetaDescargas())
+            .setNegativeButton("CERRAR", null).show();
+    }
+
     // ---------- Carpeta de música del móvil ----------
     private void elegirCarpetaMusica() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
