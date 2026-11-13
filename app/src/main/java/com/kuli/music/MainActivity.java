@@ -118,6 +118,32 @@ public class MainActivity extends Activity {
     private int posicionPendienteMs = 0;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
+    // Fundido suave del modo DJ: baja el volumen los últimos 2 s y lo sube en el primer 1,5 s.
+    private boolean djActivo = false, fundidoArrancado = false, volumenTocado = false;
+    private final Runnable fundido = new Runnable() {
+        @Override public void run() {
+            try {
+                if (reproductor != null && !esRadio && reproductor.isPlaying()) {
+                    if (djActivo && modoLista) {
+                        int dur = reproductor.getDuration(), pos = reproductor.getCurrentPosition();
+                        float v = 1f;
+                        if (dur > 8000) {
+                            int resto = dur - pos;
+                            if (resto < 2000) v = Math.max(0f, resto / 2000f);
+                            else if (pos < 1500) v = Math.max(0.25f, pos / 1500f);
+                        }
+                        reproductor.setVolume(v, v);
+                        volumenTocado = true;
+                    } else if (volumenTocado) {
+                        reproductor.setVolume(1f, 1f);
+                        volumenTocado = false;
+                    }
+                }
+            } catch (Exception ignorar) { }
+            ui.postDelayed(this, 150);
+        }
+    };
+
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
             actualizarProgreso();
@@ -541,6 +567,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("CERRAR", null).show();
             return;
         }
+        djActivo = false;
         listaFavoritas.clear();
         String[] nombres = new String[canciones.size()];
         for (int n = 0; n < canciones.size(); n++) {
@@ -1643,6 +1670,8 @@ public class MainActivity extends Activity {
         estiloBoton(mezcla, APAGADO, 1000);
         aviso("🎛 DJ: " + secuencia + " …");
         reproducirListaNas(orden, 0);
+        djActivo = true;
+        if (!fundidoArrancado) { fundidoArrancado = true; ui.post(fundido); }
     }
 
     // ---------- Llevar canciones del NAS al móvil ----------
@@ -1912,6 +1941,7 @@ public class MainActivity extends Activity {
     }
 
     private void cargarListaNas(List<String> nombres) {
+        djActivo = false;
         listaFavoritas.clear();
         for (String n : nombres) listaFavoritas.add(uriNas(n).toString());
     }
