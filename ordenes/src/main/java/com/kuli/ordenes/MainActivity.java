@@ -208,6 +208,54 @@ public class MainActivity extends Activity {
         return m;
     }
 
+    // ---------- Fotos a salvo: si las borras de la galería del móvil, se recuperan ----------
+    private boolean respaldoFotosHecho = false;
+
+    private void copiarArchivo(File a, File b) throws Exception {
+        b.getParentFile().mkdirs();
+        try (InputStream in = new java.io.FileInputStream(a); FileOutputStream o = new FileOutputStream(b)) {
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+        }
+    }
+
+    private File respaldoDe(File foto) {
+        return new File(new File(new File(raiz, ".respaldo_fotos"), foto.getParentFile().getName()), foto.getName());
+    }
+
+    private void sincronizarFotos() {
+        if (respaldoFotosHecho || !tienePermiso()) return;
+        respaldoFotosHecho = true;
+        hilos.execute(() -> {
+            int restauradas = 0;
+            try {
+                File rb = new File(raiz, ".respaldo_fotos");
+                rb.mkdirs();
+                new File(rb, ".nomedia").createNewFile();
+                File[] ords = rb.listFiles();
+                if (ords != null) for (File od : ords) {
+                    if (!od.isDirectory()) continue;
+                    File[] fs = od.listFiles();
+                    if (fs == null) continue;
+                    for (File b : fs) {
+                        File orig = new File(new File(raiz, od.getName()), b.getName());
+                        if (!orig.exists()) { copiarArchivo(b, orig); restauradas++; }
+                    }
+                }
+                File[] dirs = raiz.listFiles();
+                if (dirs != null) for (File d : dirs) {
+                    if (!d.isDirectory() || d.getName().startsWith(".")) continue;
+                    File[] fs = d.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
+                    if (fs == null) continue;
+                    for (File f : fs) { File b = respaldoDe(f); if (!b.exists()) copiarArchivo(f, b); }
+                }
+            } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Respaldo de fotos", e); }
+            final int n = restauradas;
+            if (n > 0) runOnUiThread(() -> avisoLargo("↩ He recuperado " + n + (n == 1 ? " foto" : " fotos") + " que se habían borrado del móvil"));
+        });
+    }
+
     private void hacerAlbaran(File f, boolean vaciar) { hacerAlbaran(f, vaciar, null); }
 
     // ---------- Gastos pendientes de reponer ----------
@@ -476,6 +524,7 @@ public class MainActivity extends Activity {
 
     // ---------- Pantalla de inicio ----------
     private void mostrarInicio() {
+        sincronizarFotos();
         ordenAbierta = null;
         enAlmacen = false;
         contenido.removeAllViews();
@@ -789,6 +838,7 @@ public class MainActivity extends Activity {
         borrar.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("¿Borrar esta foto?")
             .setMessage("Se borra del móvil y no se puede recuperar.")
             .setPositiveButton("BORRAR", (d, w) -> {
+                respaldoDe(f).delete();
                 if (f.delete()) {
                     MediaScannerConnection.scanFile(this, new String[]{f.getAbsolutePath()}, null, null);
                     cache.remove(f.getAbsolutePath());
@@ -1800,6 +1850,7 @@ public class MainActivity extends Activity {
                 while (salida.exists()) salida = new File(dir, base + "_" + (n++) + ".jpg");
                 try (FileOutputStream o = new FileOutputStream(salida)) { sellada.compress(Bitmap.CompressFormat.JPEG, 92, o); }
                 MediaScannerConnection.scanFile(this, new String[]{salida.getAbsolutePath()}, new String[]{"image/jpeg"}, null);
+                try { copiarArchivo(salida, respaldoDe(salida)); } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Respaldo de la foto", e); }
             } catch (Throwable t) {
                 error = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
             } finally {
