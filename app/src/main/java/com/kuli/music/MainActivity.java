@@ -1588,24 +1588,61 @@ public class MainActivity extends Activity {
         if (grupos.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
         final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
         final ArrayList<String> todas = new ArrayList<>();
-        String[] items = new String[claves.size()];
-        for (int i = 0; i < items.length; i++) {
+        String[] items = new String[claves.size() + 1];
+        items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
+        for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
-            items[i] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
+            items[i + 1] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
             todas.addAll(lista);
         }
         final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
-            .setItems(items, (d, i) -> mostrarCancionesNas(claves.get(i), grupos.get(claves.get(i)), grupos))
+            .setItems(items, (d, i) -> {
+                if (i == 0) modoDj(grupos);
+                else mostrarCancionesNas(claves.get(i - 1), grupos.get(claves.get(i - 1)), grupos);
+            })
             .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
             .setNeutralButton("🔍 BUSCAR", (d, w) -> buscarEnNas(grupos))
             .setNegativeButton("📥 AL MÓVIL", (d, w) -> elegirParaMovil(grupos)).show();
         // Mantener pulsada una carpeta: suena entera, en aleatorio.
         dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
+            if (pos == 0) return false;
             dlg.dismiss();
-            reproducirAleatorio(grupos.get(claves.get(pos)));
+            reproducirAleatorio(grupos.get(claves.get(pos - 1)));
             return true;
         });
         aviso("Toca una carpeta para verla · mantenla pulsada para oírla entera en aleatorio");
+    }
+
+    // ---------- Modo DJ: 4 canciones de un estilo, luego otro estilo ----------
+    private void modoDj(LinkedHashMap<String, ArrayList<String>> grupos) {
+        java.util.Random azar = new java.util.Random();
+        LinkedHashMap<String, ArrayList<String>> baraja = new LinkedHashMap<>();
+        for (String k : grupos.keySet()) {
+            if (k.equals("Sin clasificar") || grupos.get(k).isEmpty()) continue;
+            ArrayList<String> c = new ArrayList<>(grupos.get(k));
+            Collections.shuffle(c, azar);
+            baraja.put(k, c);
+        }
+        if (baraja.size() < 2) { aviso("Para el DJ hacen falta al menos 2 estilos con canciones"); return; }
+        ArrayList<String> orden = new ArrayList<>();
+        StringBuilder secuencia = new StringBuilder();
+        String ultimo = null;
+        int bloques = 0;
+        while (orden.size() < 400) {
+            ArrayList<String> candidatos = new ArrayList<>();
+            for (String k : baraja.keySet()) if (!baraja.get(k).isEmpty() && !k.equals(ultimo)) candidatos.add(k);
+            if (candidatos.isEmpty()) for (String k : baraja.keySet()) if (!baraja.get(k).isEmpty()) candidatos.add(k);
+            if (candidatos.isEmpty()) break;
+            String estilo = candidatos.get(azar.nextInt(candidatos.size()));
+            ArrayList<String> lista = baraja.get(estilo);
+            for (int i = 0; i < 4 && !lista.isEmpty(); i++) orden.add(lista.remove(0));
+            if (bloques++ < 6) secuencia.append(secuencia.length() == 0 ? "" : " → ").append(estilo);
+            ultimo = estilo;
+        }
+        aleatorio = false;
+        estiloBoton(mezcla, APAGADO, 1000);
+        aviso("🎛 DJ: " + secuencia + " …");
+        reproducirListaNas(orden, 0);
     }
 
     // ---------- Llevar canciones del NAS al móvil ----------
