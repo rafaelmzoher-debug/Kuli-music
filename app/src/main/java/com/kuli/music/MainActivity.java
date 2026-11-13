@@ -128,6 +128,8 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         favoritos = getSharedPreferences("kuli_favoritos", MODE_PRIVATE);
+        escuchaFavs = (sp, clave) -> guardarCopiaFavoritos();
+        favoritos.registerOnSharedPreferenceChangeListener(escuchaFavs);
         getWindow().setStatusBarColor(FONDO_ALTO);
         getWindow().setNavigationBarColor(NEGRO);
 
@@ -297,11 +299,12 @@ public class MainActivity extends Activity {
 
         // Acciones: secundarias
         favorito = pastilla("♡  Guardar", CONTORNO);
-        Button ymusic = pastilla("🎧  YMusic", CONTORNO);
+        Button prism = pastilla("🎧 Prism", CONTORNO);
+        Button notube = pastilla("▶ NoTube", CONTORNO);
         Button buscar = pastilla("⌕  Buscar", CONTORNO);
         LinearLayout fila2 = new LinearLayout(this);
-        for (Button b : new Button[]{favorito, ymusic, buscar}) {
-            b.setTextSize(13);
+        for (Button b : new Button[]{favorito, prism, notube, buscar}) {
+            b.setTextSize(12);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1);
             lp.leftMargin = dp(4); lp.rightMargin = dp(4);
             fila2.addView(b, lp);
@@ -310,10 +313,8 @@ public class MainActivity extends Activity {
         lpFila2.topMargin = dp(10);
         pantalla.addView(fila2, lpFila2);
         favorito.setOnClickListener(v -> alternarFavorito());
-        ymusic.setOnClickListener(v -> {
-            Intent i = buscarYMusic();
-            if (i != null) startActivity(i); else aviso("YMusic no encontrado");
-        });
+        prism.setOnClickListener(v -> abrirApp("Prism", "prism"));
+        notube.setOnClickListener(v -> abrirApp("NoTube", "notube", "noutube"));
         buscar.setOnClickListener(v -> abrirBuscador());
 
         TextView ajustes = texto("⚙  NAS", 12, GRIS);
@@ -370,6 +371,7 @@ public class MainActivity extends Activity {
         ui.post(ticker);
         revisarYMusic();
         ymusicAFavoritas();
+        copiaDeFavoritos();
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
@@ -1061,8 +1063,73 @@ public class MainActivity extends Activity {
         ofrecerSubida(nuevas, marcar, ignorar);
     }
 
+    // ---------- Copia de los favoritos fuera de la app (sobrevive si desinstalas) ----------
+    private SharedPreferences.OnSharedPreferenceChangeListener escuchaFavs;
+
+    private boolean permisoArchivos() {
+        return android.os.Build.VERSION.SDK_INT < 23
+            || checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    private java.io.File archivoFavs() {
+        return new java.io.File(new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOCUMENTS), "KULI"), "favoritos_kuli.txt");
+    }
+
+    private void guardarCopiaFavoritos() {
+        if (!permisoArchivos()) return;
+        try {
+            Map<String, ?> m = favoritos.getAll();
+            if (m.isEmpty()) return;
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, ?> e : m.entrySet())
+                sb.append(e.getKey().replace('\t', ' ').replace('\n', ' ')).append('\t')
+                  .append(String.valueOf(e.getValue()).replace('\t', ' ').replace('\n', ' ')).append('\n');
+            java.io.File f = archivoFavs();
+            f.getParentFile().mkdirs();
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(sb.toString().getBytes("UTF-8")); }
+        } catch (Exception e) { android.util.Log.e("KULI_FAV", "Copia de favoritos", e); }
+    }
+
+    // Primera vez tras instalar: si no hay favoritos y existe la copia, se recuperan.
+    private void restaurarFavoritosUnaVez() {
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        if (aj.getBoolean("favs_chequeo", false)) return;
+        aj.edit().putBoolean("favs_chequeo", true).apply();
+        try {
+            java.io.File f = archivoFavs();
+            if (!favoritos.getAll().isEmpty() || !f.exists()) return;
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = new java.io.FileInputStream(f)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) o.write(buf, 0, n);
+            }
+            SharedPreferences.Editor ed = favoritos.edit();
+            int total = 0;
+            for (String l : new String(o.toByteArray(), "UTF-8").split("\n")) {
+                String[] p = l.split("\t", 2);
+                if (p.length == 2 && !p[0].trim().isEmpty()) { ed.putString(p[0], p[1]); total++; }
+            }
+            ed.apply();
+            if (total > 0) aviso("♥ He recuperado " + total + " favoritas de la copia");
+        } catch (Exception e) { android.util.Log.e("KULI_FAV", "Recuperando favoritos", e); }
+    }
+
+    private void copiaDeFavoritos() {
+        if (permisoArchivos()) { restaurarFavoritosUnaVez(); guardarCopiaFavoritos(); return; }
+        SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
+        if (aj.getBoolean("favs_pidio", false)) return;
+        aj.edit().putBoolean("favs_pidio", true).apply();
+        requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 203);
+    }
+
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
         super.onRequestPermissionsResult(codigo, permisos, resultados);
+        if (codigo == 203) {
+            if (resultados.length > 0 && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) { restaurarFavoritosUnaVez(); guardarCopiaFavoritos(); }
+            return;
+        }
         if (codigo == 202) {
             if (resultados.length > 0 && resultados[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) ordenarMusica();
             else aviso("Sin permiso no puedo ordenar la música");
@@ -2222,6 +2289,22 @@ public class MainActivity extends Activity {
             .setNeutralButton("🔍 BUSCAR EN INTERNET", (d, w) ->
                 abrirEnlace("https://www.google.com/search?q=TDT+Channels+app+android"))
             .setNegativeButton("CERRAR", null).show();
+    }
+
+    // Abre una app ya instalada buscándola por su nombre.
+    private void abrirApp(String nombreBonito, String... claves) {
+        android.content.pm.PackageManager pm = getPackageManager();
+        for (android.content.pm.ApplicationInfo app : pm.getInstalledApplications(0)) {
+            String nombre = pm.getApplicationLabel(app).toString().toLowerCase().replace(" ", "");
+            String paquete = app.packageName.toLowerCase();
+            for (String c : claves) {
+                if (nombre.contains(c) || paquete.contains(c)) {
+                    Intent i = pm.getLaunchIntentForPackage(app.packageName);
+                    if (i != null) { startActivity(i); return; }
+                }
+            }
+        }
+        aviso(nombreBonito + " no encontrado. ¿Está instalado?");
     }
 
     private Intent buscarYMusic() {
