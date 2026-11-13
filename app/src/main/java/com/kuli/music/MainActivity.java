@@ -136,12 +136,12 @@ public class MainActivity extends Activity {
         float density = getResources().getDisplayMetrics().density;
         int altoDp = (int) (getResources().getDisplayMetrics().heightPixels / density);
         int anchoDp = (int) (getResources().getDisplayMetrics().widthPixels / density);
-        int portadaDp = Math.max(120, Math.min(Math.min(300, anchoDp - 72), altoDp - 520));
+        int portadaDp = Math.max(90, Math.min(Math.min(240, anchoDp - 72), altoDp - 640));
 
         LinearLayout pantalla = new LinearLayout(this);
         pantalla.setOrientation(LinearLayout.VERTICAL);
         pantalla.setGravity(Gravity.CENTER_HORIZONTAL);
-        pantalla.setPadding(dp(24), dp(18), dp(24), dp(14));
+        pantalla.setPadding(dp(16), dp(8), dp(16), dp(6));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -170,12 +170,12 @@ public class MainActivity extends Activity {
         portada.setElevation(dp(10));
         portadaVacia();
         LinearLayout.LayoutParams lpPortada = new LinearLayout.LayoutParams(dp(portadaDp), dp(portadaDp));
-        lpPortada.topMargin = dp(22);
-        lpPortada.bottomMargin = dp(22);
+        lpPortada.topMargin = dp(8);
+        lpPortada.bottomMargin = dp(8);
         pantalla.addView(portada, lpPortada);
 
         // Datos de la canción
-        cancion = texto("Selecciona una canción", 21, Color.WHITE);
+        cancion = texto("Selecciona una canción", 18, Color.WHITE);
         cancion.setSingleLine(true);
         cancion.setEllipsize(android.text.TextUtils.TruncateAt.END);
         cancion.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -187,7 +187,7 @@ public class MainActivity extends Activity {
         estado = texto("LISTO PARA REPRODUCIR", 10, DORADO);
         estado.setLetterSpacing(0.15f);
         LinearLayout.LayoutParams lpEstado = new LinearLayout.LayoutParams(-1, -2);
-        lpEstado.topMargin = dp(6);
+        lpEstado.topMargin = dp(2);
         pantalla.addView(estado, lpEstado);
 
         // Barra de progreso
@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
         barra.setThumbTintList(ColorStateList.valueOf(DORADO));
         barra.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(70, 255, 255, 255)));
         LinearLayout.LayoutParams lpBarra = new LinearLayout.LayoutParams(-1, -2);
-        lpBarra.topMargin = dp(14);
+        lpBarra.topMargin = dp(4);
         pantalla.addView(barra, lpBarra);
         LinearLayout tiempos = new LinearLayout(this);
         tiempoActual = texto("0:00", 11, GRIS);
@@ -219,25 +219,25 @@ public class MainActivity extends Activity {
         });
 
         // Controles principales
-        mezcla = circulo("⇄", 46, 18, APAGADO);
-        Button anterior = circulo("⏮", 54, 20, CONTORNO);
-        botonPlay = circulo("▶", 78, 28, LLENO);
-        Button siguiente = circulo("⏭", 54, 20, CONTORNO);
-        bucle = circulo("↻", 46, 20, repetir ? CONTORNO : APAGADO);
+        mezcla = circulo("⇄", 40, 16, APAGADO);
+        Button anterior = circulo("⏮", 46, 18, CONTORNO);
+        botonPlay = circulo("▶", 62, 24, LLENO);
+        Button siguiente = circulo("⏭", 46, 18, CONTORNO);
+        bucle = circulo("↻", 40, 18, repetir ? CONTORNO : APAGADO);
 
         LinearLayout controles = new LinearLayout(this);
         controles.setGravity(Gravity.CENTER_VERTICAL);
-        controles.addView(mezcla, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        controles.addView(mezcla, new LinearLayout.LayoutParams(dp(40), dp(40)));
         controles.addView(separador(), new LinearLayout.LayoutParams(0, 1, 1));
-        controles.addView(anterior, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        controles.addView(anterior, new LinearLayout.LayoutParams(dp(46), dp(46)));
         controles.addView(separador(), new LinearLayout.LayoutParams(0, 1, 1));
-        controles.addView(botonPlay, new LinearLayout.LayoutParams(dp(78), dp(78)));
+        controles.addView(botonPlay, new LinearLayout.LayoutParams(dp(62), dp(62)));
         controles.addView(separador(), new LinearLayout.LayoutParams(0, 1, 1));
-        controles.addView(siguiente, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        controles.addView(siguiente, new LinearLayout.LayoutParams(dp(46), dp(46)));
         controles.addView(separador(), new LinearLayout.LayoutParams(0, 1, 1));
-        controles.addView(bucle, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        controles.addView(bucle, new LinearLayout.LayoutParams(dp(40), dp(40)));
         LinearLayout.LayoutParams lpControles = new LinearLayout.LayoutParams(-1, -2);
-        lpControles.topMargin = dp(10);
+        lpControles.topMargin = dp(4);
         pantalla.addView(controles, lpControles);
 
         anterior.setOnClickListener(v -> saltar(-1));
@@ -260,36 +260,36 @@ public class MainActivity extends Activity {
         Button movil = pastilla("♫  Mis canciones", LLENO);
         Button misCanciones = pastilla("♥  Favoritas", CONTORNO);
         LinearLayout fila1 = new LinearLayout(this);
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(40), 1);
         lp1.rightMargin = dp(5);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(40), 1);
         lp2.leftMargin = dp(5);
         fila1.addView(movil, lp1);
         fila1.addView(misCanciones, lp2);
         LinearLayout.LayoutParams lpFila1 = new LinearLayout.LayoutParams(-1, -2);
-        lpFila1.topMargin = dp(22);
+        lpFila1.topMargin = dp(5);
         pantalla.addView(fila1, lpFila1);
         Button nas = pastilla("☁  Ver NAS", CONTORNO);
         Button subir = pastilla("⇪  Subir al NAS", CONTORNO);
         LinearLayout filaNas = new LinearLayout(this);
-        LinearLayout.LayoutParams lpN1 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams lpN1 = new LinearLayout.LayoutParams(0, dp(40), 1);
         lpN1.rightMargin = dp(5);
-        LinearLayout.LayoutParams lpN2 = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams lpN2 = new LinearLayout.LayoutParams(0, dp(40), 1);
         lpN2.leftMargin = dp(5);
         filaNas.addView(nas, lpN1);
         filaNas.addView(subir, lpN2);
         LinearLayout.LayoutParams lpFilaNas = new LinearLayout.LayoutParams(-1, -2);
-        lpFilaNas.topMargin = dp(10);
+        lpFilaNas.topMargin = dp(5);
         pantalla.addView(filaNas, lpFilaNas);
         Button carpeta = pastilla("📂  Carpeta de música del móvil", CONTORNO);
-        LinearLayout.LayoutParams lpCarp = new LinearLayout.LayoutParams(-1, dp(48));
-        lpCarp.topMargin = dp(10);
+        LinearLayout.LayoutParams lpCarp = new LinearLayout.LayoutParams(-1, dp(40));
+        lpCarp.topMargin = dp(5);
         pantalla.addView(carpeta, lpCarp);
         carpeta.setOnClickListener(v -> abrirCarpetaMusica());
         carpeta.setOnLongClickListener(v -> { elegirCarpetaMusica(); return true; });
         Button ordenar = pastilla("🧹  Ordenar música (álbumes · sueltas · duplicadas)", CONTORNO);
-        LinearLayout.LayoutParams lpOrd = new LinearLayout.LayoutParams(-1, dp(48));
-        lpOrd.topMargin = dp(10);
+        LinearLayout.LayoutParams lpOrd = new LinearLayout.LayoutParams(-1, dp(40));
+        lpOrd.topMargin = dp(5);
         pantalla.addView(ordenar, lpOrd);
         ordenar.setOnClickListener(v -> ordenarMusica());
         nas.setOnClickListener(v -> abrirListaNas());
@@ -305,12 +305,12 @@ public class MainActivity extends Activity {
         LinearLayout fila2 = new LinearLayout(this);
         for (Button b : new Button[]{favorito, prism, notube, buscar}) {
             b.setTextSize(12);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(38), 1);
             lp.leftMargin = dp(4); lp.rightMargin = dp(4);
             fila2.addView(b, lp);
         }
         LinearLayout.LayoutParams lpFila2 = new LinearLayout.LayoutParams(-1, -2);
-        lpFila2.topMargin = dp(10);
+        lpFila2.topMargin = dp(5);
         pantalla.addView(fila2, lpFila2);
         favorito.setOnClickListener(v -> alternarFavorito());
         prism.setOnClickListener(v -> abrirApp("Prism", "prism"));
@@ -337,7 +337,7 @@ public class MainActivity extends Activity {
         filaMedios.addView(radio);
         filaMedios.addView(tv);
         LinearLayout.LayoutParams lpRadio = new LinearLayout.LayoutParams(-1, -2);
-        lpRadio.topMargin = dp(6);
+        lpRadio.topMargin = dp(2);
         pantalla.addView(filaMedios, lpRadio);
 
         LinearLayout filaAjustes = new LinearLayout(this);
@@ -354,7 +354,7 @@ public class MainActivity extends Activity {
         pie.setLetterSpacing(0.2f);
         pantalla.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
         LinearLayout.LayoutParams lpPie = new LinearLayout.LayoutParams(-1, -2);
-        lpPie.topMargin = dp(16);
+        lpPie.topMargin = dp(4);
         pantalla.addView(pie, lpPie);
 
         setContentView(scroll);
