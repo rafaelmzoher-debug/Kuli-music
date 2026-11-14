@@ -10,6 +10,10 @@ import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.view.ViewGroup;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Typeface;
@@ -90,12 +94,13 @@ public class MainActivity extends Activity {
     }
 
     // Paleta: negro profundo, dorado y grises suaves.
-    private final int NEGRO = Color.rgb(9, 10, 15);
-    private final int FONDO_ALTO = Color.rgb(24, 22, 33);
-    private final int DORADO = Color.rgb(232, 190, 92);
-    private final int TARJETA = Color.rgb(26, 28, 37);
-    private final int GRIS = Color.rgb(150, 153, 168);
-    private final int LINEA = Color.argb(70, 232, 190, 92);
+    private final int NEGRO = Color.rgb(5, 28, 62);
+    private final int FONDO_ALTO = Color.rgb(12, 88, 168);
+    private final int DORADO = Color.rgb(255, 255, 255);          // acento principal: blanco
+    private final int ORO = Color.rgb(255, 205, 80);              // detalles dorados
+    private final int TARJETA = Color.rgb(10, 62, 124);
+    private final int GRIS = Color.rgb(170, 200, 235);
+    private final int LINEA = Color.argb(110, 255, 255, 255);
 
     private static final int LLENO = 0, CONTORNO = 1, APAGADO = 2;
 
@@ -118,29 +123,121 @@ public class MainActivity extends Activity {
     private int posicionPendienteMs = 0;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    // Fundido suave del modo DJ: baja el volumen los últimos 2 s y lo sube en el primer 1,5 s.
+    // Escudo propio de KULI (dibujado a mano, original).
+    private static final class Escudo extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Escudo(android.content.Context c) { super(c); }
+        @Override protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight();
+            Path path = new Path();
+            path.moveTo(w * 0.08f, h * 0.06f);
+            path.lineTo(w * 0.92f, h * 0.06f);
+            path.lineTo(w * 0.92f, h * 0.50f);
+            path.quadTo(w * 0.92f, h * 0.84f, w * 0.50f, h * 0.97f);
+            path.quadTo(w * 0.08f, h * 0.84f, w * 0.08f, h * 0.50f);
+            path.close();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.rgb(5, 28, 62));
+            c.drawPath(path, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(w * 0.07f);
+            p.setColor(Color.WHITE);
+            c.drawPath(path, p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.rgb(255, 205, 80));
+            p.setTextAlign(Paint.Align.CENTER);
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            p.setTextSize(h * 0.52f);
+            c.drawText("K", w * 0.5f, h * 0.64f, p);
+            p.setColor(Color.WHITE);
+            c.drawRect(w * 0.22f, h * 0.72f, w * 0.78f, h * 0.76f, p);
+        }
+    }
+
+    private static final int MEZCLA_MS = 3000;
+    private MediaPlayer mezclaAnterior = null;
+    private boolean mezclando = false;
+    private long mezclaInicio = 0;
+
+    private final Runnable rampaMezcla = new Runnable() {
+        @Override public void run() {
+            if (!mezclando) return;
+            float t = Math.min(1f, (android.os.SystemClock.uptimeMillis() - mezclaInicio) / (float) MEZCLA_MS);
+            try { if (reproductor != null) reproductor.setVolume(t, t); } catch (Exception ignorar) { }
+            try { if (mezclaAnterior != null) { float v = 1f - t; mezclaAnterior.setVolume(v, v); } } catch (Exception ignorar) { }
+            if (t >= 1f) { cancelarMezcla(); return; }
+            ui.postDelayed(this, 80);
+        }
+    };
+
+    private void cancelarMezcla() {
+        mezclando = false;
+        ui.removeCallbacks(rampaMezcla);
+        if (mezclaAnterior != null) {
+            try { mezclaAnterior.stop(); } catch (Exception ignorar) { }
+            try { mezclaAnterior.release(); } catch (Exception ignorar) { }
+            mezclaAnterior = null;
+        }
+        try { if (reproductor != null) reproductor.setVolume(1f, 1f); } catch (Exception ignorar) { }
+    }
+
+    // Empieza ya la siguiente canción mientras la actual se apaga poco a poco.
+    private void iniciarMezcla() {
+        if (mezclando || siguienteReproductor == null || indicePreparado < 0 || reproductor == null) return;
+        try {
+            MediaPlayer anterior = reproductor;
+            MediaPlayer nuevo = siguienteReproductor;
+            int idx = indicePreparado;
+            nuevo.setVolume(0f, 0f);
+            nuevo.start();
+            anterior.setOnCompletionListener(null);
+            reproductor = nuevo;
+            posicionFavorita = idx;
+            siguienteReproductor = null;
+            indicePreparado = -1;
+            mezclaAnterior = anterior;
+            mezclando = true;
+            mezclaInicio = android.os.SystemClock.uptimeMillis();
+            mostrarDatos(Uri.parse(listaFavoritas.get(posicionFavorita)));
+            reproductor.setOnCompletionListener(mp -> alTerminar());
+            estado.setText("🎛 MEZCLANDO");
+            iniciarServicio();
+            prepararSiguiente();
+            ui.post(rampaMezcla);
+        } catch (Exception e) {
+            android.util.Log.e("KULI_DJ", "Mezcla", e);
+            cancelarMezcla();
+        }
+    }
+
+    // Modo DJ: vigila el final de cada canción y la mezcla con la siguiente.
     private boolean djActivo = false, fundidoArrancado = false, volumenTocado = false;
     private final Runnable fundido = new Runnable() {
         @Override public void run() {
             try {
                 if (reproductor != null && !esRadio && reproductor.isPlaying()) {
                     if (djActivo && modoLista) {
-                        int dur = reproductor.getDuration(), pos = reproductor.getCurrentPosition();
-                        float v = 1f;
-                        if (dur > 8000) {
-                            int resto = dur - pos;
-                            if (resto < 2000) v = Math.max(0f, resto / 2000f);
-                            else if (pos < 1500) v = Math.max(0.25f, pos / 1500f);
+                        if (!mezclando) {
+                            int dur = reproductor.getDuration(), resto = dur - reproductor.getCurrentPosition();
+                            if (dur > 12000 && resto <= MEZCLA_MS + 400) {
+                                if (siguienteReproductor != null && indicePreparado >= 0) iniciarMezcla();
+                                else if (resto < 2000) {
+                                    float v = Math.max(0f, resto / 2000f);
+                                    reproductor.setVolume(v, v);
+                                    volumenTocado = true;
+                                }
+                            } else if (volumenTocado) {
+                                reproductor.setVolume(1f, 1f);
+                                volumenTocado = false;
+                            }
                         }
-                        reproductor.setVolume(v, v);
-                        volumenTocado = true;
                     } else if (volumenTocado) {
                         reproductor.setVolume(1f, 1f);
                         volumenTocado = false;
                     }
                 }
             } catch (Exception ignorar) { }
-            ui.postDelayed(this, 150);
+            ui.postDelayed(this, 100);
         }
     };
 
@@ -179,8 +276,12 @@ public class MainActivity extends Activity {
         TextView titulo = texto("KULI MUSIC", 16, DORADO);
         titulo.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         titulo.setLetterSpacing(0.3f);
-        pantalla.addView(titulo, new LinearLayout.LayoutParams(-1, -2));
-        TextView lema = texto("TU MÚSICA · TU ESTILO", 10, GRIS);
+        LinearLayout cabecera = new LinearLayout(this);
+        cabecera.setGravity(Gravity.CENTER);
+        cabecera.addView(new Escudo(this), new LinearLayout.LayoutParams(dp(28), dp(32)));
+        cabecera.addView(titulo, new LinearLayout.LayoutParams(-2, -2));
+        pantalla.addView(cabecera, new LinearLayout.LayoutParams(-1, -2));
+        TextView lema = texto("TU MÚSICA · TU ESTILO", 10, ORO);
         lema.setLetterSpacing(0.2f);
         pantalla.addView(lema, new LinearLayout.LayoutParams(-1, -2));
 
@@ -382,13 +483,19 @@ public class MainActivity extends Activity {
         descargas.setOnLongClickListener(v -> { elegirCarpetaDescargas(); return true; });
         pantalla.addView(descargas, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView pie = texto("✦ KULI EDITION ✦", 10, DORADO);
+        TextView pie = texto("✦ KULI EDITION ✦", 10, ORO);
         pie.setAlpha(0.7f);
         pie.setLetterSpacing(0.2f);
         pantalla.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
         LinearLayout.LayoutParams lpPie = new LinearLayout.LayoutParams(-1, -2);
         lpPie.topMargin = dp(4);
         pantalla.addView(pie, lpPie);
+
+        // Secciones desplegables: la pantalla principal queda limpia.
+        agrupar(pantalla, "📂  Mi música del móvil", carpeta, ordenar, descargas);
+        agrupar(pantalla, "🎧  Apps y búsqueda", fila2);
+        agrupar(pantalla, "📻  Radio y TV", filaMedios);
+        agrupar(pantalla, "⚙  Ajustes", filaAjustes);
 
         setContentView(scroll);
 
@@ -556,6 +663,33 @@ public class MainActivity extends Activity {
             reproducir(uri);
         }
     }
+    // Mete varias vistas dentro de una sección que se abre y se cierra tocando el título.
+    private void agrupar(LinearLayout pantalla, final String titulo, View... vistas) {
+        int pos = pantalla.indexOfChild(vistas[0]);
+        if (pos < 0) pos = pantalla.getChildCount();
+        final LinearLayout cuerpo = new LinearLayout(this);
+        cuerpo.setOrientation(LinearLayout.VERTICAL);
+        for (View v : vistas) {
+            ViewGroup.LayoutParams lp = v.getLayoutParams();
+            pantalla.removeView(v);
+            cuerpo.addView(v, lp != null ? lp : new LinearLayout.LayoutParams(-1, -2));
+        }
+        cuerpo.setVisibility(View.GONE);
+        final TextView cab = texto("▸  " + titulo.trim(), 13, DORADO);
+        cab.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        cab.setPadding(dp(14), dp(8), dp(14), dp(8));
+        cab.setBackground(fondo(TARJETA, 12, LINEA));
+        cab.setOnClickListener(v -> {
+            boolean abrir = cuerpo.getVisibility() != View.VISIBLE;
+            cuerpo.setVisibility(abrir ? View.VISIBLE : View.GONE);
+            cab.setText((abrir ? "▾  " : "▸  ") + titulo.trim());
+        });
+        LinearLayout.LayoutParams lpCab = new LinearLayout.LayoutParams(-1, -2);
+        lpCab.topMargin = dp(6);
+        pantalla.addView(cab, Math.min(pos, pantalla.getChildCount()), lpCab);
+        pantalla.addView(cuerpo, Math.min(pos + 1, pantalla.getChildCount()), new LinearLayout.LayoutParams(-1, -2));
+    }
+
     // ---------- Clasificar las descargas de Prism / NoTube en las carpetas del NAS ----------
     private void elegirCarpetaDescargas() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -672,6 +806,7 @@ public class MainActivity extends Activity {
     private void reproducirArchivo(Uri fuente, Uri identidad) {
         try {
             esRadio = false;
+            cancelarMezcla();
             liberarSiguiente();
             if (reproductor != null) { reproductor.release(); reproductor = null; }
             reproductor = abrirReproductor(fuente);
