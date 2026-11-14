@@ -84,7 +84,8 @@ public class MainActivity extends Activity {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
 
-    static final class Resumen { String nombre; int fotos; long ultima; }
+    static final class Resumen { String nombre; int fotos; int mat; long ultima; }
+    private String filtro = "";
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -108,6 +109,7 @@ public class MainActivity extends Activity {
             android.Manifest.permission.READ_EXTERNAL_STORAGE,
             android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISO);
         if (ordenAbierta != null) mostrarOrden(ordenAbierta); else mostrarInicio();
+        copiaDiaria();
     }
 
     @Override protected void onSaveInstanceState(Bundle o) {
@@ -136,12 +138,26 @@ public class MainActivity extends Activity {
         } catch (Exception ignorar) { }
     }
 
+    // Una vez al día (si ha pasado más de 20 h) copia sola al NAS al abrir la app, si hay wifi.
+    private void copiaDiaria() {
+        final android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
+        if (System.currentTimeMillis() - sp.getLong("nas_ok", 0) < 20L * 3600000L) return;
+        hilos.execute(() -> {
+            try {
+                if (!Respaldo.hayWifi(this)) return;
+                Respaldo.subir(this, raiz);
+                sp.edit().putLong("nas_ok", System.currentTimeMillis()).apply();
+            } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Copia diaria", t); }
+        });
+    }
+
     private void respaldoNas(final boolean manual) {
         if (manual) aviso("Copiando al NAS…");
         hilos.execute(() -> {
             try {
                 if (!Respaldo.hayWifi(this)) throw new java.io.IOException("No hay wifi");
                 final int n = Respaldo.subir(this, raiz);
+                getSharedPreferences("ordenes", MODE_PRIVATE).edit().putLong("nas_ok", System.currentTimeMillis()).apply();
                 if (manual) runOnUiThread(() -> aviso("✓ Copia hecha en el NAS (" + n + " archivos nuevos)"));
             } catch (Throwable t) {
                 android.util.Log.e("KULI_ORDENES", "Copia al NAS", t);
@@ -608,8 +624,17 @@ public class MainActivity extends Activity {
         Button res = boton("📍 Resumen de trabajos (WK y direcciones)", false);
         res.setOnClickListener(v -> resumenTrabajos());
         p.addView(res, margen(-1, dp(46), 4));
-        agrupar(p, "📦  Almacén y búsqueda", alm, bus);
-        agrupar(p, "📊  Resúmenes y órdenes a medias", filaC, res);
+        Button bo = boton("🔎  Buscar orden (WK o material)", false);
+        bo.setOnClickListener(v -> buscarOrden());
+        p.addView(bo, margen(-1, dp(46), 8));
+        Button pl = boton("📋  Plantillas de material", false);
+        pl.setOnClickListener(v -> plantillas());
+        p.addView(pl, margen(-1, dp(46), 8));
+        Button inf = boton("📨  Informe del mes (para enviar)", false);
+        inf.setOnClickListener(v -> informeMes(0));
+        p.addView(inf, margen(-1, dp(46), 4));
+        agrupar(p, "📦  Almacén, búsqueda y plantillas", alm, bus, bo, pl);
+        agrupar(p, "📊  Resúmenes e informe", filaC, res, inf);
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -621,8 +646,28 @@ public class MainActivity extends Activity {
 
 
         final android.content.SharedPreferences prefs = getSharedPreferences("ordenes", MODE_PRIVATE);
+        long ok = prefs.getLong("nas_ok", 0);
+        if (ok == 0 || System.currentTimeMillis() - ok > 2L * 86400000L) {
+            TextView an = texto("⚠ Sin copia al NAS " + (ok == 0 ? "todavía" : "desde " + formatoCorto(ok)) + ". Conéctate al wifi de casa.", 13, Color.rgb(255, 190, 90), true);
+            an.setPadding(dp(4), dp(4), dp(4), dp(4));
+            p.addView(an);
+        }
         final boolean plegada = prefs.getBoolean("plegada", false);
         final ArrayList<Resumen> ordenes = listarOrdenes();
+        if (!filtro.isEmpty()) {
+            String q = filtro.toLowerCase(Locale.ROOT);
+            for (int k = ordenes.size() - 1; k >= 0; k--) {
+                Resumen r = ordenes.get(k);
+                boolean ok2 = r.nombre.toLowerCase(Locale.ROOT).contains(q);
+                if (!ok2) for (String l : leerMaterial(r.nombre)) if (l.toLowerCase(Locale.ROOT).contains(q)) { ok2 = true; break; }
+                if (!ok2) ordenes.remove(k);
+            }
+            TextView chip = texto("🔎 Filtro: «" + filtro + "»  ✕  (toca para quitar)", 14, ORO, true);
+            chip.setPadding(dp(8), dp(8), dp(8), dp(8));
+            chip.setBackgroundColor(TARJETA);
+            chip.setOnClickListener(v -> { filtro = ""; mostrarInicio(); });
+            p.addView(chip, margen(-1, -2, 10));
+        }
         TextView cab = texto((plegada ? "▶  " : "▼  ") + "Órdenes guardadas (" + ordenes.size() + ")", 15, GRIS, true);
         cab.setPadding(dp(4), dp(10), dp(4), dp(10));
         cab.setOnClickListener(v -> { prefs.edit().putBoolean("plegada", !plegada).apply(); mostrarInicio(); });
@@ -649,7 +694,8 @@ public class MainActivity extends Activity {
                     tv.setTextSize(15);
                     tv.setPadding(dp(14), dp(12), dp(14), dp(12));
                     tv.setText("Orden " + r.nombre + "\n" + r.fotos + (r.fotos == 1 ? " foto" : " fotos")
-                        + "  ·  última: " + formatoCorto(r.ultima));
+                        + "  ·  última: " + formatoCorto(r.ultima)
+                        + (r.fotos == 0 ? "\n⚠ sin foto" : "") + (r.mat == 0 ? (r.fotos == 0 ? "  ·  " : "\n") + "⚠ sin material" : ""));
                     AbsListView.LayoutParams lp = new AbsListView.LayoutParams(-1, -2);
                     tv.setLayoutParams(lp);
                     LinearLayout caja = new LinearLayout(MainActivity.this);
@@ -749,6 +795,7 @@ public class MainActivity extends Activity {
             Resumen x = new Resumen();
             x.nombre = d.getName();
             x.fotos = fs == null ? 0 : fs.length;
+            x.mat = leerMaterial(d.getName()).size();
             if (fs != null) for (File f : fs) x.ultima = Math.max(x.ultima, fechaDeArchivo(f));
             if (mat.exists()) x.ultima = Math.max(x.ultima, mat.lastModified());
             r.add(x);
@@ -1433,6 +1480,200 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle(m.isEmpty() ? "✔ Todas las órdenes completas" : "🧾 Órdenes a medias")
             .setMessage(m.isEmpty() ? "Todas tus órdenes tienen foto y material apuntado." : m.trim())
             .setPositiveButton("CERRAR", null).show();
+    }
+
+    // ---------- Buscar orden ----------
+    private void buscarOrden() {
+        final EditText q = campo("WK, nº de orden o material", InputType.TYPE_CLASS_TEXT);
+        q.setText(filtro);
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("🔎 Buscar orden").setView(q)
+            .setPositiveButton("BUSCAR", (d, w) -> { filtro = q.getText().toString().trim(); mostrarInicio(); })
+            .setNegativeButton("CANCELAR", null);
+        if (!filtro.isEmpty()) b.setNeutralButton("QUITAR FILTRO", (d, w) -> { filtro = ""; mostrarInicio(); });
+        b.show();
+    }
+
+    // ---------- Plantillas de material ----------
+    private File archivoPlantillas() { return new File(raiz, "plantillas.txt"); }
+
+    private ArrayList<String[]> leerPlantillas() {
+        ArrayList<String[]> r = new ArrayList<>();
+        File f = archivoPlantillas();
+        if (!f.exists()) return r;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            for (String l : new String(leerTodo(in), "UTF-8").split("\n")) {
+                String[] p = l.trim().split(";;", 2);
+                if (p.length == 2 && !p[0].isEmpty() && !p[1].isEmpty()) r.add(p);
+            }
+        } catch (Throwable ignorar) { }
+        return r;
+    }
+
+    private void guardarPlantillas(ArrayList<String[]> l) {
+        StringBuilder sb = new StringBuilder();
+        for (String[] p : l) sb.append(p[0]).append(";;").append(p[1]).append("\n");
+        try (FileOutputStream o = new FileOutputStream(archivoPlantillas())) { o.write(sb.toString().getBytes("UTF-8")); }
+        catch (Exception e) { aviso("No se pudo guardar la plantilla"); }
+    }
+
+    private void plantillas() {
+        final ArrayList<String[]> lista = leerPlantillas();
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("📋 Plantillas de material");
+        if (lista.isEmpty()) {
+            b.setMessage("Todavía no hay ninguna.\n\nPulsa NUEVA: copia el material de una orden que ya hayas hecho (por ejemplo una instalación normal) y la guarda con un nombre.");
+        } else {
+            String[] nombres = new String[lista.size()];
+            for (int i = 0; i < nombres.length; i++) nombres[i] = lista.get(i)[0];
+            b.setItems(nombres, (d, i) -> usarPlantilla(lista.get(i)));
+            b.setNeutralButton("BORRAR", (d, w) -> borrarPlantilla());
+        }
+        b.setPositiveButton("NUEVA", (d, w) -> nuevaPlantilla()).setNegativeButton("CERRAR", null).show();
+    }
+
+    private void borrarPlantilla() {
+        final ArrayList<String[]> lista = leerPlantillas();
+        if (lista.isEmpty()) return;
+        String[] nombres = new String[lista.size()];
+        for (int i = 0; i < nombres.length; i++) nombres[i] = lista.get(i)[0];
+        new AlertDialog.Builder(this).setTitle("¿Cuál borro?").setItems(nombres, (d, i) -> {
+            lista.remove(i);
+            guardarPlantillas(lista);
+            aviso("Plantilla borrada");
+        }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void nuevaPlantilla() {
+        LinearLayout caja = new LinearLayout(this);
+        caja.setOrientation(LinearLayout.VERTICAL);
+        caja.setPadding(dp(16), dp(8), dp(16), 0);
+        final EditText ord = campo("Orden de la que copio el material", InputType.TYPE_CLASS_TEXT);
+        ord.setText(ultOrden);
+        final EditText nom = campo("Nombre (ej. Instalación fibra)", InputType.TYPE_CLASS_TEXT);
+        caja.addView(ord, margen(-1, -2, 4));
+        caja.addView(nom, margen(-1, -2, 8));
+        new AlertDialog.Builder(this).setTitle("Nueva plantilla").setView(caja)
+            .setPositiveButton("GUARDAR", (d, w) -> {
+                String o = ord.getText().toString().trim().toUpperCase(Locale.ROOT);
+                String n = nom.getText().toString().replace(";", "").replace("\n", " ").trim();
+                if (o.isEmpty() || n.isEmpty()) { aviso("Falta la orden o el nombre"); return; }
+                ArrayList<String> claves = new ArrayList<>();
+                for (String l : leerMaterial(o)) {
+                    String[] p = l.split(" \\| ");
+                    if (p.length < 3) continue;
+                    if (p[1].trim().startsWith("RETIRADO") || p[1].trim().startsWith("(no estaba")) continue;
+                    claves.add((p.length >= 4 ? p[3] : p[2]).trim());
+                }
+                if (claves.isEmpty()) { aviso("Esa orden no tiene material apuntado"); return; }
+                ArrayList<String[]> lista = leerPlantillas();
+                for (int i = lista.size() - 1; i >= 0; i--) if (lista.get(i)[0].equalsIgnoreCase(n)) lista.remove(i);
+                lista.add(new String[]{n, android.text.TextUtils.join(",", claves)});
+                guardarPlantillas(lista);
+                aviso("✓ Plantilla «" + n + "» guardada (" + claves.size() + " piezas)");
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void usarPlantilla(final String[] t) {
+        final String orden = ultOrden.trim().toUpperCase(Locale.ROOT);
+        if (!datosValidos(orden)) return;
+        ultOrden = orden;
+        final java.util.LinkedHashMap<String, Integer> cuenta = new java.util.LinkedHashMap<>();
+        for (String c : t[1].split(",")) {
+            c = c.trim();
+            if (c.isEmpty()) continue;
+            Integer n = cuenta.get(c);
+            cuenta.put(c, n == null ? 1 : n + 1);
+        }
+        StringBuilder sb = new StringBuilder("Orden " + orden + "\n\nSe gastará del almacén:\n");
+        for (java.util.Map.Entry<String, Integer> e : cuenta.entrySet()) {
+            Almacen.Item it = almacen.buscar(e.getKey());
+            sb.append("• ").append(it == null ? e.getKey() + " (no está en el almacén)" : it.nombre + (it.raws.isEmpty() ? "" : " (lo escaneas tú)")).append(" ×").append(e.getValue()).append("\n");
+        }
+        new AlertDialog.Builder(this).setTitle("📋 " + t[0]).setMessage(sb.toString())
+            .setPositiveButton("APLICAR", (d, w) -> {
+                int hechos = 0;
+                ArrayList<String> aparte = new ArrayList<>();
+                for (java.util.Map.Entry<String, Integer> e : cuenta.entrySet()) {
+                    String clave = e.getKey();
+                    Almacen.Item it = almacen.buscar(clave);
+                    if (it == null) { aparte.add(clave + " (no está en el almacén)"); continue; }
+                    if (!it.raws.isEmpty()) { aparte.add(it.nombre + " ×" + e.getValue() + " → escanéalo"); continue; }
+                    for (int k = 0; k < e.getValue(); k++) {
+                        Almacen.Item cur = almacen.buscar(clave);
+                        if (cur == null || cur.cantidad <= 0) { aparte.add(it.nombre + " (se ha acabado)"); break; }
+                        String nombre = cur.nombre;
+                        almacen.gastar(clave, null);
+                        pila("USA", orden, clave, nombre, "");
+                        apuntarGasto(clave, orden);
+                        anotarMaterial(orden, clave, nombre, clave);
+                        hechos++;
+                    }
+                }
+                StringBuilder r = new StringBuilder("✓ Apuntadas " + hechos + " piezas en la orden " + orden + ".");
+                if (!aparte.isEmpty()) {
+                    r.append("\n\nFalta por hacer:\n");
+                    for (String a : aparte) r.append("• ").append(a).append("\n");
+                }
+                new AlertDialog.Builder(this).setTitle("Plantilla aplicada").setMessage(r.toString()).setCancelable(false)
+                    .setPositiveButton("OK", (d2, w2) -> mostrarOrden(orden)).show();
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    // ---------- Informe del mes (completo, para enviar) ----------
+    private void informeMes(final int atras) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.add(java.util.Calendar.MONTH, -atras);
+        final String clave = new SimpleDateFormat("MM/yyyy", Locale.US).format(cal.getTime());
+        final String titulo = new SimpleDateFormat("MMMM yyyy", new Locale("es", "ES")).format(cal.getTime());
+        java.util.HashMap<String, Integer> cuenta = new java.util.HashMap<>();
+        StringBuilder ords = new StringBuilder();
+        ArrayList<String> retirados = new ArrayList<>();
+        int nOrd = 0, total = 0, sinFoto = 0;
+        ArrayList<Resumen> todas = listarOrdenes();
+        Collections.sort(todas, (a, b) -> a.nombre.compareTo(b.nombre));
+        for (Resumen r : todas) {
+            int k = 0;
+            for (String l : leerMaterial(r.nombre)) {
+                String[] p = l.split(" \\| ");
+                if (p.length < 2) continue;
+                String fecha = p[0].trim();
+                if (fecha.length() < 10 || !fecha.substring(3, 10).equals(clave)) continue;
+                String nom = p[1].trim();
+                if (nom.startsWith("RETIRADO")) { retirados.add(r.nombre + ": " + nom + (p.length > 2 ? " " + p[2].trim() : "")); continue; }
+                if (nom.startsWith("(no estaba")) nom = "Sin identificar";
+                Integer c = cuenta.get(nom);
+                cuenta.put(nom, c == null ? 1 : c + 1);
+                total++; k++;
+            }
+            if (k == 0) continue;
+            nOrd++;
+            if (r.fotos == 0) sinFoto++;
+            ords.append("• ").append(r.nombre).append(": ").append(k).append(k == 1 ? " material" : " materiales")
+                .append(r.fotos == 0 ? " (SIN FOTO)" : " · " + r.fotos + (r.fotos == 1 ? " foto" : " fotos")).append("\n");
+        }
+        ArrayList<java.util.Map.Entry<String, Integer>> lista = new ArrayList<>(cuenta.entrySet());
+        Collections.sort(lista, (a, b) -> b.getValue() - a.getValue());
+        final StringBuilder sb = new StringBuilder("INFORME DE " + titulo.toUpperCase(new Locale("es", "ES")) + "\n");
+        sb.append("Órdenes: ").append(nOrd).append("\nUnidades de material: ").append(total).append("\n");
+        if (sinFoto > 0) sb.append("Órdenes sin foto: ").append(sinFoto).append("\n");
+        if (!retirados.isEmpty()) sb.append("Equipos retirados: ").append(retirados.size()).append("\n");
+        sb.append("\nMATERIAL USADO\n");
+        for (java.util.Map.Entry<String, Integer> e : lista) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+        if (lista.isEmpty()) sb.append("(nada apuntado)\n");
+        sb.append("\nÓRDENES\n").append(ords.length() == 0 ? "(ninguna)\n" : ords.toString());
+        if (!retirados.isEmpty()) {
+            sb.append("\nRETIRADOS\n");
+            for (String s : retirados) sb.append("• ").append(s).append("\n");
+        }
+        new AlertDialog.Builder(this).setTitle("📨 Informe " + titulo).setMessage(sb.toString())
+            .setPositiveButton("ENVIAR", (d, w) -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_SUBJECT, "Informe " + titulo);
+                i.putExtra(Intent.EXTRA_TEXT, sb.toString());
+                startActivity(Intent.createChooser(i, "Enviar informe del mes"));
+            })
+            .setNeutralButton(atras == 0 ? "MES ANTERIOR" : "ESTE MES", (d, w) -> informeMes(atras == 0 ? 1 : 0))
+            .setNegativeButton("CERRAR", null).show();
     }
 
     // ---------- Resumen del mes ----------
