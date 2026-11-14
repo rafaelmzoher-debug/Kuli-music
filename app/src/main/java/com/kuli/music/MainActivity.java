@@ -414,7 +414,7 @@ public class MainActivity extends Activity {
         pantalla.addView(carpeta, lpCarp);
         carpeta.setOnClickListener(v -> abrirCarpetaMusica());
         carpeta.setOnLongClickListener(v -> { elegirCarpetaMusica(); return true; });
-        Button ordenar = pastilla("🧹  Ordenar música (álbumes · sueltas · duplicadas)", CONTORNO);
+        Button ordenar = pastilla("🧹  Ordenar y poner nombres (álbumes · sueltas · duplicadas)", CONTORNO);
         LinearLayout.LayoutParams lpOrd = new LinearLayout.LayoutParams(-1, dp(40));
         lpOrd.topMargin = dp(5);
         pantalla.addView(ordenar, lpOrd);
@@ -1926,10 +1926,12 @@ public class MainActivity extends Activity {
         String msg = plan.total + " canciones en Música › KULI MUSIC.\n\n"
             + "• Álbumes: " + plan.enAlbumes + " canciones en " + plan.nAlbumes + " álbumes\n"
             + "• Sueltas: " + plan.enSueltas + "\n"
-            + "• Repetidas: " + plan.duplicadas.size() + " (se apartan en «Duplicadas», no se borran)\n\n"
-            + "Se moverán " + (plan.mover.size() + plan.duplicadas.size()) + " archivos."
+            + "• Repetidas: " + plan.duplicadas.size() + " (se apartan en «Duplicadas», no se borran)\n"
+            + "• Nombres que se arreglan: " + plan.renombradas + "\n"
+            + (plan.ejemplos.isEmpty() ? "" : "\nEjemplos:\n" + android.text.TextUtils.join("\n", plan.ejemplos) + (plan.renombradas > plan.ejemplos.size() ? "\n…" : "") + "\n")
+            + "\nSe moverán " + (plan.mover.size() + plan.duplicadas.size()) + " archivos."
             + (guardadas > 0 ? "\n\nYa hay " + guardadas + " en «Duplicadas» esperando a que las borres." : "");
-        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("🧹 Ordenar música").setMessage(msg)
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("🧹 Ordenar y poner nombres").setMessage(msg)
             .setNegativeButton("CANCELAR", null);
         if (plan.mover.size() + plan.duplicadas.size() > 0) {
             b.setPositiveButton("ORDENAR", (d, w) -> {

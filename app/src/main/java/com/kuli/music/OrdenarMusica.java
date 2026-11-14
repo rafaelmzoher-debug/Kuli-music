@@ -16,13 +16,14 @@ final class OrdenarMusica {
     static final int MIN_ALBUM = 3; // canciones del mismo álbum para considerarlo álbum
 
     static final class Pista {
-        File f; String titulo = "", artista = "", album = ""; long dur, tam;
+        File f; String titulo = "", artista = "", album = ""; long dur, tam; boolean tags;
     }
 
     static final class Plan {
         final ArrayList<File[]> mover = new ArrayList<>();      // {origen, destino}
         final ArrayList<File[]> duplicadas = new ArrayList<>(); // {origen, destino}
-        int total, enAlbumes, nAlbumes, enSueltas;
+        final ArrayList<String> ejemplos = new ArrayList<>();
+        int total, enAlbumes, nAlbumes, enSueltas, renombradas;
     }
 
     static boolean esAudio(String n) {
@@ -48,6 +49,34 @@ final class OrdenarMusica {
         return s.isEmpty() ? "Sin nombre" : s;
     }
 
+    // Quita la basura típica de las descargas: (Official Video), [HD], guiones bajos, www…, números de pista.
+    static String limpiar(String t) {
+        String s = t == null ? "" : t;
+        s = s.replace('_', ' ');
+        s = s.replaceAll("(?i)[\\(\\[][^\\)\\]]*(official|oficial|video|lyric|letra|audio|\\bhd\\b|\\bhq\\b|4k|visualizer|clip|remaster|descarga|download)[^\\)\\]]*[\\)\\]]", " ");
+        s = s.replaceAll("(?i)www\\.[a-z0-9.\\-]+", " ");
+        s = s.replaceAll("(?i)\\b(y2mate|ytmp3|savefrom)\\S*", " ");
+        s = s.replaceFirst("^\\s*\\d{1,3}\\s*[-._]\\s*", "");
+        s = s.replaceAll("\\s+", " ").trim();
+        s = s.replaceAll("[\\s\\-]+$", "").replaceAll("^[\\s\\-]+", "");
+        return s;
+    }
+
+    // Nombre bonito: «Artista - Título.ext» si el archivo trae sus datos; si no, el nombre limpio.
+    static String nombreNuevo(Pista p) {
+        String n = p.f.getName();
+        int punto = n.lastIndexOf('.');
+        String ext = punto > 0 ? n.substring(punto) : "";
+        String t = limpiar(p.titulo), a = limpiar(p.artista);
+        String base;
+        if (p.tags && !a.isEmpty() && !t.isEmpty()) base = norm(t).startsWith(norm(a)) ? t : a + " - " + t;
+        else base = t;
+        if (base.isEmpty()) return n;
+        base = seguro(base);
+        if (base.length() > 120) base = base.substring(0, 120).trim();
+        return base + ext;
+    }
+
     private static Pista leer(File f) {
         Pista p = new Pista();
         p.f = f; p.tam = f.length();
@@ -60,6 +89,7 @@ final class OrdenarMusica {
             String al = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
             String d = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
             if (t != null) p.titulo = t.trim();
+            p.tags = t != null && !t.trim().isEmpty();
             if (a != null) p.artista = a.trim();
             if (al != null) p.album = al.trim();
             if (d != null) p.dur = Long.parseLong(d.trim());
@@ -124,13 +154,18 @@ final class OrdenarMusica {
         for (Pista p : validas) {
             String k = norm(p.artista) + "|" + norm(p.album);
             File destino;
+            String nom = nombreNuevo(p);
+            if (!nom.equals(p.f.getName())) {
+                plan.renombradas++;
+                if (plan.ejemplos.size() < 8) plan.ejemplos.add("• " + p.f.getName() + "\n   → " + nom);
+            }
             if (!p.album.isEmpty() && cuenta.get(k) >= MIN_ALBUM) {
                 String carpeta = seguro((p.artista.isEmpty() ? "" : p.artista + " - ") + p.album);
-                destino = new File(new File(new File(base, ALBUMES), carpeta), p.f.getName());
+                destino = new File(new File(new File(base, ALBUMES), carpeta), nom);
                 plan.enAlbumes++;
                 albumesVistos.add(k);
             } else {
-                destino = new File(new File(base, SUELTAS), p.f.getName());
+                destino = new File(new File(base, SUELTAS), nom);
                 plan.enSueltas++;
             }
             if (!destino.equals(p.f)) plan.mover.add(new File[]{p.f, destino});
