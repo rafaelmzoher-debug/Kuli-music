@@ -63,10 +63,11 @@ public class MainActivity extends Activity {
     static final int PIDE_FOTO = 1, PIDE_GALERIA = 2, PERMISO = 3;
     static final int LADO_MAX = 3200; // calidad suficiente para leer etiquetas y códigos
 
-    private final int NEGRO = Color.rgb(9, 10, 15);
-    private final int DORADO = Color.rgb(232, 190, 92);
-    private final int GRIS = Color.rgb(150, 153, 168);
-    private final int TARJETA = Color.rgb(24, 26, 36);
+    private final int NEGRO = Color.rgb(6, 42, 92);              // fondo azul marino
+    private final int DORADO = Color.rgb(255, 255, 255);         // acento principal: blanco
+    private final int ORO = Color.rgb(255, 205, 80);             // detalles dorados
+    private final int GRIS = Color.rgb(170, 200, 235);
+    private final int TARJETA = Color.rgb(12, 74, 146);
 
     private File raiz;
     private FrameLayout contenido;
@@ -534,10 +535,17 @@ public class MainActivity extends Activity {
 
         TextView t = texto("KULI ÓRDENES", 24, DORADO, true);
         t.setGravity(Gravity.CENTER);
-        p.addView(t);
+        LinearLayout cabecera = new LinearLayout(this);
+        cabecera.setGravity(Gravity.CENTER);
+        cabecera.addView(new Escudo(this), new LinearLayout.LayoutParams(dp(30), dp(34)));
+        cabecera.addView(t, new LinearLayout.LayoutParams(-2, -2));
+        p.addView(cabecera, new LinearLayout.LayoutParams(-1, -2));
         TextView s = texto("Foto del material con el nº de orden, el día y la hora", 13, GRIS, false);
         s.setGravity(Gravity.CENTER);
         p.addView(s);
+        TextView hoy = texto(resumenHoy(), 13, ORO, true);
+        hoy.setGravity(Gravity.CENTER);
+        p.addView(hoy);
 
         final EditText orden = campo("Nº de orden", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         final TextView hintOrden = texto("", 12, GRIS, false);
@@ -600,6 +608,8 @@ public class MainActivity extends Activity {
         Button res = boton("📍 Resumen de trabajos (WK y direcciones)", false);
         res.setOnClickListener(v -> resumenTrabajos());
         p.addView(res, margen(-1, dp(46), 4));
+        agrupar(p, "📦  Almacén y búsqueda", alm, bus);
+        agrupar(p, "📊  Resúmenes y órdenes a medias", filaC, res);
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -652,6 +662,79 @@ public class MainActivity extends Activity {
             p.addView(lista, new LinearLayout.LayoutParams(-1, 0, 1f));
         }
         contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    // Escudo propio de KULI (dibujado a mano, original).
+    private static final class Escudo extends View {
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        Escudo(android.content.Context c) { super(c); }
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            float w = getWidth(), h = getHeight();
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(w * 0.08f, h * 0.06f);
+            path.lineTo(w * 0.92f, h * 0.06f);
+            path.lineTo(w * 0.92f, h * 0.50f);
+            path.quadTo(w * 0.92f, h * 0.84f, w * 0.50f, h * 0.97f);
+            path.quadTo(w * 0.08f, h * 0.84f, w * 0.08f, h * 0.50f);
+            path.close();
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(Color.rgb(5, 28, 62));
+            c.drawPath(path, p);
+            p.setStyle(android.graphics.Paint.Style.STROKE);
+            p.setStrokeWidth(w * 0.07f);
+            p.setColor(Color.WHITE);
+            c.drawPath(path, p);
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(Color.rgb(255, 205, 80));
+            p.setTextAlign(android.graphics.Paint.Align.CENTER);
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            p.setTextSize(h * 0.52f);
+            c.drawText("K", w * 0.5f, h * 0.64f, p);
+            p.setColor(Color.WHITE);
+            c.drawRect(w * 0.22f, h * 0.72f, w * 0.78f, h * 0.76f, p);
+        }
+    }
+
+    // Cuántas órdenes y materiales llevas hoy.
+    private String resumenHoy() {
+        String hoy = new SimpleDateFormat("dd/MM/yyyy", Locale.ROOT).format(new Date());
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0); c.set(java.util.Calendar.MILLISECOND, 0);
+        long ini = c.getTimeInMillis();
+        int ordenes = 0, materiales = 0;
+        for (Resumen r : listarOrdenes()) {
+            if (r.ultima >= ini) ordenes++;
+            for (String l : leerMaterial(r.nombre)) if (l.startsWith(hoy)) materiales++;
+        }
+        return "Hoy: " + ordenes + (ordenes == 1 ? " orden" : " órdenes") + " · " + materiales + (materiales == 1 ? " material" : " materiales");
+    }
+
+    // Mete varias vistas dentro de una sección que se abre y se cierra tocando el título.
+    private void agrupar(LinearLayout panel, final String titulo, View... vistas) {
+        int pos = panel.indexOfChild(vistas[0]);
+        if (pos < 0) pos = panel.getChildCount();
+        final LinearLayout cuerpo = new LinearLayout(this);
+        cuerpo.setOrientation(LinearLayout.VERTICAL);
+        for (View v : vistas) {
+            ViewGroup.LayoutParams lp = v.getLayoutParams();
+            panel.removeView(v);
+            cuerpo.addView(v, lp != null ? lp : new LinearLayout.LayoutParams(-1, -2));
+        }
+        cuerpo.setVisibility(View.GONE);
+        final TextView cab = texto("▸  " + titulo.trim(), 14, DORADO, true);
+        cab.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        cab.setPadding(dp(14), dp(10), dp(14), dp(10));
+        cab.setBackgroundColor(TARJETA);
+        cab.setOnClickListener(v -> {
+            boolean abrir = cuerpo.getVisibility() != View.VISIBLE;
+            cuerpo.setVisibility(abrir ? View.VISIBLE : View.GONE);
+            cab.setText((abrir ? "▾  " : "▸  ") + titulo.trim());
+        });
+        LinearLayout.LayoutParams lpCab = new LinearLayout.LayoutParams(-1, -2);
+        lpCab.topMargin = dp(8);
+        panel.addView(cab, Math.min(pos, panel.getChildCount()), lpCab);
+        panel.addView(cuerpo, Math.min(pos + 1, panel.getChildCount()), new LinearLayout.LayoutParams(-1, -2));
     }
 
     private ArrayList<Resumen> listarOrdenes() {
