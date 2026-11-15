@@ -78,22 +78,22 @@ public class MainActivity extends Activity {
             if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
             startActivity(new android.content.Intent(this, GaleriaActivity.class));
         });
-        p.addView(galeria, margen(new LinearLayout.LayoutParams(-1, dp(56)), 12));
+        LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpA = new LinearLayout.LayoutParams(0, dp(48), 1f); lpA.setMargins(6, 8, 6, 8); fila1.addView(galeria, lpA);
 
         Button ver = boton("📂  Ver qué hay en el NAS", false);
         ver.setOnClickListener(v -> verNas());
-        p.addView(ver, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+        fila1.addView(ver, lpA); p.addView(fila1);
 
         Button liberar = boton("🧹  Liberar espacio del móvil", false);
         liberar.setOnClickListener(v -> alPulsarLiberar());
-        p.addView(liberar, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+        // Sin boton de borrar para no perder nunca ninguna foto
 
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
-        p.addView(auto, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpB = new LinearLayout.LayoutParams(0, dp(48), 1f); lpB.setMargins(6, 8, 6, 8); fila2.addView(auto, lpB);
         Button nas = boton("⚙  Dirección del NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
-        p.addView(nas, margen(new LinearLayout.LayoutParams(-1, dp(52)), 12));
+        fila2.addView(nas, lpB); p.addView(fila2);
 
         p.addView(texto("Se guardan en  FOTOS KULI / año / mes / origen\n(Camara, WhatsApp, Capturas…).\nLas que ya están copiadas no se repiten.", 12, GRIS, false),
                 margen(centro(), 26));
@@ -109,12 +109,14 @@ public class MainActivity extends Activity {
 
     // ---------- Permiso y recuento ----------
     private boolean tienePermiso() {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && android.os.Environment.isExternalStorageManager()) return true;
         return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
     private boolean puedeBorrar() {
         return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
     private void pedirPermiso() {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) { try { startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:" + getPackageName()))); } catch (Throwable ignored) {} }
         if (!tienePermiso() || !puedeBorrar()) requestPermissions(new String[]{
             android.Manifest.permission.READ_EXTERNAL_STORAGE,
             android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISO);

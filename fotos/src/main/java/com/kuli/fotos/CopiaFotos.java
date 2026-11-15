@@ -328,4 +328,45 @@ final class CopiaFotos {
         }
         throw ultimo != null ? ultimo : new java.io.IOException("Sin conexión con el NAS");
     }
+
+    private static String dirPorDia(Item it) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+        long ms = it.fecha > 100000000000L ? it.fecha : it.fecha * 1000L;
+        if (ms <= 0) ms = System.currentTimeMillis();
+        return CARPETA + "/" + sdf.format(new java.util.Date(ms));
+    }
+
+    private static boolean tienePersonas(Context ctx, android.net.Uri uri) {
+        try {
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            try (java.io.InputStream is = ctx.getContentResolver().openInputStream(uri)) {
+                android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            }
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return false;
+            int scale = 1;
+            while (opts.outWidth / scale > 800 || opts.outHeight / scale > 800) scale *= 2;
+            android.graphics.BitmapFactory.Options o2 = new android.graphics.BitmapFactory.Options();
+            o2.inSampleSize = scale;
+            o2.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
+            android.graphics.Bitmap bmp = null;
+            try (java.io.InputStream is2 = ctx.getContentResolver().openInputStream(uri)) {
+                bmp = android.graphics.BitmapFactory.decodeStream(is2, null, o2);
+            }
+            if (bmp == null) return false;
+            if ((bmp.getWidth() & 1) == 1) {
+                android.graphics.Bitmap even = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth() - 1, bmp.getHeight());
+                bmp.recycle();
+                bmp = even;
+            }
+            android.media.FaceDetector fd = new android.media.FaceDetector(bmp.getWidth(), bmp.getHeight(), 3);
+            android.media.FaceDetector.Face[] caras = new android.media.FaceDetector.Face[3];
+            int n = fd.findFaces(bmp, caras);
+            bmp.recycle();
+            return n > 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
 }
