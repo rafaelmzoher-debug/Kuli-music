@@ -29,8 +29,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MainActivity extends Activity {
     private static final int PERMISO = 300;
     private static final int TRABAJO = 7;
-    private final int NEGRO = Color.rgb(9, 10, 15);
-    private final int DORADO = Color.rgb(212, 175, 55);
+    private final int NEGRO = Color.rgb(8, 28, 56);
+    private final int DORADO = Color.rgb(120, 175, 235);
     private final int GRIS = Color.rgb(150, 153, 168);
 
     private TextView estado, detalle;
@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(NEGRO);
+        scroll.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{android.graphics.Color.rgb(6, 22, 46), android.graphics.Color.rgb(13, 46, 88), android.graphics.Color.rgb(6, 20, 42)}));
         LinearLayout p = new LinearLayout(this);
         p.setOrientation(LinearLayout.VERTICAL);
         p.setPadding(dp(22), dp(40), dp(22), dp(30));
@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
 
         p.addView(texto("📷", 56, DORADO, true), centro());
         p.addView(texto("KULI FOTOS", 26, Color.WHITE, true), centro());
-        p.addView(texto("Copia de seguridad de tus fotos y vídeos al NAS", 13, GRIS, false), centro());
+        p.addView(texto("TUS RECUERDOS · SOLO PERSONAS · v2.0", 13, GRIS, false), centro());
 
         estado = texto("Mirando tus fotos…", 18, Color.WHITE, true);
         p.addView(estado, margen(centro(), 36));
