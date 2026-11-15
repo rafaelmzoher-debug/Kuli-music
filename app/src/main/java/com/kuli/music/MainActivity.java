@@ -770,7 +770,7 @@ public class MainActivity extends Activity {
     }
 
     private void mostrarCarpetaMusica(final ArrayList<String[]> canciones) {
-        if (isDestroyed()) return;
+        if (isDestroyed()) return; abrirBibliotecaKuliDirecta(); if (true) return;
         if (canciones.isEmpty()) {
             new AlertDialog.Builder(this).setTitle("No hay canciones")
                 .setMessage("No he encontrado música en esa carpeta (ni en sus subcarpetas).")
