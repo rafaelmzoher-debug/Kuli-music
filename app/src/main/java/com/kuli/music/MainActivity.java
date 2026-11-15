@@ -1071,7 +1071,7 @@ public class MainActivity extends Activity {
             org.json.JSONArray res = new org.json.JSONObject(sb.toString()).optJSONArray("results");
             if (res == null || res.length() == 0) return null;
             org.json.JSONObject o = res.getJSONObject(0);
-            return new String[0]{o.optString("primaryGenreName"), o.optString("releaseDate")};
+            return new String[]{o.optString("primaryGenreName"), o.optString("releaseDate")};
         } catch (Exception e) {
             android.util.Log.e("KULI_ESTILO", "iTunes", e);
             return null;
@@ -1245,11 +1245,11 @@ public class MainActivity extends Activity {
         int nuevas = 0;
         try (Cursor c = getContentResolver().query(
                 android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                new String[0]{android.provider.MediaStore.Audio.Media._ID,
+                new String[]{android.provider.MediaStore.Audio.Media._ID,
                              android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
                              android.provider.MediaStore.Audio.Media.TITLE,
                              android.provider.MediaStore.Audio.Media.ARTIST},
-                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[0]{"%/YMusic/%"}, null)) {
+                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[]{"%/YMusic/%"}, null)) {
             while (c != null && c.moveToNext()) {
                 String clave = android.content.ContentUris.withAppendedId(
                         android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, c.getLong(0)).toString();
@@ -1277,7 +1277,7 @@ public class MainActivity extends Activity {
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             if (!aj.getBoolean("pidio_permiso", false)) {
                 aj.edit().putBoolean("pidio_permiso", true).apply();
-                requestPermissions(new String[0]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 200);
+                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 200);
             }
             return;
         }
@@ -1288,8 +1288,8 @@ public class MainActivity extends Activity {
         final java.util.HashMap<Uri, String> claves = new java.util.HashMap<>();
         try (Cursor c = getContentResolver().query(
                 android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                new String[0]{android.provider.MediaStore.Audio.Media._ID, android.provider.MediaStore.Audio.Media.SIZE},
-                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[0]{"%/YMusic/%"}, null)) {
+                new String[]{android.provider.MediaStore.Audio.Media._ID, android.provider.MediaStore.Audio.Media.SIZE},
+                android.provider.MediaStore.Audio.Media.DATA + " LIKE ?", new String[]{"%/YMusic/%"}, null)) {
             while (c != null && c.moveToNext()) {
                 String clave = c.getLong(0) + ":" + c.getLong(1);
                 if (vistas.contains(clave)) continue;
@@ -1365,7 +1365,7 @@ public class MainActivity extends Activity {
         SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
         if (aj.getBoolean("favs_pidio", false)) return;
         aj.edit().putBoolean("favs_pidio", true).apply();
-        requestPermissions(new String[0]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 203);
+        requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 203);
     }
 
     @Override public void onRequestPermissionsResult(int codigo, String[] permisos, int[] resultados) {
@@ -1612,7 +1612,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 String nombre = "cancion.mp3";
-                try (Cursor c = getContentResolver().query(uri, new String[0]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
                     if (c != null && c.moveToFirst()) nombre = c.getString(0);
                 } catch (Exception ignored) { }
                 if (nombre == null || nombre.trim().isEmpty()) nombre = "cancion.mp3";
@@ -1920,7 +1920,7 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT < 33
                 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[0]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 202);
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 202);
             return;
         }
         final java.io.File base = carpetaMovil();
@@ -1989,7 +1989,7 @@ public class MainActivity extends Activity {
                 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             pendienteMovil = rutas;
-            requestPermissions(new String[0]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 201);
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 201);
             return;
         }
         final java.io.File base = carpetaMovil();
@@ -2261,7 +2261,7 @@ public class MainActivity extends Activity {
 
     private String nombreDeUri(Uri uri) {
         String nombre = null;
-        try (Cursor c = getContentResolver().query(uri, new String[0]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
             if (c != null && c.moveToFirst()) nombre = c.getString(0);
         } catch (Exception ignored) { }
         if (nombre == null || nombre.trim().isEmpty()) nombre = "cancion_" + System.currentTimeMillis() + ".mp3";
@@ -2549,7 +2549,7 @@ public class MainActivity extends Activity {
             .setNegativeButton("CERRAR", null).show();
     }
 
-    private boolean esCine(String n) { String t = n.toLowerCase(); for (String c : new String[0]{"cine","pelicula","película","movie","series","serie","accion","acción","crimen","drama","pluto","runtime","rakuten","paramount","hollywood","thriller"}) if (t.contains(c)) return true; return false; }
+    private boolean esCine(String n) { String t = n.toLowerCase(); for (String c : new String[]{"cine","pelicula","película","movie","series","serie","accion","acción","crimen","drama","pluto","runtime","rakuten","paramount","hollywood","thriller"}) if (t.contains(c)) return true; return false; }
     private boolean esDeportivo(String nombre) {
         String t = nombre.toLowerCase();
         String[] claves = {"deport", "sport", "gol", "marca", "real madrid", "barça", "barca", "futbol", "fútbol",
@@ -2663,7 +2663,7 @@ public class MainActivity extends Activity {
             Intent ti = new Intent("com.termux.RUN_COMMAND");
             ti.setClassName("com.termux", "com.termux.app.RunCommandService");
             ti.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash");
-            ti.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[0]{sh.getAbsolutePath()});
+            ti.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{sh.getAbsolutePath()});
             ti.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(ti); else startService(ti);
             for (int w = 0; w < 25; w++) { Thread.sleep(500); if (!sh.exists() && dst.exists() && dst.length() > 10000) break; }
@@ -2695,7 +2695,7 @@ public class MainActivity extends Activity {
 
     private void copiarSafNativo(Uri treeUri, String docId, java.io.File dest) {
         Uri childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
-        try (android.database.Cursor c = getContentResolver().query(childrenUri, new String[0]{
+        try (android.database.Cursor c = getContentResolver().query(childrenUri, new String[]{
             android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE
@@ -2775,7 +2775,7 @@ public class MainActivity extends Activity {
                         android.database.Cursor cs = dbP.rawQuery("SELECT id, title, albumName FROM song", null);
                         while (cs.moveToNext()) {
                             String sid = cs.getString(0), st = cs.getString(1), sa = cs.getString(2);
-                            metaById.put(sid, new String[0]{st, sa});
+                            metaById.put(sid, new String[]{st, sa});
                             if (sa != null && !sa.trim().isEmpty() && !sa.trim().equalsIgnoreCase(st != null ? st.trim() : "")) {
                                 String kAlb = sa.trim().toLowerCase();
                                 albumCounts.put(kAlb, (albumCounts.containsKey(kAlb) ? albumCounts.get(kAlb) : 0) + 1);
@@ -2814,7 +2814,7 @@ public class MainActivity extends Activity {
                     fos.close();
                     convertirMp3Termux(rawTmp, outMp3);
                     if (!outMp3.exists() || outMp3.length() < 10000) rawTmp.renameTo(outMp3); else rawTmp.delete();
-                    android.media.MediaScannerConnection.scanFile(this, new String[0]{outMp3.getAbsolutePath()}, null, null);
+                    android.media.MediaScannerConnection.scanFile(this, new String[]{outMp3.getAbsolutePath()}, null, null);
                     nuevasUris.add(Uri.fromFile(outMp3));
                 }
                 borrarDirKuli(workTmp);
@@ -2972,7 +2972,7 @@ public class MainActivity extends Activity {
             recolectarMp3Directo(base, loc);
             for (java.io.File f : loc) if (simple(f.getName()).contains(q)) { et.add("📱 " + f.getName().replace(".mp3", "")); ds.add(f); }
             try {
-                for (String r : listarTodasLasRutasNas()) {
+                for (String r : new java.util.ArrayList<String>()) {
                     String nom = r.contains("/") ? r.substring(r.lastIndexOf("/") + 1) : r;
                     if (simple(nom).contains(q)) { et.add("☁️ " + nom.replace(".mp3", "")); ds.add(r); }
                 }
@@ -2982,7 +2982,7 @@ public class MainActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Resultados (" + et.size() + ")").setItems(et.toArray(new String[0]), (d, idx) -> {
                     Object o = ds.get(idx);
                     if (o instanceof java.io.File) { modoDjActivo = false; java.io.File f = (java.io.File) o; tituloActualNotif = f.getName().replace(".mp3", ""); reproducir(Uri.fromFile(f)); }
-                    else reproducirDesdeNas((String) o);
+                    else reproducirListaNas(java.util.Collections.singletonList((String) o), 0);
                 }).setNegativeButton("Cerrar", null).show();
             });
         }).start();
@@ -3001,7 +3001,7 @@ public class MainActivity extends Activity {
             for (String r : rutas) {
                 String nom = r.contains("/") ? r.substring(r.lastIndexOf("/") + 1) : r;
                 if (ya.contains(claveNombre(nom))) continue;
-                try { descargarArchivoNasDirecto(r, new java.io.File(destDir, nom)); ya.add(claveNombre(nom)); bjs++; } catch (Exception ignored) {}
+                try { descargarDelNas(r, new java.io.File(destDir, nom)); ya.add(claveNombre(nom)); bjs++; } catch (Exception ignored) {}
             }
             final int tb = bjs;
             runOnUiThread(() -> aviso("⬇️ " + tb + " canciones nuevas bajadas al móvil"));
