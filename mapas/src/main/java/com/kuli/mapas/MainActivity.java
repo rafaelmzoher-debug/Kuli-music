@@ -30,7 +30,8 @@ public class MainActivity extends Activity implements LocationListener {
     private MyLocationNewOverlay locOverlay;
     private EditText txtBuscar;
     private TextView txtVel, txtLimite, txtEstado;
-    private boolean modoOffline = false;
+    private boolean modoOffline = false, modoCoche = true, autoArranque = true;
+    private Button btnTransporte, btnAutoCoche;
     private int limiteActual = 120, ultimoRadarAvisado = -1;
     private TextToSpeech tts;
     private final List<double[]> radares = new ArrayList<>(); // lat, lon, lim
@@ -39,6 +40,7 @@ public class MainActivity extends Activity implements LocationListener {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         File base = new File(getCacheDir(), "osmdroid"); base.mkdirs();
         Configuration.getInstance().setOsmdroidBasePath(base);
         Configuration.getInstance().setOsmdroidTileCache(new File(base, "tiles"));
@@ -120,6 +122,24 @@ public class MainActivity extends Activity implements LocationListener {
         FrameLayout.LayoutParams lpPan = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         lpPan.setMargins(0, 0, dp(14), dp(22));
 
+        btnTransporte = pastilla("🚗 Coche", true);
+        btnTransporte.setOnClickListener(v -> {
+            modoCoche = !modoCoche;
+            btnTransporte.setText(modoCoche ? "🚗 Coche" : "🚶 Andando");
+            txtEstado.setText(modoCoche ? "🚗 Modo COCHE: ruta por carreteras y radares activos" : "🚶 Modo ANDANDO: ruta peatonal a nivel de calle");
+            if (marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
+        });
+        panel.addView(btnTransporte);
+
+        btnAutoCoche = pastilla("⚡ Auto: SÍ", false);
+        btnAutoCoche.setOnClickListener(v -> {
+            autoArranque = !autoArranque;
+            getSharedPreferences("kuli_mapas_cfg", MODE_PRIVATE).edit().putBoolean("auto_coche", autoArranque).apply();
+            btnAutoCoche.setText(autoArranque ? "⚡ Auto: SÍ" : "⚡ Auto: NO");
+            Toast.makeText(this, autoArranque ? "Se abrirá sola al conectar al coche" : "Auto-arranque desactivado", Toast.LENGTH_SHORT).show();
+        });
+        panel.addView(btnAutoCoche);
+
         Button btnGps = pastilla("🎯 Mi GPS", true); btnGps.setOnClickListener(v -> centrarGps()); panel.addView(btnGps);
         final Button btnModo = pastilla("🌐 Online", false);
         btnModo.setOnClickListener(v -> {
@@ -194,12 +214,39 @@ public class MainActivity extends Activity implements LocationListener {
         if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
         if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
         marcadorDestino = new Marker(map); marcadorDestino.setPosition(dest); marcadorDestino.setTitle(nombre); map.getOverlays().add(marcadorDestino);
-        if (locOverlay != null && locOverlay.getMyLocation() != null) {
-            lineaRuta = new Polyline(); lineaRuta.addPoint(locOverlay.getMyLocation()); lineaRuta.addPoint(dest);
-            lineaRuta.getOutlinePaint().setColor(Color.rgb(30, 144, 255)); lineaRuta.getOutlinePaint().setStrokeWidth(10f); map.getOverlays().add(lineaRuta);
-        }
-        map.getController().animateTo(dest); map.getController().setZoom(15.5); txtEstado.setText("📍 " + nombre);
+        map.getController().animateTo(dest); map.getController().setZoom(modoCoche ? 15.0 : 17.0);
+        txtEstado.setText((modoCoche ? "🚗 Ruta coche: " : "🚶 Ruta a pie: ") + nombre);
         if (tts != null) tts.speak("Destino fijado", TextToSpeech.QUEUE_FLUSH, null, null);
+        if (locOverlay != null && locOverlay.getMyLocation() != null) {
+            GeoPoint ini = locOverlay.getMyLocation();
+            String perfil = modoCoche ? "driving" : "foot";
+            new Thread(() -> {
+                try {
+                    String u = "https://project-osrm.org" + perfil + "/" + ini.getLongitude() + "," + ini.getLatitude() + ";" + dest.getLongitude() + "," + dest.getLatitude() + "?overview=full&geometries=geojson";
+                    HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+                    c.setConnectTimeout(5000);
+                    BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                    StringBuilder sb = new StringBuilder(); String ln;
+                    while ((ln = br.readLine()) != null) sb.append(ln);
+                    JSONObject r0 = new JSONObject(sb.toString()).getJSONArray("routes").getJSONObject(0);
+                    double km = r0.getDouble("distance") / 1000.0;
+                    int min = (int) Math.round(r0.getDouble("duration") / 60.0);
+                    JSONArray pts = r0.getJSONObject("geometry").getJSONArray("coordinates");
+                    ArrayList<GeoPoint> lista = new ArrayList<>();
+                    for (int i = 0; i < pts.length(); i++) {
+                        JSONArray par = pts.getJSONArray(i);
+                        lista.add(new GeoPoint(par.getDouble(1), par.getDouble(0)));
+                    }
+                    runOnUiThread(() -> {
+                        lineaRuta = new Polyline(); lineaRuta.setPoints(lista);
+                        lineaRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(30, 144, 255) : Color.rgb(65, 225, 115));
+                        lineaRuta.getOutlinePaint().setStrokeWidth(11f);
+                        map.getOverlays().add(lineaRuta); map.invalidate();
+                        txtEstado.setText(String.format(Locale.US, "%s %.1f km · %d min · %s", modoCoche ? "🚗" : "🚶", km, min, nombre));
+                    });
+                } catch (Throwable ignored) {}
+            }).start();
+        }
     }
 
     private void cargarRadares() {
@@ -258,6 +305,8 @@ public class MainActivity extends Activity implements LocationListener {
     }
     @Override public void onLocationChanged(Location loc) {
         int kmh = Math.round(loc.getSpeed() * 3.6f); txtVel.setText(kmh + "\nkm/h");
+        if (kmh > 22 && !modoCoche) { modoCoche = true; btnTransporte.setText("🚗 Coche"); }
+        if (kmh > 8 && locOverlay != null) { locOverlay.enableFollowLocation(); map.getController().animateTo(new GeoPoint(loc.getLatitude(), loc.getLongitude())); }
         GeoPoint yo = new GeoPoint(loc.getLatitude(), loc.getLongitude());
         for (int i = 0; i < radares.size(); i++) {
             double[] r = radares.get(i);
