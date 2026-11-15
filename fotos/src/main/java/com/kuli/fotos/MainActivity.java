@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     private static final int PERMISO = 300;
     private static final int TRABAJO = 7;
     private final int NEGRO = Color.rgb(9, 10, 15);
-    private final int DORADO = Color.rgb(232, 190, 92);
+    private final int DORADO = Color.rgb(212, 175, 55);
     private final int GRIS = Color.rgb(150, 153, 168);
 
     private TextView estado, detalle;
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         lpUnica.topMargin = dp(16);
         p.addView(barra, lpUnica);
 
-        copiar = boton("Copiar ahora", true);
+        copiar = boton("⬆️ Copiar personas", true);
         copiar.setOnClickListener(v -> alPulsarCopiar());
         p.addView(copiar, margen(new LinearLayout.LayoutParams(-1, dp(56)), 28));
 
@@ -81,14 +81,14 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lpCol = new LinearLayout.LayoutParams(0, dp(48), 1f); lpCol.setMargins(6, 8, 6, 8);
         LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL);
         fila1.addView(galeria, lpCol);
-        Button ver = boton("📂 Ver qué hay en el NAS", false);
+        Button ver = boton("📁 Carpetas NAS", false);
         ver.setOnClickListener(v -> verNas());
         fila1.addView(ver, lpCol); p.addView(fila1);
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
         LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL);
         fila2.addView(auto, lpCol);
-        Button nas = boton("⚙ Dirección del NAS", false);
+        Button nas = boton("⚙️ Ajustes NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
         fila2.addView(nas, lpCol); p.addView(fila2);
 
@@ -188,7 +188,7 @@ public class MainActivity extends Activity {
 
     private void terminar(CopiaFotos.Resultado r, Throwable error) {
         copiando = false;
-        copiar.setText("Copiar ahora");
+        copiar.setText("⬆️ Copiar personas");
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (isDestroyed()) return;
         if (error != null) {
@@ -293,7 +293,7 @@ public class MainActivity extends Activity {
     // ---------- Copia automática ----------
     private SharedPreferences prefs() { return getSharedPreferences("fotos", MODE_PRIVATE); }
     private void pintarAuto() {
-        auto.setText(prefs().getBoolean("auto", false) ? "🔁  Copia automática: ACTIVADA" : "🔁  Copia automática: apagada");
+        auto.setText(prefs().getBoolean("auto", false) ? "🔁  Auto: ACTIVADA" : "🔁  Auto: apagada");
     }
     private void alternarAuto() {
         JobScheduler js = (JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
@@ -350,7 +350,7 @@ public class MainActivity extends Activity {
     }
     private Button boton(String t, boolean lleno) {
         Button b = new Button(this);
-        b.setText(t); b.setAllCaps(false); b.setTextSize(16);
+        b.setText(t); b.setAllCaps(false); b.setTextSize(13); b.setSingleLine(true); b.setPadding(12, 0, 12, 0);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(lleno ? NEGRO : DORADO);
         GradientDrawable g = new GradientDrawable();
