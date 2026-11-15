@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
             if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
             startActivity(new android.content.Intent(this, GaleriaActivity.class));
         });
-        LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpF2 = new LinearLayout.LayoutParams(0, dp(48), 1f); lpF2.setMargins(6, 8, 6, 8); fila1.addView(galeria, lpF);
+        LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpF = new LinearLayout.LayoutParams(0, dp(48), 1f); lpF2.setMargins(6, 8, 6, 8); fila1.addView(galeria, lpF);
 
         Button ver = boton("📂  Ver qué hay en el NAS", false);
         ver.setOnClickListener(v -> verNas());
@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
 
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
-        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpUnica = new LinearLayout.LayoutParams(0, dp(48), 1f); lpUnica.setMargins(6, 8, 6, 8); fila2.addView(auto, lpF2);
+        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpF2 = new LinearLayout.LayoutParams(0, dp(48), 1f); lpF2.setMargins(6, 8, 6, 8); fila2.addView(auto, lpF2);
         Button nas = boton("⚙  Dirección del NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
         fila2.addView(nas, lpF2); p.addView(fila2);
