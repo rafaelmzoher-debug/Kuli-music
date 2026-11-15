@@ -191,9 +191,7 @@ final class CopiaFotos {
         return dirAnio(it) + "\\" + String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1);
     }
     private static String dirOrigen(Item it) { return dirMes(it) + "\\" + it.origen; }
-    private static String destinoDe(Item it) {
-        return dirOrigen(it) + "\\" + it.nombre.replaceAll("[\\\\/:*?\"<>|]", "_");
-    }
+    private static String destinoDe(Item it) { return dirPorDia(it) + "/" + it.nombre; }
 
     // ---- Qué hay en el NAS ----
     private static long[] contarDir(DiskShare disco, String ruta) {
@@ -364,6 +362,28 @@ final class CopiaFotos {
             int n = fd.findFaces(bmp, caras);
             bmp.recycle();
             return n > 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+
+    private static boolean esFotoRealDeCamara(Context ctx, Item it) {
+        String s = ((it.nombre != null ? it.nombre : "") + " " + (it.ruta != null ? it.ruta : "") + " " + (it.origen != null ? it.origen : "")).toLowerCase(java.util.Locale.US);
+        // Bloquear 100% capturas de pantalla, chats y descargas
+        if (s.contains("screenshot") || s.contains("captura") || s.contains("screen_") || s.contains("whatsapp") || s.contains("telegram") || s.contains("download") || s.contains("messenger") || s.contains("instagram")) {
+            return false;
+        }
+        // Aceptar si viene de DCIM/Camera o tiene fabricante/modelo de camara en EXIF (personas, animales y paisajes reales del movil)
+        if (s.contains("/dcim/camera") || s.contains("camara") || s.contains("camera")) {
+            return true;
+        }
+        try (java.io.InputStream is = ctx.getContentResolver().openInputStream(it.uri)) {
+            if (is == null) return false;
+            android.media.ExifInterface exif = new android.media.ExifInterface(is);
+            String make = exif.getAttribute(android.media.ExifInterface.TAG_MAKE);
+            String model = exif.getAttribute(android.media.ExifInterface.TAG_MODEL);
+            return (make != null && !make.trim().isEmpty()) || (model != null && !model.trim().isEmpty());
         } catch (Throwable t) {
             return false;
         }
