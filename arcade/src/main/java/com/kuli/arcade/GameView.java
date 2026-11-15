@@ -1,40 +1,26 @@
 package com.kuli.arcade;
-import android.content.*; import android.graphics.*; import android.os.*; import android.view.*; import java.util.*;
+import android.app.Activity; import android.content.*; import android.graphics.*; import android.os.*; import android.view.*; import java.util.*;
 
 public class GameView extends View {
-    public static final int GAME_TETRIS = 0, GAME_BOBBLE = 1, GAME_ARKANOID = 2, GAME_PACMAN = 3;
+    public static final int GAME_BOBBLE = 1, GAME_ARKANOID = 2;
     private final int gameType;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Random rnd = new Random();
     private int score = 0, bestScore = 0;
     private boolean gameOver = false;
-    private float touchStartX, touchStartY;
+    private final RectF btnMenu = new RectF(), b1 = new RectF(), b2 = new RectF(), b3 = new RectF(), b4 = new RectF();
 
-    private final int TW = 10, TH = 20;
-    private int[][] tGrid = new int[TH][TW];
-    private int[][] curPiece;
-    private int curColor, curX, curY, nextIdx;
-    private long lastDrop = 0;
-    private final int[][][] SHAPES = {{{1,1,1,1}},{{1,1},{1,1}},{{0,1,0},{1,1,1}},{{1,0,0},{1,1,1}},{{0,0,1},{1,1,1}},{{0,1,1},{1,1,0}},{{1,1,0},{0,1,1}}};
-    private final int[] TCOLORS = {Color.CYAN, Color.YELLOW, Color.MAGENTA, Color.rgb(255,140,0), Color.rgb(70,130,255), Color.GREEN, Color.RED};
+    // BUBBLE BOBBLE
+    private float bubX = 0.15f, bubY = 0.80f, bubVY = 0f;
+    private int bubDir = 1, bubLives = 3, bubLevel = 1;
+    private final ArrayList<float[]> bEnemies = new ArrayList<>();
+    private final ArrayList<float[]> bBubbles = new ArrayList<>();
 
-    private final int BCOLS = 9, BROWS = 13;
-    private int[][] bGrid = new int[BROWS][BCOLS];
-    private final int[] BCOLORS = {Color.RED, Color.CYAN, Color.YELLOW, Color.GREEN, Color.MAGENTA};
-    private float aimAngle = (float)(-Math.PI/2), ballX, ballY, ballVX, ballVY;
-    private boolean ballMoving = false;
-    private int curBallColor = 1, nextBallColor = 2, shotsCount = 0;
-
-    private float padX = 0.5f, aBallX = 0.5f, aBallY = 0.7f, aVX = 0.008f, aVY = -0.011f;
-    private int lives = 3;
+    // ARKANOID
+    private float padX = 0.5f, aBallX = 0.5f, aBallY = 0.75f, aVX = 0.008f, aVY = -0.011f;
+    private int lives = 3, arkLevel = 1;
     private int[][] bricks = new int[6][8];
-
-    private final int PW = 15, PH = 17;
-    private int[][] pMap = new int[PH][PW];
-    private int pacX = 7, pacY = 14, pacDir = 0, nextPacDir = 0, powerTimer = 0;
-    private int[] gX = {6,7,8,7}, gY = {8,8,8,7}, gDir = {0,2,1,3};
-    private long lastPacTick = 0;
 
     private final Runnable loop = new Runnable() { @Override public void run() { update(); invalidate(); handler.postDelayed(this, 16); } };
     public GameView(Context ctx, int type) {
@@ -47,225 +33,141 @@ public class GameView extends View {
     private void saveBest() {
         if (score > bestScore) { bestScore = score; getContext().getSharedPreferences("kuli_arcade_scores", Context.MODE_PRIVATE).edit().putInt("best_" + gameType, bestScore).apply(); }
     }
-
     private void initGame() {
         score = 0; gameOver = false;
-        if (gameType == GAME_TETRIS) { tGrid = new int[TH][TW]; nextIdx = rnd.nextInt(SHAPES.length); spawnTetris(); }
-        else if (gameType == GAME_BOBBLE) {
-            bGrid = new int[BROWS][BCOLS];
-            for (int r = 0; r < 5; r++) for (int c = 0; c < BCOLS; c++) bGrid[r][c] = rnd.nextInt(BCOLORS.length) + 1;
-            curBallColor = rnd.nextInt(BCOLORS.length) + 1; nextBallColor = rnd.nextInt(BCOLORS.length) + 1; ballMoving = false; shotsCount = 0;
-        } else if (gameType == GAME_ARKANOID) {
-            lives = 3; padX = 0.5f; resetArkanoidBall();
-            for (int r = 0; r < 6; r++) for (int c = 0; c < 8; c++) bricks[r][c] = (r < 2) ? 2 : 1;
-        } else { initPacman(); }
+        if (gameType == GAME_BOBBLE) { bubX = 0.15f; bubY = 0.80f; bubVY = 0f; bubDir = 1; bubLives = 3; bubLevel = 1; spawnBubbleLevel(); }
+        else { lives = 3; arkLevel = 1; padX = 0.5f; spawnBricks(); resetBall(); }
     }
-    private void spawnTetris() {
-        int idx = nextIdx; nextIdx = rnd.nextInt(SHAPES.length); curPiece = SHAPES[idx]; curColor = TCOLORS[idx];
-        curX = TW / 2 - curPiece[0].length / 2; curY = 0;
-        if (!canMoveTetris(curPiece, curX, curY)) { gameOver = true; RetroSound.gameOver(); saveBest(); }
-    }
-    private boolean canMoveTetris(int[][] p, int nx, int ny) {
-        for (int r = 0; r < p.length; r++) for (int c = 0; c < p[r].length; c++) {
-            if (p[r][c] == 0) continue;
-            int gx = nx + c, gy = ny + r;
-            if (gx < 0 || gx >= TW || gy >= TH || (gy >= 0 && tGrid[gy][gx] != 0)) return false;
+    private void spawnBubbleLevel() {
+        bEnemies.clear(); bBubbles.clear();
+        int n = Math.min(6, 2 + bubLevel);
+        for (int i = 0; i < n; i++) {
+            float py = (i % 3 == 0) ? 0.28f : ((i % 3 == 1) ? 0.46f : 0.64f);
+            float px = 0.22f + (i * 0.14f) % 0.66f;
+            bEnemies.add(new float[]{px, py, (i % 2 == 0 ? 1 : -1) * (0.004f + bubLevel * 0.0007f), 0f});
         }
-        return true;
     }
-    private void rotateTetris() {
-        int rows = curPiece.length, cols = curPiece[0].length; int[][] rot = new int[cols][rows];
-        for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) rot[c][rows - 1 - r] = curPiece[r][c];
-        if (canMoveTetris(rot, curX, curY)) { curPiece = rot; RetroSound.blip(); }
+    private void spawnBricks() {
+        for (int r = 0; r < 6; r++) for (int c = 0; c < 8; c++) bricks[r][c] = (r < 2) ? 2 : 1;
     }
-    private void lockTetris() {
-        for (int r = 0; r < curPiece.length; r++) for (int c = 0; c < curPiece[r].length; c++)
-            if (curPiece[r][c] != 0 && curY + r >= 0) tGrid[curY + r][curX + c] = curColor;
-        int cleared = 0;
-        for (int r = TH - 1; r >= 0; r--) {
-            boolean full = true; for (int c = 0; c < TW; c++) if (tGrid[r][c] == 0) full = false;
-            if (full) { cleared++; for (int rr = r; rr > 0; rr--) tGrid[rr] = tGrid[rr - 1].clone(); tGrid[0] = new int[TW]; r++; }
-        }
-        if (cleared > 0) { score += cleared * cleared * 100; RetroSound.score(); saveBest(); } else RetroSound.blip();
-        spawnTetris();
-    }
-    private void popBobbleCluster(int sr, int sc, int color) {
-        boolean[][] vis = new boolean[BROWS][BCOLS]; ArrayList<int[]> q = new ArrayList<>();
-        q.add(new int[]{sr, sc}); vis[sr][sc] = true; int head = 0;
-        int[][] dirs = {{-1,0},{1,0},{0,-1},{0,1},{-1,-1},{-1,1},{1,-1},{1,1}};
-        while (head < q.size()) {
-            int[] cur = q.get(head++);
-            for (int[] d : dirs) {
-                int nr = cur[0] + d[0], nc = cur[1] + d[1];
-                if (nr >= 0 && nr < BROWS && nc >= 0 && nc < BCOLS && !vis[nr][nc] && bGrid[nr][nc] == color) { vis[nr][nc] = true; q.add(new int[]{nr, nc}); }
-            }
-        }
-        if (q.size() >= 3) { for (int[] cell : q) bGrid[cell[0]][cell[1]] = 0; score += q.size() * 30; RetroSound.score(); saveBest(); }
-        else RetroSound.blip();
-    }
-    private void resetArkanoidBall() { aBallX = padX; aBallY = 0.78f; aVX = (rnd.nextBoolean() ? 1 : -1) * 0.008f; aVY = -0.011f; }
-    private void initPacman() {
-        int[][] tpl = {
-            {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}, {1,3,2,2,2,2,2,1,2,2,2,2,2,3,1}, {1,2,1,1,2,1,2,1,2,1,2,1,1,2,1},
-            {1,2,2,2,2,2,2,2,2,2,2,2,2,2,1}, {1,2,1,1,2,1,1,1,1,1,2,1,1,2,1}, {1,2,2,2,2,2,2,1,2,2,2,2,2,2,1},
-            {1,1,1,1,2,1,0,0,0,1,2,1,1,1,1}, {0,0,0,1,2,1,0,0,0,1,2,1,0,0,0}, {1,1,1,1,2,1,0,0,0,1,2,1,1,1,1},
-            {1,2,2,2,2,2,2,2,2,2,2,2,2,2,1}, {1,2,1,1,2,1,1,1,1,1,2,1,1,2,1}, {1,2,2,1,2,2,2,1,2,2,2,1,2,2,1},
-            {1,1,2,1,2,1,2,1,2,1,2,1,2,1,1}, {1,2,2,2,2,1,2,2,2,1,2,2,2,2,1}, {1,2,1,1,1,1,2,0,2,1,1,1,1,2,1},
-            {1,3,2,2,2,2,2,2,2,2,2,2,2,3,1}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-        };
-        for (int r = 0; r < PH; r++) pMap[r] = tpl[r].clone();
-        pacX = 7; pacY = 14; pacDir = 0; nextPacDir = 0; powerTimer = 0;
-        gX = new int[]{6, 7, 8, 7}; gY = new int[]{8, 8, 8, 7};
-    }
+    private void resetBall() { aBallX = padX; aBallY = 0.78f; aVX = (rnd.nextBoolean() ? 1 : -1) * 0.008f; aVY = -0.011f; }
 
     private void update() {
         if (gameOver) return;
-        long now = System.currentTimeMillis();
-        if (gameType == GAME_TETRIS) {
-            if (now - lastDrop > Math.max(140, 520 - (score / 400) * 35)) {
-                lastDrop = now;
-                if (canMoveTetris(curPiece, curX, curY + 1)) curY++; else lockTetris();
+        if (gameType == GAME_BOBBLE) {
+            float prevY = bubY; bubVY += 0.0014f; bubY += bubVY;
+            float[] plats = {0.28f, 0.46f, 0.64f, 0.80f};
+            for (float py : plats) {
+                boolean hueco = (py < 0.75f && (bubX < 0.12f || bubX > 0.88f));
+                if (!hueco && bubVY >= 0 && prevY <= py && bubY >= py) { bubY = py; bubVY = 0f; }
             }
-        } else if (gameType == GAME_BOBBLE && ballMoving) {
-            ballX += ballVX; ballY += ballVY;
-            if (ballX <= 0.06f) { ballX = 0.06f; ballVX = -ballVX; RetroSound.blip(); }
-            if (ballX >= 0.94f) { ballX = 0.94f; ballVX = -ballVX; RetroSound.blip(); }
-            int hitR = -1, hitC = -1;
-            if (ballY <= 0.14f) { hitR = 0; hitC = Math.max(0, Math.min(BCOLS - 1, (int)(ballX * BCOLS))); }
-            else {
-                for (int r = 0; r < BROWS; r++) {
-                    for (int c = 0; c < BCOLS; c++) {
-                        if (bGrid[r][c] == 0) continue;
-                        if (Math.hypot(ballX - (c + 0.5f) / BCOLS, ballY - (0.14f + r * 0.052f)) < 0.075f) {
-                            hitR = Math.min(BROWS - 1, r + 1); hitC = Math.max(0, Math.min(BCOLS - 1, (int)(ballX * BCOLS))); break;
-                        }
-                    }
-                    if (hitR != -1) break;
+            if (bubY > 0.80f) { bubY = 0.80f; bubVY = 0f; }
+            for (int i = bBubbles.size() - 1; i >= 0; i--) {
+                float[] b = bBubbles.get(i);
+                b[0] += b[2]; b[2] *= 0.92f;
+                if (Math.abs(b[2]) < 0.002f) b[1] -= 0.0045f;
+                if (b[0] < 0.06f) b[0] = 0.06f; if (b[0] > 0.94f) b[0] = 0.94f;
+                if (b[1] < 0.14f) b[1] = 0.14f;
+                b[4] += 1f;
+                if (b[4] > 420f) bBubbles.remove(i);
+                else if (b[3] > 0 && Math.hypot(bubX - b[0], bubY - b[1]) < 0.065f) {
+                    bBubbles.remove(i); score += 150; RetroSound.score(); saveBest();
                 }
             }
-            if (hitR != -1) {
-                ballMoving = false;
-                while (hitR < BROWS && bGrid[hitR][hitC] != 0) hitR++;
-                if (hitR >= BROWS - 1) { gameOver = true; RetroSound.gameOver(); saveBest(); }
-                else {
-                    bGrid[hitR][hitC] = curBallColor; popBobbleCluster(hitR, hitC, curBallColor);
-                    curBallColor = nextBallColor; nextBallColor = rnd.nextInt(BCOLORS.length) + 1;
-                    if (++shotsCount % 6 == 0) {
-                        for (int r = BROWS - 1; r > 0; r--) bGrid[r] = bGrid[r - 1].clone();
-                        for (int c = 0; c < BCOLS; c++) bGrid[0][c] = rnd.nextInt(BCOLORS.length) + 1;
+            for (int i = bEnemies.size() - 1; i >= 0; i--) {
+                float[] en = bEnemies.get(i); en[0] += en[2];
+                if (en[0] < 0.08f || en[0] > 0.92f) en[2] = -en[2];
+                boolean atrap = false;
+                for (float[] b : bBubbles) {
+                    if (b[3] == 0 && Math.abs(b[2]) > 0.002f && Math.hypot(en[0] - b[0], en[1] - b[1]) < 0.065f) {
+                        b[3] = 1f; b[2] = 0f; atrap = true; RetroSound.blip(); break;
                     }
                 }
+                if (atrap) { bEnemies.remove(i); continue; }
+                if (Math.hypot(bubX - en[0], bubY - en[1]) < 0.055f) {
+                    bubLives--; RetroSound.boom(); bubX = 0.15f; bubY = 0.80f;
+                    if (bubLives <= 0) { gameOver = true; RetroSound.gameOver(); saveBest(); }
+                }
             }
-        } else if (gameType == GAME_ARKANOID) {
+            boolean q = false; for (float[] b : bBubbles) if (b[3] > 0) q = true;
+            if (bEnemies.isEmpty() && !q) { bubLevel++; score += 300; spawnBubbleLevel(); }
+        } else {
             aBallX += aVX; aBallY += aVY;
             if (aBallX <= 0.03f || aBallX >= 0.97f) { aVX = -aVX; RetroSound.blip(); }
             if (aBallY <= 0.12f) { aVY = -aVY; RetroSound.blip(); }
-            if (aBallY >= 0.84f && aBallY <= 0.87f && Math.abs(aBallX - padX) <= 0.14f && aVY > 0) {
+            if (aBallY >= 0.84f && aBallY <= 0.87f && Math.abs(aBallX - padX) <= 0.15f && aVY > 0) {
                 aVY = -Math.abs(aVY) * 1.015f; aVX = (aBallX - padX) * 0.11f; RetroSound.blip();
             }
             if (aBallY > 0.96f) {
                 lives--; RetroSound.boom();
-                if (lives <= 0) { gameOver = true; RetroSound.gameOver(); saveBest(); } else resetArkanoidBall();
+                if (lives <= 0) { gameOver = true; RetroSound.gameOver(); saveBest(); } else resetBall();
             }
-            boolean anyBrick = false;
+            boolean any = false;
             for (int r = 0; r < 6; r++) for (int c = 0; c < 8; c++) {
                 if (bricks[r][c] <= 0) continue;
-                anyBrick = true;
+                any = true;
                 float bx1 = 0.04f + c * 0.115f, by1 = 0.16f + r * 0.042f;
                 if (aBallX >= bx1 && aBallX <= bx1 + 0.105f && aBallY >= by1 && aBallY <= by1 + 0.034f) {
                     bricks[r][c]--; aVY = -aVY; score += 50; RetroSound.score(); saveBest();
                 }
             }
-            if (!anyBrick) initGame();
-        } else if (gameType == GAME_PACMAN && now - lastPacTick > 180) {
-            lastPacTick = now; if (powerTimer > 0) powerTimer--;
-            int[] dx = {1,0,-1,0}, dy = {0,1,0,-1};
-            int nx = pacX + dx[nextPacDir], ny = pacY + dy[nextPacDir];
-            if (nx >= 0 && nx < PW && ny >= 0 && ny < PH && pMap[ny][nx] != 1) pacDir = nextPacDir;
-            nx = pacX + dx[pacDir]; ny = pacY + dy[pacDir];
-            if (nx >= 0 && nx < PW && ny >= 0 && ny < PH && pMap[ny][nx] != 1) {
-                pacX = nx; pacY = ny;
-                if (pMap[pacY][pacX] == 2) { pMap[pacY][pacX] = 0; score += 10; RetroSound.blip(); saveBest(); }
-                else if (pMap[pacY][pacX] == 3) { pMap[pacY][pacX] = 0; score += 50; powerTimer = 35; RetroSound.score(); saveBest(); }
-            }
-            boolean dots = false;
-            for (int r = 0; r < PH; r++) for (int c = 0; c < PW; c++) if (pMap[r][c] == 2 || pMap[r][c] == 3) dots = true;
-            if (!dots) initPacman();
-            for (int i = 0; i < 4; i++) {
-                int gx = gX[i] + dx[gDir[i]], gy = gY[i] + dy[gDir[i]];
-                if (gx < 1 || gx >= PW - 1 || gy < 1 || gy >= PH - 1 || pMap[gy][gx] == 1 || rnd.nextInt(4) == 0) gDir[i] = rnd.nextInt(4);
-                else { gX[i] = gx; gY[i] = gy; }
-                if (gX[i] == pacX && gY[i] == pacY) {
-                    if (powerTimer > 0) { score += 200; gX[i] = 7; gY[i] = 8; RetroSound.score(); saveBest(); }
-                    else { gameOver = true; RetroSound.gameOver(); saveBest(); }
-                }
-            }
+            if (!any) { arkLevel++; score += 300; spawnBricks(); resetBall(); }
         }
+    }
+
+    private void drawBtn(Canvas c, RectF r, String txt) {
+        paint.setColor(Color.rgb(18, 56, 108));
+        c.drawRoundRect(r, 22, 22, paint);
+        paint.setColor(Color.rgb(212, 175, 55));
+        paint.setTextSize(r.height() * 0.44f);
+        paint.setTextAlign(Paint.Align.CENTER);
+        c.drawText(txt, r.centerX(), r.centerY() + r.height() * 0.16f, paint);
+        paint.setTextAlign(Paint.Align.LEFT);
     }
 
     @Override protected void onDraw(Canvas c) {
         float w = getWidth(), h = getHeight();
         c.drawColor(Color.rgb(6, 20, 44));
         paint.setColor(Color.rgb(12, 42, 82)); c.drawRect(0, 0, w, h * 0.10f, paint);
-        paint.setColor(Color.rgb(212, 175, 55)); paint.setTextSize(w * 0.044f); paint.setFakeBoldText(true);
-        c.drawText("PUNTOS: " + score, w * 0.05f, h * 0.062f, paint);
-        paint.setColor(Color.WHITE); c.drawText("RÉCORD: " + bestScore, w * 0.54f, h * 0.062f, paint);
+        btnMenu.set(w * 0.03f, h * 0.022f, w * 0.24f, h * 0.078f);
+        drawBtn(c, btnMenu, "◀ Menú");
 
-        if (gameType == GAME_TETRIS) {
-            float cell = Math.min((w * 0.72f) / TW, (h * 0.74f) / TH), ox = (w - cell * TW) / 2f, oy = h * 0.13f;
-            paint.setColor(Color.rgb(12, 34, 68)); c.drawRect(ox, oy, ox + cell * TW, oy + cell * TH, paint);
-            for (int r = 0; r < TH; r++) for (int col = 0; col < TW; col++) if (tGrid[r][col] != 0) {
-                paint.setColor(tGrid[r][col]);
-                c.drawRoundRect(new RectF(ox + col * cell + 2, oy + r * cell + 2, ox + (col + 1) * cell - 2, oy + (r + 1) * cell - 2), 6, 6, paint);
+        paint.setColor(Color.rgb(212, 175, 55)); paint.setTextSize(w * 0.040f); paint.setFakeBoldText(true);
+        c.drawText("PTS: " + score, w * 0.28f, h * 0.062f, paint);
+        paint.setColor(Color.WHITE); c.drawText("RÉCORD: " + bestScore, w * 0.60f, h * 0.062f, paint);
+
+        if (gameType == GAME_BOBBLE) {
+            paint.setColor(Color.rgb(30, 115, 220));
+            float[] plats = {0.28f, 0.46f, 0.64f};
+            for (float py : plats) c.drawRoundRect(new RectF(w * 0.12f, h * py, w * 0.88f, h * (py + 0.018f)), 8, 8, paint);
+            c.drawRect(0, h * 0.80f, w, h * 0.822f, paint);
+            paint.setColor(Color.rgb(65, 230, 110));
+            c.drawCircle(bubX * w, (bubY - 0.022f) * h, w * 0.036f, paint);
+            paint.setColor(Color.WHITE);
+            c.drawCircle((bubX + bubDir * 0.014f) * w, (bubY - 0.028f) * h, w * 0.008f, paint);
+            paint.setColor(Color.rgb(255, 75, 95));
+            for (float[] en : bEnemies) c.drawCircle(en[0] * w, (en[1] - 0.02f) * h, w * 0.033f, paint);
+            for (float[] b : bBubbles) {
+                paint.setColor(b[3] > 0 ? Color.rgb(255, 130, 160) : Color.argb(170, 90, 230, 255));
+                c.drawCircle(b[0] * w, (b[1] - 0.02f) * h, w * 0.038f, paint);
             }
-            for (int r = 0; r < curPiece.length; r++) for (int col = 0; col < curPiece[r].length; col++) if (curPiece[r][col] != 0) {
-                paint.setColor(curColor);
-                c.drawRoundRect(new RectF(ox + (curX + col) * cell + 2, oy + (curY + r) * cell + 2, ox + (curX + col + 1) * cell - 2, oy + (curY + r + 1) * cell - 2), 6, 6, paint);
-            }
-            paint.setColor(Color.rgb(180, 210, 245)); paint.setTextSize(w * 0.036f);
-            c.drawText("TOCA = GIRAR  ·  DESLIZA = MOVER / BAJAR", w * 0.11f, h * 0.93f, paint);
-        } else if (gameType == GAME_BOBBLE) {
-            float rad = (w / BCOLS) * 0.44f;
-            for (int r = 0; r < BROWS; r++) for (int col = 0; col < BCOLS; col++) {
-                int v = bGrid[r][col]; if (v == 0) continue;
-                paint.setColor(BCOLORS[(v - 1) % BCOLORS.length]);
-                c.drawCircle((col + 0.5f) * (w / BCOLS), h * (0.14f + r * 0.052f), rad, paint);
-            }
-            float sx = w * 0.5f, sy = h * 0.87f;
-            paint.setColor(Color.rgb(212, 175, 55)); paint.setStrokeWidth(10);
-            c.drawLine(sx, sy, sx + (float)Math.cos(aimAngle) * 110, sy + (float)Math.sin(aimAngle) * 110, paint);
-            paint.setColor(BCOLORS[(curBallColor - 1) % BCOLORS.length]);
-            c.drawCircle(ballMoving ? ballX * w : sx, ballMoving ? ballY * h : sy, rad, paint);
-            paint.setColor(BCOLORS[(nextBallColor - 1) % BCOLORS.length]);
-            c.drawCircle(w * 0.22f, h * 0.90f, rad * 0.7f, paint);
-        } else if (gameType == GAME_ARKANOID) {
+            paint.setColor(Color.WHITE); paint.setTextSize(w * 0.034f);
+            c.drawText("NVL " + bubLevel + " · VIDAS " + bubLives, w * 0.04f, h * 0.125f, paint);
+            b1.set(w*0.04f, h*0.85f, w*0.25f, h*0.95f); b2.set(w*0.28f, h*0.85f, w*0.49f, h*0.95f);
+            b3.set(w*0.52f, h*0.85f, w*0.73f, h*0.95f); b4.set(w*0.76f, h*0.85f, w*0.96f, h*0.95f);
+            drawBtn(c, b1, "◀"); drawBtn(c, b2, "▶"); drawBtn(c, b3, "▲"); drawBtn(c, b4, "🫧");
+        } else {
             int[] rowCols = {Color.RED, Color.rgb(255,140,0), Color.YELLOW, Color.GREEN, Color.CYAN, Color.MAGENTA};
             for (int r = 0; r < 6; r++) for (int col = 0; col < 8; col++) {
                 if (bricks[r][col] <= 0) continue;
-                paint.setColor(rowCols[r]);
+                paint.setColor(bricks[r][col] == 2 ? Color.rgb(235, 195, 75) : rowCols[r]);
                 float bx1 = w * (0.04f + col * 0.115f), by1 = h * (0.16f + r * 0.042f);
                 c.drawRoundRect(new RectF(bx1, by1, bx1 + w * 0.105f, by1 + h * 0.034f), 8, 8, paint);
             }
             paint.setColor(Color.rgb(212, 175, 55));
-            c.drawRoundRect(new RectF(w * (padX - 0.13f), h * 0.85f, w * (padX + 0.13f), h * 0.875f), 14, 14, paint);
+            c.drawRoundRect(new RectF(w * (padX - 0.14f), h * 0.85f, w * (padX + 0.14f), h * 0.875f), 14, 14, paint);
             paint.setColor(Color.WHITE); c.drawCircle(aBallX * w, aBallY * h, w * 0.022f, paint);
-            paint.setTextSize(w * 0.038f); c.drawText("VIDAS: " + lives, w * 0.06f, h * 0.94f, paint);
-        } else {
-            float cw = w / PW, ch = (h * 0.76f) / PH, oy = h * 0.13f;
-            for (int r = 0; r < PH; r++) for (int col = 0; col < PW; col++) {
-                int v = pMap[r][col];
-                if (v == 1) { paint.setColor(Color.rgb(24, 90, 190)); c.drawRoundRect(new RectF(col * cw + 2, oy + r * ch + 2, (col + 1) * cw - 2, oy + (r + 1) * ch - 2), 8, 8, paint); }
-                else if (v == 2) { paint.setColor(Color.rgb(255, 225, 150)); c.drawCircle((col + 0.5f) * cw, oy + (r + 0.5f) * ch, cw * 0.12f, paint); }
-                else if (v == 3) { paint.setColor(Color.rgb(212, 175, 55)); c.drawCircle((col + 0.5f) * cw, oy + (r + 0.5f) * ch, cw * 0.26f, paint); }
-            }
-            paint.setColor(Color.YELLOW); c.drawCircle((pacX + 0.5f) * cw, oy + (pacY + 0.5f) * ch, cw * 0.40f, paint);
-            int[] gCols = {Color.RED, Color.CYAN, Color.MAGENTA, Color.rgb(255,165,0)};
-            for (int i = 0; i < 4; i++) {
-                paint.setColor(powerTimer > 0 ? Color.rgb(60, 120, 255) : gCols[i]);
-                c.drawCircle((gX[i] + 0.5f) * cw, oy + (gY[i] + 0.5f) * ch, cw * 0.38f, paint);
-            }
-            paint.setColor(Color.rgb(180, 210, 245)); paint.setTextSize(w * 0.036f);
-            c.drawText("DESLIZA EN CUALQUIER DIRECCIÓN PARA GIRAR", w * 0.09f, h * 0.94f, paint);
+            paint.setTextSize(w * 0.038f); c.drawText("NVL " + arkLevel + " · VIDAS: " + lives, w * 0.06f, h * 0.94f, paint);
         }
 
         if (gameOver) {
@@ -279,29 +181,17 @@ public class GameView extends View {
     }
 
     @Override public boolean onTouchEvent(MotionEvent e) {
+        float x = e.getX(), y = e.getY();
+        if (e.getAction() == MotionEvent.ACTION_DOWN && btnMenu.contains(x, y)) { ((Activity) getContext()).finish(); return true; }
         if (gameOver && e.getAction() == MotionEvent.ACTION_DOWN) { initGame(); return true; }
-        if (gameType == GAME_ARKANOID) { padX = Math.max(0.14f, Math.min(0.86f, e.getX() / getWidth())); return true; }
-        if (gameType == GAME_BOBBLE) {
-            float dx = e.getX() - getWidth() * 0.5f, dy = e.getY() - getHeight() * 0.87f;
-            if (dy < -20) aimAngle = (float)Math.atan2(dy, dx);
-            if (e.getAction() == MotionEvent.ACTION_UP && !ballMoving) {
-                ballX = 0.5f; ballY = 0.87f; ballVX = (float)Math.cos(aimAngle) * 0.022f; ballVY = (float)Math.sin(aimAngle) * 0.022f;
-                ballMoving = true; RetroSound.blip();
-            }
+        if (gameType == GAME_BOBBLE && (e.getAction() == MotionEvent.ACTION_DOWN || e.getAction() == MotionEvent.ACTION_MOVE)) {
+            if (b1.contains(x, y)) { bubDir = -1; bubX = Math.max(0.06f, bubX - 0.024f); return true; }
+            if (b2.contains(x, y)) { bubDir = 1; bubX = Math.min(0.94f, bubX + 0.024f); return true; }
+            if (e.getAction() == MotionEvent.ACTION_DOWN && b3.contains(x, y) && bubVY == 0f) { bubVY = -0.027f; RetroSound.blip(); return true; }
+            if (e.getAction() == MotionEvent.ACTION_DOWN && b4.contains(x, y)) { bBubbles.add(new float[]{bubX + bubDir * 0.04f, bubY - 0.02f, bubDir * 0.028f, 0f, 0f}); RetroSound.blip(); return true; }
             return true;
         }
-        if (e.getAction() == MotionEvent.ACTION_DOWN) { touchStartX = e.getX(); touchStartY = e.getY(); }
-        else if (e.getAction() == MotionEvent.ACTION_UP) {
-            float dx = e.getX() - touchStartX, dy = e.getY() - touchStartY;
-            if (Math.abs(dx) < 28 && Math.abs(dy) < 28) { if (gameType == GAME_TETRIS) rotateTetris(); }
-            else if (Math.abs(dx) > Math.abs(dy)) {
-                if (gameType == GAME_TETRIS) { int st = dx > 0 ? 1 : -1; if (canMoveTetris(curPiece, curX + st, curY)) { curX += st; RetroSound.blip(); } }
-                else if (gameType == GAME_PACMAN) nextPacDir = dx > 0 ? 0 : 2;
-            } else {
-                if (gameType == GAME_TETRIS && dy > 0) { while (canMoveTetris(curPiece, curX, curY + 1)) curY++; lockTetris(); }
-                else if (gameType == GAME_PACMAN) nextPacDir = dy > 0 ? 1 : 3;
-            }
-        }
+        if (gameType == GAME_ARKANOID) { padX = Math.max(0.15f, Math.min(0.85f, x / getWidth())); return true; }
         return true;
     }
 }
