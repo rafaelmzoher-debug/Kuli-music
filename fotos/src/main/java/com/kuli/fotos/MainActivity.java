@@ -58,9 +58,9 @@ public class MainActivity extends Activity {
         p.addView(detalle, centro());
         barra = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         barra.setMax(1);
-        LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(-1, dp(10));
-        lpC.topMargin = dp(16);
-        p.addView(barra, lpC);
+        LinearLayout.LayoutParams lpFila2 = new LinearLayout.LayoutParams(-1, dp(10));
+        lpFila2.topMargin = dp(16);
+        p.addView(barra, lpFila2);
 
         copiar = boton("Copiar ahora", true);
         copiar.setOnClickListener(v -> alPulsarCopiar());
@@ -90,10 +90,10 @@ public class MainActivity extends Activity {
 
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
-        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(0, dp(48), 1f); lpC.setMargins(6, 8, 6, 8); fila2.addView(auto, lpC);
+        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpFila2 = new LinearLayout.LayoutParams(0, dp(48), 1f); lpFila2.setMargins(6, 8, 6, 8); fila2.addView(auto, lpFila2);
         Button nas = boton("⚙  Dirección del NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
-        fila2.addView(nas, lpC); p.addView(fila2);
+        fila2.addView(nas, lpFila2); p.addView(fila2);
 
         p.addView(texto("Se guardan en  FOTOS KULI / año / mes / origen\n(Camara, WhatsApp, Capturas…).\nLas que ya están copiadas no se repiten.", 12, GRIS, false),
                 margen(centro(), 26));
