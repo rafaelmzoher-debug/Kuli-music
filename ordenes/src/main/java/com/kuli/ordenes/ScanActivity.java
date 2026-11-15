@@ -1,4 +1,8 @@
 package com.kuli.ordenes;
+import java.nio.ByteBuffer;
+import java.util.*;
+import com.google.zxing.*;
+import com.google.zxing.common.HybridBinarizer;
 
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -28,11 +32,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.mlkit.vision.barcode.BarcodeScanner;
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
-import com.google.mlkit.vision.barcode.BarcodeScanning;
-import com.google.mlkit.vision.barcode.common.Barcode;
-import com.google.mlkit.vision.common.InputImage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -42,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 public class ScanActivity extends ComponentActivity {
     private PreviewView vista;
     private Camera camara;
-    private BarcodeScanner lector;
+    private MultiFormatReader lector;
     private final ExecutorService hilo = Executors.newSingleThreadExecutor();
     private volatile boolean terminado = false;
     private boolean linterna = false;
@@ -137,10 +136,15 @@ public class ScanActivity extends ComponentActivity {
     }
 
     private void arrancar() {
-        lector = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_DATA_MATRIX, Barcode.FORMAT_QR_CODE, Barcode.FORMAT_CODE_128,
-                Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93, Barcode.FORMAT_ITF)
-            .build());
+        lector = new MultiFormatReader();
+            Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
+            hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
+            hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(
+                BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX, BarcodeFormat.CODE_128,
+                BarcodeFormat.CODE_39, BarcodeFormat.CODE_93, BarcodeFormat.ITF,
+                BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A
+            ));
+            lector.setHints(hints);
         final ListenableFuture<ProcessCameraProvider> futuro = ProcessCameraProvider.getInstance(this);
         futuro.addListener(() -> {
             try {
@@ -173,15 +177,41 @@ public class ScanActivity extends ComponentActivity {
     @ExperimentalGetImage
     private void analizar(ImageProxy ip) {
         if (terminado || ip.getImage() == null) { ip.close(); return; }
-        InputImage img = InputImage.fromMediaImage(ip.getImage(), ip.getImageInfo().getRotationDegrees());
-        lector.process(img)
-            .addOnSuccessListener(lista -> {
-                for (Barcode c : lista) {
-                    String v = c.getRawValue();
-                    if (v != null && !v.trim().isEmpty()) { entregar(v); break; }
-                }
-            })
-            .addOnCompleteListener(t -> ip.close());
+        try {
+            ImageProxy.PlaneProxy plane = ip.getPlanes()[0];
+            ByteBuffer buf = plane.getBuffer();
+            int w = ip.getWidth(), h = ip.getHeight(), stride = plane.getRowStride();
+            byte[] yData = new byte[w * h];
+            for (int r = 0; r < h; r++) {
+                buf.position(r * stride);
+                buf.get(yData, r * w, w);
+            }
+            Result res = decodificar(yData, w, h);
+            if (res == null) {
+                byte[] rot = new byte[w * h];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        rot[x * h + (h - 1 - y)] = yData[y * w + x];
+                res = decodificar(rot, h, w);
+            }
+            if (res != null && res.getText() != null && !res.getText().trim().isEmpty()) {
+                entregar(res.getText());
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            ip.close();
+        }
+    }
+
+    private Result decodificar(byte[] data, int w, int h) {
+        try {
+            PlanarYUVLuminanceSource src = new PlanarYUVLuminanceSource(data, w, h, 0, 0, w, h, false);
+            return lector.decodeWithState(new BinaryBitmap(new HybridBinarizer(src)));
+        } catch (NotFoundException e) {
+            return null;
+        } finally {
+            lector.reset();
+        }
     }
 
     private void entregar(String v) {
@@ -194,7 +224,7 @@ public class ScanActivity extends ComponentActivity {
 
     @Override protected void onDestroy() {
         terminado = true;
-        try { if (lector != null) lector.close(); } catch (Throwable ignorar) { }
+        try { if (lector != null) lector.reset(); } catch (Throwable ignorar) { }
         hilo.shutdown();
         super.onDestroy();
     }

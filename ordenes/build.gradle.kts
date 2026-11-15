@@ -26,6 +26,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
+    implementation("com.google.zxing:core:3.5.3")
     // Una sola versión de Kotlin para todas las librerías (evita "Duplicate class kotlin...").
     implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22"))
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
