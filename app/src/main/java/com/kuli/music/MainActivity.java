@@ -283,7 +283,7 @@ public class MainActivity extends Activity {
         cabecera.addView(new Escudo(this), new LinearLayout.LayoutParams(dp(28), dp(32)));
         cabecera.addView(titulo, new LinearLayout.LayoutParams(-2, -2));
         pantalla.addView(cabecera, new LinearLayout.LayoutParams(-1, -2));
-        TextView lema = texto("TU MÚSICA · TU ESTILO", 10, ORO);
+        TextView lema = texto("TU MÚSICA · TU ESTILO · v2.5", 10, ORO);
         lema.setLetterSpacing(0.2f);
         pantalla.addView(lema, new LinearLayout.LayoutParams(-1, -2));
 
