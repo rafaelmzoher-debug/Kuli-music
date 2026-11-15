@@ -36,7 +36,7 @@ jobs:
             fotos/build/outputs/apk/debug/fotos-debug.apk
             ordenes/build/outputs/apk/debug/ordenes-debug.apk
             familia/build/outputs/apk/debug/familia-debug.apk
-          arcade/build/outputs/apk/debug/arcade-debug.apk
+            arcade/build/outputs/apk/debug/arcade-debug.apk
 
       - name: Publicar APK como descarga directa
         uses: softprops/action-gh-release@v2
@@ -48,5 +48,5 @@ jobs:
             fotos/build/outputs/apk/debug/fotos-debug.apk
             ordenes/build/outputs/apk/debug/ordenes-debug.apk
             familia/build/outputs/apk/debug/familia-debug.apk
-          arcade/build/outputs/apk/debug/arcade-debug.apk
+            arcade/build/outputs/apk/debug/arcade-debug.apk
           make_latest: true
