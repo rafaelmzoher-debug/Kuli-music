@@ -369,7 +369,7 @@ final class CopiaFotos {
 
 
     private static boolean esFotoRealDeCamara(Context ctx, Item it) {
-        String s = ((it.nombre != null ? it.nombre : "") + " " + (it.ruta != null ? it.ruta : "") + " " + (it.origen != null ? it.origen : "")).toLowerCase(java.util.Locale.US);
+        String s = ((it.nombre != null ? it.nombre : "") + " " + " " + (it.origen != null ? it.origen : "")).toLowerCase(java.util.Locale.US);
         // Bloquear 100% capturas de pantalla, chats y descargas
         if (s.contains("screenshot") || s.contains("captura") || s.contains("screen_") || s.contains("whatsapp") || s.contains("telegram") || s.contains("download") || s.contains("messenger") || s.contains("instagram")) {
             return false;
