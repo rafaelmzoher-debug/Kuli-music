@@ -3001,7 +3001,7 @@ public class MainActivity extends Activity {
             for (String r : rutas) {
                 String nom = r.contains("/") ? r.substring(r.lastIndexOf("/") + 1) : r;
                 if (ya.contains(claveNombre(nom))) continue;
-                try { descargarDelNas(r, new java.io.File(destDir, nom)); ya.add(claveNombre(nom)); bjs++; } catch (Exception ignored) {}
+                try { descargarDelNas(r, new java.io.File(destDir, nom)); ya.add(claveNombre(nom)); bjs++; } catch (Throwable ignored) {}
             }
             final int tb = bjs;
             runOnUiThread(() -> aviso("⬇️ " + tb + " canciones nuevas bajadas al móvil"));
