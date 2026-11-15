@@ -141,14 +141,12 @@ final class CopiaFotos {
                 if (cancelar != null && cancelar.get()) break;
                 Item it = lista.get(i);
                 if (p != null) p.alAvanzar(i, lista.size(), it.nombre);
-                String dirAnio = dirAnio(it);
-                String dirMes = dirMes(it);
-                String dir = dirOrigen(it);
-                String destino = destinoDe(it);
+                if (it.video || !esFotoRealDeCamara(ctx, it)) { r.omitidas++; continue; }
+                String dirDia = dirPorDia(it);
+                String destino = dirDia + "\" + it.nombre;
                 try {
-                    asegurar(disco, creadas, dirAnio);
-                    asegurar(disco, creadas, dirMes);
-                    asegurar(disco, creadas, dir);
+                    asegurar(disco, creadas, CARPETA);
+                    asegurar(disco, creadas, dirDia);
                     if (disco.fileExists(destino)) {
                         r.omitidas++;
                     } else {
