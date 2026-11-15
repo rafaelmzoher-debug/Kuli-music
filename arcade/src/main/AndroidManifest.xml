@@ -14,5 +14,5 @@
         </activity>
         <activity android:name=".GaleriaActivity" android:exported="false" />
         <service android:name=".JobCopia" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
-    <activity android:name=".GameActivity"/></application>
+    <activity android:name=".GameActivity"/><activity android:name=".GameActivity"/></application>
 </manifest>
