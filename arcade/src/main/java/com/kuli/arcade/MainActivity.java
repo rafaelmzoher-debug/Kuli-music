@@ -13,7 +13,7 @@ public class MainActivity extends Activity {
         TextView title = new TextView(this); title.setText("KULI ARCADE"); title.setTextColor(Color.WHITE); title.setTextSize(28); title.setTypeface(Typeface.DEFAULT_BOLD); title.setGravity(Gravity.CENTER); root.addView(title);
         TextView sub = new TextView(this); sub.setText("CLÁSICOS RETRO · SIN ANUNCIOS · v1.0"); sub.setTextColor(Color.rgb(155,195,240)); sub.setTextSize(12); sub.setGravity(Gravity.CENTER); sub.setPadding(0, dp(4), 0, dp(18)); root.addView(sub);
         txtRecords = new TextView(this); txtRecords.setTextColor(Color.rgb(232,195,92)); txtRecords.setTextSize(13); txtRecords.setGravity(Gravity.CENTER); txtRecords.setPadding(dp(12), dp(10), dp(12), dp(18)); root.addView(txtRecords);
-        root.addView(btnJuego("🧢  PANG BUSTER", "Dispara bolas y pártelas antes que te toquen", 1, true));
+        root.addView(btnJuego("🐉  BUBBLE BOBBLE", "El clásico de Taito 1986: atrapa bichos en pompas", 1, true));
         root.addView(btnJuego("🏓  ARKANOID RETRO", "Rompe todos los bloques con la bola", 2, false));
         LinearLayout fila = new LinearLayout(this); fila.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(48), 1f); lp.setMargins(dp(5), dp(18), dp(5), dp(8));

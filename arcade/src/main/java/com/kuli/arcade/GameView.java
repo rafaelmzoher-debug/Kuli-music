@@ -2,22 +2,26 @@ package com.kuli.arcade;
 import android.app.Activity; import android.content.*; import android.graphics.*; import android.os.*; import android.view.*; import java.util.*;
 
 public class GameView extends View {
-    public static final int GAME_PANG = 1, GAME_ARKANOID = 2;
+    public static final int GAME_BUBBLE = 1, GAME_ARKANOID = 2;
     private final int gameType;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Random rnd = new Random();
     private int score = 0, bestScore = 0, level = 1, lives = 3;
     private boolean gameOver = false;
-    private final RectF btnMenu = new RectF(), bIzq = new RectF(), bDer = new RectF(), bDisp = new RectF();
+    private final RectF btnMenu = new RectF(), bIzq = new RectF(), bDer = new RectF(), bSalto = new RectF(), bPompa = new RectF();
 
-    // PANG / MUÑEQUITO DISPARANDO BOLAS
-    private float heroX = 0.5f, stepAnim = 0f;
-    private int heroDir = 1;
-    private final ArrayList<float[]> shots = new ArrayList<>(); // x, yTop
-    private final ArrayList<float[]> balls = new ArrayList<>(); // x, y, vx, vy, radius, colorIdx
+    // BUBBLE BOBBLE 1986 (TAITO STYLE)
+    private float bubX = 0.22f, bubY = 0.78f, bubVY = 0f, walkAnim = 0f;
+    private int bubDir = 1;
+    // Enemigo: x, y, vx, vy, tipo
+    private final ArrayList<float[]> enemies = new ArrayList<>();
+    // Pompa: x, y, vx, vy, atrapado(0/1), timer
+    private final ArrayList<float[]> bubbles = new ArrayList<>();
+    // Fruta bonus: x, y, tipo(0=platano, 1=cereza, 2=sandia), timer
+    private final ArrayList<float[]> fruits = new ArrayList<>();
 
-    // ARKANOID
+    // ARKANOID RETRO
     private float padX = 0.5f, aBallX = 0.5f, aBallY = 0.75f, aVX = 0.008f, aVY = -0.011f;
     private int[][] bricks = new int[6][8];
 
@@ -34,15 +38,17 @@ public class GameView extends View {
     }
     private void initGame() {
         score = 0; level = 1; lives = 3; gameOver = false;
-        if (gameType == GAME_PANG) spawnPangLevel();
+        if (gameType == GAME_BUBBLE) spawnBubbleStage();
         else { padX = 0.5f; spawnBricks(); resetBall(); }
     }
-    private void spawnPangLevel() {
-        heroX = 0.5f; shots.clear(); balls.clear();
-        int count = Math.min(4, 1 + (level - 1) / 2);
-        for (int i = 0; i < count; i++) {
-            float bx = 0.25f + (i * 0.22f) % 0.55f;
-            balls.add(new float[]{bx, 0.24f, (i % 2 == 0 ? 1 : -1) * (0.0045f + level * 0.0004f), 0f, 0.075f, i % 4});
+    private void spawnBubbleStage() {
+        bubX = 0.22f; bubY = 0.78f; bubVY = 0f; bubDir = 1;
+        enemies.clear(); bubbles.clear(); fruits.clear();
+        int n = Math.min(6, 3 + (level - 1));
+        for (int i = 0; i < n; i++) {
+            float py = (i % 3 == 0) ? 0.30f : ((i % 3 == 1) ? 0.46f : 0.62f);
+            float px = 0.26f + (i * 0.14f) % 0.52f;
+            enemies.add(new float[]{px, py, (i % 2 == 0 ? 1 : -1) * (0.0038f + level * 0.0005f), 0f, i % 2});
         }
     }
     private void spawnBricks() {
@@ -52,59 +58,74 @@ public class GameView extends View {
 
     private void update() {
         if (gameOver) return;
-        if (gameType == GAME_PANG) {
-            for (int i = shots.size() - 1; i >= 0; i--) {
-                float[] s = shots.get(i);
-                s[1] -= 0.024f;
-                if (s[1] <= 0.11f) shots.remove(i);
+        if (gameType == GAME_BUBBLE) {
+            float prevY = bubY;
+            bubVY += 0.0014f;
+            bubY += bubVY;
+            float[] plats = {0.30f, 0.46f, 0.62f, 0.78f};
+            for (float py : plats) {
+                boolean hueco = (py < 0.75f && (bubX < 0.14f || bubX > 0.86f || (bubX > 0.46f && bubX < 0.54f)));
+                if (!hueco && bubVY >= 0 && prevY <= py && bubY >= py) { bubY = py; bubVY = 0f; }
             }
-            for (int i = balls.size() - 1; i >= 0; i--) {
-                float[] b = balls.get(i);
-                b[3] += 0.00042f; // gravedad suave arcade
+            if (bubY > 0.78f) { bubY = 0.78f; bubVY = 0f; }
+
+            for (int i = bubbles.size() - 1; i >= 0; i--) {
+                float[] b = bubbles.get(i);
                 b[0] += b[2];
-                b[1] += b[3];
-                float r = b[4];
-                if (b[0] - r < 0.03f) { b[0] = 0.03f + r; b[2] = Math.abs(b[2]); }
-                if (b[0] + r > 0.97f) { b[0] = 0.97f - r; b[2] = -Math.abs(b[2]); }
-                if (b[1] + r > 0.81f) {
-                    b[1] = 0.81f - r;
-                    b[3] = -(0.014f + r * 0.11f);
-                    RetroSound.blip();
-                }
-                boolean hit = false;
-                for (int j = shots.size() - 1; j >= 0; j--) {
-                    float[] s = shots.get(j);
-                    if (Math.abs(s[0] - b[0]) <= r + 0.015f && s[1] <= b[1] + r) {
-                        shots.remove(j);
-                        hit = true;
-                        break;
+                b[2] *= 0.91f;
+                if (Math.abs(b[2]) < 0.002f) b[1] -= 0.0038f;
+                if (b[0] < 0.08f) b[0] = 0.08f;
+                if (b[0] > 0.92f) b[0] = 0.92f;
+                if (b[1] < 0.16f) b[1] = 0.16f;
+                b[5] += 1f;
+                if (b[5] > 480f) {
+                    if (b[4] > 0) enemies.add(new float[]{b[0], b[1], 0.005f, 0f, 1});
+                    bubbles.remove(i);
+                } else if (Math.hypot(bubX - b[0], (bubY - 0.02f) - b[1]) < 0.055f && b[5] > 14f) {
+                    if (b[4] > 0) {
+                        score += 200;
+                        fruits.add(new float[]{b[0], b[1], rnd.nextInt(3), 0f});
+                    } else {
+                        score += 20;
                     }
-                }
-                if (hit) {
-                    balls.remove(i);
-                    score += 100;
                     RetroSound.score();
                     saveBest();
-                    if (r > 0.032f) {
-                        float nr = r * 0.62f;
-                        balls.add(new float[]{b[0] - nr * 0.5f, b[1], -Math.abs(b[2]) * 1.08f, -0.013f, nr, (int)b[5]});
-                        balls.add(new float[]{b[0] + nr * 0.5f, b[1], Math.abs(b[2]) * 1.08f, -0.013f, nr, (int)b[5]});
-                    }
-                    continue;
-                }
-                if (Math.hypot(heroX - b[0], 0.76f - b[1]) < r + 0.028f) {
-                    lives--;
-                    RetroSound.boom();
-                    if (lives <= 0) { gameOver = true; RetroSound.gameOver(); saveBest(); }
-                    else { spawnPangLevel(); }
-                    return;
+                    bubbles.remove(i);
                 }
             }
-            if (balls.isEmpty()) {
-                level++;
-                score += 500;
-                saveBest();
-                spawnPangLevel();
+
+            for (int i = enemies.size() - 1; i >= 0; i--) {
+                float[] en = enemies.get(i);
+                en[0] += en[2];
+                if (en[0] < 0.09f || en[0] > 0.91f) en[2] = -en[2];
+                boolean atrap = false;
+                for (float[] b : bubbles) {
+                    if (b[4] == 0 && Math.abs(b[2]) > 0.002f && Math.hypot(en[0] - b[0], (en[1] - 0.02f) - b[1]) < 0.06f) {
+                        b[4] = 1f; b[2] = 0f; b[5] = 0f; atrap = true; RetroSound.blip(); break;
+                    }
+                }
+                if (atrap) { enemies.remove(i); continue; }
+                if (Math.hypot(bubX - en[0], bubY - en[1]) < 0.048f) {
+                    lives--; RetroSound.boom(); bubX = 0.22f; bubY = 0.78f;
+                    if (lives <= 0) { gameOver = true; RetroSound.gameOver(); saveBest(); }
+                }
+            }
+
+            for (int i = fruits.size() - 1; i >= 0; i--) {
+                float[] fr = fruits.get(i);
+                if (fr[1] < 0.78f) fr[1] += 0.006f;
+                fr[3] += 1f;
+                if (Math.hypot(bubX - fr[0], bubY - fr[1]) < 0.055f) {
+                    score += 500; RetroSound.score(); saveBest(); fruits.remove(i);
+                } else if (fr[3] > 360f) {
+                    fruits.remove(i);
+                }
+            }
+
+            boolean quedanEnPompa = false;
+            for (float[] b : bubbles) if (b[4] > 0) quedanEnPompa = true;
+            if (enemies.isEmpty() && !quedanEnPompa && fruits.isEmpty()) {
+                level++; score += 500; saveBest(); spawnBubbleStage();
             }
         } else {
             aBallX += aVX; aBallY += aVY;
@@ -132,7 +153,7 @@ public class GameView extends View {
 
     private void drawBtn(Canvas c, RectF r, String txt, boolean dorado) {
         paint.setColor(dorado ? Color.rgb(212, 175, 55) : Color.rgb(18, 56, 108));
-        c.drawRoundRect(r, 24, 24, paint);
+        c.drawRoundRect(r, 22, 22, paint);
         paint.setColor(dorado ? Color.rgb(8, 24, 48) : Color.rgb(212, 175, 55));
         paint.setTextSize(r.height() * 0.42f);
         paint.setTextAlign(Paint.Align.CENTER);
@@ -140,64 +161,93 @@ public class GameView extends View {
         paint.setTextAlign(Paint.Align.LEFT);
     }
 
+    private void drawBrickRow(Canvas c, float x1, float y1, float x2, float y2, int col1, int col2) {
+        paint.setColor(col1);
+        c.drawRect(x1, y1, x2, y2, paint);
+        paint.setColor(col2);
+        float step = Math.max(18f, (x2 - x1) / 14f);
+        for (float x = x1; x < x2 - 4; x += step) {
+            c.drawRect(x + 2, y1 + 2, Math.min(x2 - 2, x + step - 3), y2 - 2, paint);
+        }
+    }
+
     @Override protected void onDraw(Canvas c) {
         float w = getWidth(), h = getHeight();
-        c.drawColor(Color.rgb(6, 20, 44));
-        paint.setColor(Color.rgb(12, 42, 82)); c.drawRect(0, 0, w, h * 0.10f, paint);
+        c.drawColor(Color.rgb(5, 10, 22)); // Fondo negro/azul oscuro arcade 1986
+        paint.setColor(Color.rgb(12, 34, 70)); c.drawRect(0, 0, w, h * 0.10f, paint);
         btnMenu.set(w * 0.03f, h * 0.022f, w * 0.24f, h * 0.078f);
         drawBtn(c, btnMenu, "◀ Menú", false);
 
-        paint.setColor(Color.rgb(212, 175, 55)); paint.setTextSize(w * 0.038f); paint.setFakeBoldText(true);
-        c.drawText("PTS: " + score, w * 0.28f, h * 0.062f, paint);
-        paint.setColor(Color.WHITE); c.drawText("RÉCORD: " + bestScore, w * 0.58f, h * 0.062f, paint);
+        paint.setColor(Color.rgb(65, 235, 110)); paint.setTextSize(w * 0.036f); paint.setFakeBoldText(true);
+        c.drawText("1UP: " + score, w * 0.28f, h * 0.062f, paint);
+        paint.setColor(Color.rgb(255, 80, 90)); c.drawText("HIGH: " + bestScore, w * 0.60f, h * 0.062f, paint);
 
-        if (gameType == GAME_PANG) {
-            // Marco y suelo arcade
-            paint.setColor(Color.rgb(24, 78, 150));
-            c.drawRect(w * 0.02f, h * 0.11f, w * 0.98f, h * 0.122f, paint);
-            c.drawRect(0, h * 0.81f, w, h * 0.828f, paint);
-            paint.setColor(Color.WHITE); paint.setTextSize(w * 0.034f);
-            c.drawText("NIVEL " + level + "   ·   VIDAS: " + lives, w * 0.05f, h * 0.155f, paint);
+        if (gameType == GAME_BUBBLE) {
+            // Muros laterales y techo de ladrillos dorados/rojos estilo Taito
+            drawBrickRow(c, 0, h * 0.11f, w, h * 0.135f, Color.rgb(160, 75, 20), Color.rgb(235, 165, 45));
+            paint.setColor(Color.rgb(215, 135, 35));
+            c.drawRect(0, h * 0.11f, w * 0.045f, h * 0.805f, paint);
+            c.drawRect(w * 0.955f, h * 0.11f, w, h * 0.805f, paint);
 
-            // Disparos verticales (arpones con punta dorada)
-            for (float[] s : shots) {
-                paint.setColor(Color.rgb(120, 225, 255));
-                c.drawRect((s[0] - 0.006f) * w, s[1] * h, (s[0] + 0.006f) * w, h * 0.81f, paint);
-                paint.setColor(Color.rgb(235, 195, 75));
-                c.drawCircle(s[0] * w, s[1] * h, w * 0.016f, paint);
+            // Plataformas de ladrillo con huecos laterales y central
+            float[] plats = {0.30f, 0.46f, 0.62f};
+            for (float py : plats) {
+                drawBrickRow(c, w * 0.14f, h * py, w * 0.46f, h * (py + 0.022f), Color.rgb(150, 65, 18), Color.rgb(230, 155, 40));
+                drawBrickRow(c, w * 0.54f, h * py, w * 0.86f, h * (py + 0.022f), Color.rgb(150, 65, 18), Color.rgb(230, 155, 40));
+            }
+            drawBrickRow(c, 0, h * 0.78f, w, h * 0.808f, Color.rgb(150, 65, 18), Color.rgb(230, 155, 40));
+
+            paint.setColor(Color.WHITE); paint.setTextSize(w * 0.032f);
+            c.drawText("ROUND " + level + "   ·   VIDAS: " + lives, w * 0.07f, h * 0.165f, paint);
+
+            // Dragoncito Bub verde con cresta naranja y ojos blancos
+            float bx = bubX * w, by = bubY * h, rBub = w * 0.034f;
+            paint.setColor(Color.rgb(255, 130, 30)); // cresta dorsal naranja
+            c.drawCircle(bx - bubDir * rBub * 0.75f, by - rBub * 1.15f, rBub * 0.34f, paint);
+            c.drawCircle(bx - bubDir * rBub * 0.85f, by - rBub * 0.65f, rBub * 0.34f, paint);
+            paint.setColor(Color.rgb(55, 225, 95)); // cuerpo verde Bub
+            c.drawCircle(bx, by - rBub * 0.85f, rBub, paint);
+            paint.setColor(Color.rgb(245, 245, 210)); // barriguita clara
+            c.drawCircle(bx + bubDir * rBub * 0.25f, by - rBub * 0.65f, rBub * 0.55f, paint);
+            paint.setColor(Color.WHITE); // ojo grande
+            c.drawCircle(bx + bubDir * rBub * 0.42f, by - rBub * 1.05f, rBub * 0.30f, paint);
+            paint.setColor(Color.BLACK);
+            c.drawCircle(bx + bubDir * rBub * 0.50f, by - rBub * 1.05f, rBub * 0.14f, paint);
+
+            // Enemigos Zen-Chan (rojo/naranja)
+            for (float[] en : enemies) {
+                float ex = en[0] * w, ey = en[1] * h;
+                paint.setColor(en[4] == 0 ? Color.rgb(255, 65, 80) : Color.rgb(190, 80, 255));
+                c.drawRoundRect(new RectF(ex - rBub * 0.9f, ey - rBub * 1.7f, ex + rBub * 0.9f, ey), 14, 14, paint);
+                paint.setColor(Color.YELLOW);
+                c.drawCircle(ex - rBub * 0.3f, ey - rBub * 1.1f, rBub * 0.2f, paint);
+                c.drawCircle(ex + rBub * 0.3f, ey - rBub * 1.1f, rBub * 0.2f, paint);
             }
 
-            // Muñequito detallado (gorra roja, cara, camiseta azul, piernas animadas y lanzador)
-            float hx = heroX * w, hy = h * 0.81f;
-            float walk = (float) Math.sin(stepAnim) * w * 0.012f;
-            paint.setColor(Color.rgb(40, 120, 230)); // piernas
-            c.drawRoundRect(new RectF(hx - w * 0.024f, hy - h * 0.032f + walk, hx - w * 0.004f, hy), 6, 6, paint);
-            c.drawRoundRect(new RectF(hx + w * 0.004f, hy - h * 0.032f - walk, hx + w * 0.024f, hy), 6, 6, paint);
-            paint.setColor(Color.WHITE); // camiseta
-            c.drawRoundRect(new RectF(hx - w * 0.028f, hy - h * 0.062f, hx + w * 0.028f, hy - h * 0.028f), 8, 8, paint);
-            paint.setColor(Color.rgb(255, 210, 170)); // cabeza
-            c.drawCircle(hx, hy - h * 0.076f, w * 0.024f, paint);
-            paint.setColor(Color.rgb(235, 60, 75)); // gorra arcade
-            c.drawArc(new RectF(hx - w * 0.026f, hy - h * 0.095f, hx + w * 0.026f, hy - h * 0.068f), 180, 180, true, paint);
-            c.drawRect(hx, hy - h * 0.083f, hx + heroDir * w * 0.036f, hy - h * 0.077f, paint);
-
-            // Bolas gigantes/medianas/pequeñas con brillo
-            int[] bCols = {Color.rgb(255, 65, 85), Color.rgb(65, 225, 115), Color.rgb(75, 175, 255), Color.rgb(255, 195, 50)};
-            for (float[] b : balls) {
-                float bx = b[0] * w, by = b[1] * h, br = b[4] * w;
-                paint.setColor(bCols[(int)b[5] % 4]);
-                c.drawCircle(bx, by, br, paint);
-                paint.setColor(Color.argb(140, 255, 255, 255));
-                c.drawCircle(bx - br * 0.32f, by - br * 0.32f, br * 0.24f, paint);
+            // Pompas verdes luminosas (y con enemigo dentro si atrapado > 0)
+            for (float[] b : bubbles) {
+                float px = b[0] * w, py = b[1] * h, pr = w * 0.040f;
+                if (b[4] > 0) {
+                    paint.setColor(Color.rgb(255, 70, 90));
+                    c.drawCircle(px, py, pr * 0.55f, paint);
+                }
+                paint.setColor(Color.argb(145, 70, 245, 140));
+                c.drawCircle(px, py, pr, paint);
+                paint.setColor(Color.argb(190, 220, 255, 230));
+                c.drawCircle(px - pr * 0.32f, py - pr * 0.32f, pr * 0.22f, paint);
             }
 
-            // Controles grandes abajo
-            bIzq.set(w * 0.04f, h * 0.85f, w * 0.28f, h * 0.95f);
-            bDer.set(w * 0.31f, h * 0.85f, w * 0.55f, h * 0.95f);
-            bDisp.set(w * 0.60f, h * 0.85f, w * 0.96f, h * 0.95f);
-            drawBtn(c, bIzq, "◀", false);
-            drawBtn(c, bDer, "▶", false);
-            drawBtn(c, bDisp, "🔥 DISPARAR", true);
+            // Frutas bonus (platano amarillo, cereza roja, sandia)
+            for (float[] fr : fruits) {
+                float fx = fr[0] * w, fy = fr[1] * h - w * 0.02f;
+                paint.setColor(fr[2] == 0 ? Color.YELLOW : (fr[2] == 1 ? Color.RED : Color.GREEN));
+                c.drawCircle(fx, fy, w * 0.024f, paint);
+            }
+
+            bIzq.set(w*0.04f, h*0.85f, w*0.25f, h*0.95f); bDer.set(w*0.28f, h*0.85f, w*0.49f, h*0.95f);
+            bSalto.set(w*0.52f, h*0.85f, w*0.73f, h*0.95f); bPompa.set(w*0.76f, h*0.85f, w*0.96f, h*0.95f);
+            drawBtn(c, bIzq, "◀", false); drawBtn(c, bDer, "▶", false);
+            drawBtn(c, bSalto, "▲", false); drawBtn(c, bPompa, "🫧", true);
         } else {
             int[] rowCols = {Color.RED, Color.rgb(255,140,0), Color.YELLOW, Color.GREEN, Color.CYAN, Color.MAGENTA};
             for (int r = 0; r < 6; r++) for (int col = 0; col < 8; col++) {
@@ -215,7 +265,7 @@ public class GameView extends View {
         if (gameOver) {
             paint.setColor(Color.argb(215, 6, 18, 38)); c.drawRect(0, h * 0.35f, w, h * 0.65f, paint);
             paint.setColor(Color.rgb(212, 175, 55)); paint.setTextSize(w * 0.08f); paint.setTextAlign(Paint.Align.CENTER);
-            c.drawText("FIN DE PARTIDA", w * 0.5f, h * 0.47f, paint);
+            c.drawText("GAME OVER", w * 0.5f, h * 0.47f, paint);
             paint.setColor(Color.WHITE); paint.setTextSize(w * 0.045f);
             c.drawText("PUNTOS: " + score + "  ·  TOCA PARA REPETIR", w * 0.5f, h * 0.56f, paint);
             paint.setTextAlign(Paint.Align.LEFT);
@@ -226,11 +276,12 @@ public class GameView extends View {
         float x = e.getX(), y = e.getY();
         if (e.getAction() == MotionEvent.ACTION_DOWN && btnMenu.contains(x, y)) { ((Activity) getContext()).finish(); return true; }
         if (gameOver && e.getAction() == MotionEvent.ACTION_DOWN) { initGame(); return true; }
-        if (gameType == GAME_PANG) {
-            if (bIzq.contains(x, y)) { heroDir = -1; heroX = Math.max(0.06f, heroX - 0.022f); stepAnim += 0.6f; return true; }
-            if (bDer.contains(x, y)) { heroDir = 1; heroX = Math.min(0.94f, heroX + 0.022f); stepAnim += 0.6f; return true; }
-            if (e.getAction() == MotionEvent.ACTION_DOWN && bDisp.contains(x, y) && shots.size() < 2) {
-                shots.add(new float[]{heroX, 0.72f});
+        if (gameType == GAME_BUBBLE && (e.getAction() == MotionEvent.ACTION_DOWN || e.getAction() == MotionEvent.ACTION_MOVE)) {
+            if (bIzq.contains(x, y)) { bubDir = -1; bubX = Math.max(0.08f, bubX - 0.024f); return true; }
+            if (bDer.contains(x, y)) { bubDir = 1; bubX = Math.min(0.92f, bubX + 0.024f); return true; }
+            if (e.getAction() == MotionEvent.ACTION_DOWN && bSalto.contains(x, y) && bubVY == 0f) { bubVY = -0.027f; RetroSound.blip(); return true; }
+            if (e.getAction() == MotionEvent.ACTION_DOWN && bPompa.contains(x, y)) {
+                bubbles.add(new float[]{bubX + bubDir * 0.045f, bubY - 0.025f, bubDir * 0.030f, 0f, 0f, 0f});
                 RetroSound.blip();
                 return true;
             }
