@@ -422,7 +422,7 @@ public class MainActivity extends Activity {
         nas.setOnClickListener(v -> abrirListaNas());
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
-        misCanciones.setOnClickListener(v -> mostrarFavoritas());
+        misCanciones.setOnClickListener(v -> abrirBibliotecaKuliDirecta());
 
         // Acciones: secundarias
         favorito = pastilla("♡  Guardar", CONTORNO);
@@ -2839,6 +2839,48 @@ public class MainActivity extends Activity {
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
             startActivityForResult(intent, 9421);
         } catch (Exception e) { aviso("Error selector Prism: " + e.getMessage()); }
+    }
+
+    private void abrirBibliotecaKuliDirecta() {
+        java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+        base.mkdirs();
+        final java.util.ArrayList<java.io.File> lista = new java.util.ArrayList<>();
+        recolectarMp3Directo(base, lista);
+        java.util.Collections.sort(lista, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        if (lista.isEmpty()) {
+            aviso("No hay canciones aún en Music/KULI MUSIC");
+            return;
+        }
+        java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
+        nombres.add("⬆️ SUBIR TODAS AL NAS (clasificar y quitar repetidas) [" + lista.size() + "]");
+        for (java.io.File f : lista) {
+            String rel = f.getParentFile() != null && !f.getParentFile().equals(base) ? " [" + f.getParentFile().getName() + "]" : "";
+            nombres.add("🎵 " + f.getName().replace(".mp3", "") + rel);
+        }
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Mi música del móvil (" + lista.size() + ")")
+            .setItems(nombres.toArray(new String[0]), (d, i) -> {
+                if (i == 0) {
+                    java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+                    for (java.io.File f : lista) uris.add(Uri.fromFile(f));
+                    subirAutomatico(uris, null);
+                } else {
+                    java.io.File sel = lista.get(i - 1);
+                    reproducir(Uri.fromFile(sel), sel.getName().replace(".mp3", ""));
+                }
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
+    }
+
+    private void recolectarMp3Directo(java.io.File dir, java.util.List<java.io.File> out) {
+        if (dir == null || !dir.exists()) return;
+        java.io.File[] fs = dir.listFiles();
+        if (fs == null) return;
+        for (java.io.File f : fs) {
+            if (f.isDirectory()) recolectarMp3Directo(f, out);
+            else if (f.getName().toLowerCase().endsWith(".mp3") && f.length() > 10000) out.add(f);
+        }
     }
 
     private void mostrarMenuPrism() {
