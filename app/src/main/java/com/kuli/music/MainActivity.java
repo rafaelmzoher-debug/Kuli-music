@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.Collections;
 
 public class MainActivity extends Activity {
+    public static MainActivity instanciaActiva;
     private static final int PICK_AUDIO = 100;
     private static final int PICK_SUBIR = 101;
     private static final int PICK_CARPETA = 102, PICK_DESCARGAS = 104;
@@ -250,6 +251,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instanciaActiva = this;
         favoritos = getSharedPreferences("kuli_favoritos", MODE_PRIVATE);
         escuchaFavs = (sp, clave) -> guardarCopiaFavoritos();
         favoritos.registerOnSharedPreferenceChangeListener(escuchaFavs);
@@ -423,6 +425,9 @@ public class MainActivity extends Activity {
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
         misCanciones.setOnClickListener(v -> abrirBibliotecaKuliDirecta());
+        Button btnDj = boton("🚗 Modo Coche · Sesión DJ (Mezcla sin cortes)", "#1B5E20", "#FFFFFF"); btnDj.setOnClickListener(v -> abrirModoCocheDj());
+        Button btnBus = boton("🔍 Buscar canción (Móvil + NAS)", "#0D47A1", "#FFFFFF"); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
+        try { ViewGroup vg = (ViewGroup) misCanciones.getParent(); int ix = vg.indexOfChild(misCanciones); vg.addView(btnDj, ix + 1); vg.addView(btnBus, ix + 2); } catch (Exception ignored) {}
 
         // Acciones: secundarias
         favorito = pastilla("♡  Guardar", CONTORNO);
@@ -831,7 +836,7 @@ public class MainActivity extends Activity {
                 try { reproductor.seekTo(posicionPendienteMs); } catch (Exception ignored) { }
                 posicionPendienteMs = 0;
             }
-            reproductor.start(); estado.setText("▶ REPRODUCIENDO");
+            reproductor.start(); actualizarNotificacionSegundoPlano(true); estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             iniciarServicio();
             arrastrando = false;
             actualizarProgreso();
@@ -862,7 +867,7 @@ public class MainActivity extends Activity {
             if (reproductor.isPlaying()) {
                 reproductor.pause(); estado.setText("Ⅱ EN PAUSA");
             } else {
-                reproductor.start(); estado.setText("▶ REPRODUCIENDO");
+                reproductor.start(); actualizarNotificacionSegundoPlano(true); estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             }
             iniciarServicio();
         } catch (IllegalStateException e) { aviso("No se pudo reproducir"); }
@@ -1005,7 +1010,7 @@ public class MainActivity extends Activity {
             String y = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR);
             if (y != null && y.length() >= 4) anio = Integer.parseInt(y.substring(0, 4));
         } catch (Exception ignored) { } finally { try { m.release(); } catch (Exception ignored) { } }
-        String estilo = simple(nombreDeUri(u)).contains("flamenc") ? "Flamenquito" : estiloDeGenero(genero);
+        String estilo = detectarEstiloPersonalizado(simple(nombreDeUri(u)), autor, genero, anio);
         if (estilo == null) {
             String termino = (titulo != null && !titulo.trim().isEmpty())
                 ? ((autor == null ? "" : autor + " ") + titulo)
@@ -1027,7 +1032,7 @@ public class MainActivity extends Activity {
         if (genero == null) return null;
         String g = simple(genero);
         if (g.isEmpty()) return null;
-        if (g.contains("flamenc") || g.contains("rumba")) return "Flamenquito";
+        if (g.contains("flamenc") || g.contains("rumba")) return "Flamenkito";
         if (g.contains("latin") || g.contains("reggaeton") || g.contains("urban") || g.contains("salsa")
             || g.contains("bachata") || g.contains("cumbia") || g.contains("tropical")) return "Latino";
         if (g.contains("rock") || g.contains("alternativ") || g.contains("metal") || g.contains("punk")) return "Rock";
@@ -1523,14 +1528,14 @@ public class MainActivity extends Activity {
         if (siguienteReproductor != null && indicePreparado >= 0) {
             MediaPlayer anterior = reproductor;
             reproductor = siguienteReproductor;
-            try { reproductor.start(); } catch (Exception ignored) { }
+            try { reproductor.start(); actualizarNotificacionSegundoPlano(true); } catch (Exception ignored) { }
             posicionFavorita = indicePreparado;
             siguienteReproductor = null;
             indicePreparado = -1;
             try { anterior.release(); } catch (Exception ignored) { }
             mostrarDatos(Uri.parse(listaFavoritas.get(posicionFavorita)));
             reproductor.setOnCompletionListener(mp -> alTerminar());
-            estado.setText("▶ REPRODUCIENDO");
+            estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             iniciarServicio();
             prepararSiguiente();
         } else {
@@ -1563,7 +1568,7 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Estilos (carpetas del NAS) ----------
-    private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Flamenquito", "Baladas", "Dance",
+    private static final String[] ESTILOS = {"Pop", "Rock", "Latino", "Flamenkito", "Baladas", "Dance",
         "Años 80", "Años 90", "Años 2000", "Otro…"};
 
     private void elegirEstilo(final String titulo, final java.util.function.Consumer<String> listo) {
@@ -2091,7 +2096,7 @@ public class MainActivity extends Activity {
         final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("📁 " + estilo + " · " + rutas.size())
             .setItems(items, (d, i) -> reproducirListaNas(rutas, i))
             .setPositiveButton("▶ TODAS", (d, w) -> reproducirListaNas(rutas, 0))
-            .setNeutralButton("🔀 ALEATORIO", (d, w) -> reproducirAleatorio(rutas))
+            .setNeutralButton("⬇️ BAJAR CARPETA", (d, w) -> descargarCarpetaNasAlMovil(rutas))
             .setNegativeButton(hayMasGrupos ? "ATRÁS" : "CERRAR", (d, w) -> {
                 if (hayMasGrupos) mostrarGruposNas(grupos);
             }).show();
@@ -2892,4 +2897,125 @@ public class MainActivity extends Activity {
             else autorizarCarpetaPrism();
         }).setNegativeButton("Cerrar", null).show();
     }
+
+    private String tituloActualNotif = "Kuli Music";
+    private boolean modoDjActivo = false;
+    private java.util.List<java.io.File> colaDj = new java.util.ArrayList<>();
+    private int indiceDj = 0;
+
+    private void actualizarNotificacionSegundoPlano(boolean sonando) {
+        try {
+            String t = tituloCancion != null && tituloCancion.getText() != null && tituloCancion.getText().length() > 0 ? tituloCancion.getText().toString() : tituloActualNotif;
+            tituloActualNotif = t;
+            Intent i = new Intent(this, KuliPlaybackService.class);
+            i.putExtra("titulo", t); i.putExtra("sonando", sonando);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
+        } catch (Exception ignored) {}
+    }
+    void alternarDesdeNotificacion() { alternarReproduccion(); }
+    void siguienteDesdeNotificacion() {
+        if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
+        else { try { siguienteCancion(); } catch (Exception e) { alternarReproduccion(); } }
+    }
+    void anteriorDesdeNotificacion() {
+        if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj - 1 + colaDj.size()) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
+        else { try { anteriorCancion(); } catch (Exception e) { if (reproductor != null) reproductor.seekTo(0); } }
+    }
+    private void abrirModoCocheDj() {
+        java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+        java.util.ArrayList<java.io.File> todas = new java.util.ArrayList<>();
+        recolectarMp3Directo(base, todas);
+        if (todas.isEmpty()) { aviso("No hay canciones en Music/KULI MUSIC"); return; }
+        String[] modos = {"🔥 Mezcla Total Aleatoria (" + todas.size() + " temas)", "💃 Sesión Flamenkito", "🆕 Sesión Novedades 2026", "🌴 Sesión Latino / Dance"};
+        new AlertDialog.Builder(this).setTitle("🚗 Modo Coche · Sesión DJ").setItems(modos, (d, which) -> {
+            java.util.ArrayList<java.io.File> sel = new java.util.ArrayList<>();
+            for (java.io.File f : todas) {
+                String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+                if (which == 0) sel.add(f);
+                else if (which == 1 && "Flamenkito".equals(st)) sel.add(f);
+                else if (which == 2 && "Novedades 2026".equals(st)) sel.add(f);
+                else if (which == 3 && ("Latino".equals(st) || "Dance".equals(st))) sel.add(f);
+            }
+            if (sel.isEmpty()) sel.addAll(todas);
+            java.util.Collections.shuffle(sel); colaDj = sel; indiceDj = 0; modoDjActivo = true;
+            aviso("🚗 Sesión DJ iniciada (" + colaDj.size() + " temas)");
+            reproducirConFundidoDj(colaDj.get(0));
+        }).setNegativeButton("Cancelar", null).show();
+    }
+    private void reproducirConFundidoDj(java.io.File f) {
+        tituloActualNotif = f.getName().replace(".mp3", "");
+        reproducir(Uri.fromFile(f));
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (reproductor != null) {
+                try { reproductor.setVolume(0.25f, 0.25f); } catch (Exception ignored) {}
+                new Handler(Looper.getMainLooper()).postDelayed(() -> { try { if (reproductor != null) reproductor.setVolume(0.65f, 0.65f); } catch (Exception ignored) {} }, 600);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> { try { if (reproductor != null) reproductor.setVolume(1.0f, 1.0f); } catch (Exception ignored) {} }, 1300);
+                reproductor.setOnCompletionListener(mp -> { if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); } });
+            }
+        }, 250);
+    }
+    private void abrirBuscadorGlobal() {
+        final android.widget.EditText caja = new android.widget.EditText(this);
+        caja.setHint("Ej: Bordón 4, Quevedo, Paloma Blanca..."); caja.setPadding(40, 30, 40, 30);
+        new AlertDialog.Builder(this).setTitle("🔍 Buscar en Móvil y NAS").setView(caja).setPositiveButton("Buscar", (d, w) -> {
+            String q = simple(caja.getText().toString()).trim();
+            if (!q.isEmpty()) ejecutarBusquedaGlobal(q);
+        }).setNegativeButton("Cancelar", null).show();
+    }
+    private void ejecutarBusquedaGlobal(final String q) {
+        aviso("Buscando '" + q + "'...");
+        new Thread(() -> {
+            final java.util.ArrayList<String> et = new java.util.ArrayList<>();
+            final java.util.ArrayList<Object> ds = new java.util.ArrayList<>();
+            java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.util.ArrayList<java.io.File> loc = new java.util.ArrayList<>();
+            recolectarMp3Directo(base, loc);
+            for (java.io.File f : loc) if (simple(f.getName()).contains(q)) { et.add("📱 " + f.getName().replace(".mp3", "")); ds.add(f); }
+            try {
+                for (String r : listarTodasLasRutasNas()) {
+                    String nom = r.contains("/") ? r.substring(r.lastIndexOf("/") + 1) : r;
+                    if (simple(nom).contains(q)) { et.add("☁️ " + nom.replace(".mp3", "")); ds.add(r); }
+                }
+            } catch (Exception ignored) {}
+            runOnUiThread(() -> {
+                if (et.isEmpty()) { aviso("Sin resultados para '" + q + "'"); return; }
+                new AlertDialog.Builder(this).setTitle("Resultados (" + et.size() + ")").setItems(et.toArray(new String[]), (d, idx) -> {
+                    Object o = ds.get(idx);
+                    if (o instanceof java.io.File) { modoDjActivo = false; java.io.File f = (java.io.File) o; tituloActualNotif = f.getName().replace(".mp3", ""); reproducir(Uri.fromFile(f)); }
+                    else reproducirDesdeNas((String) o);
+                }).setNegativeButton("Cerrar", null).show();
+            });
+        }).start();
+    }
+    private void descargarCarpetaNasAlMovil(final java.util.List<String> rutas) {
+        if (rutas == null || rutas.isEmpty()) return;
+        aviso("Bajando carpeta al móvil sin duplicar...");
+        new Thread(() -> {
+            java.io.File destDir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            destDir.mkdirs();
+            java.util.HashSet<String> ya = new java.util.HashSet<>();
+            java.util.ArrayList<java.io.File> loc = new java.util.ArrayList<>();
+            recolectarMp3Directo(destDir, loc);
+            for (java.io.File f : loc) ya.add(claveNombre(f.getName()));
+            int bjs = 0;
+            for (String r : rutas) {
+                String nom = r.contains("/") ? r.substring(r.lastIndexOf("/") + 1) : r;
+                if (ya.contains(claveNombre(nom))) continue;
+                try { descargarArchivoNasDirecto(r, new java.io.File(destDir, nom)); ya.add(claveNombre(nom)); bjs++; } catch (Exception ignored) {}
+            }
+            final int tb = bjs;
+            runOnUiThread(() -> aviso("⬇️ " + tb + " canciones nuevas bajadas al móvil"));
+        }).start();
+    }
+    private String detectarEstiloPersonalizado(String nom, String aut, String gen, int anio) {
+        String todo = simple(nom + " " + (aut == null ? "" : aut));
+        String[] h26 = {"2026", "ni borracho", "la graciosa", "al golpito", "scandic", "choque", "el baifo", "caprichoso", "te dare", "mas cara", "galdar", "superestrella", "pa ti toa", "dardos", "bby wow", "la perla", "largate", "soleao", "yo y tu", "cosita linda", "una vida en llamas", "tus iniciales", "milko freestyle", "dai dai", "las muñequitas", "drop dead", "dama y vagabundo", "no me guillo", "maladie", "una casa en el teide", "punto de partida", "ser artista", "demonias muñecas"};
+        if (anio == 2026) return "Novedades 2026";
+        for (String h : h26) if (todo.contains(simple(h))) return "Novedades 2026";
+        String[] fl = {"flamenc", "bordon 4", "asi canta jerez", "paloma blanca", "los del rio", "el mani", "camela", "estopa", "melendi", "el barrio", "niña pastori", "nina pastori", "india martinez", "fondo flamenco", "decai", "rebujitos", "canelita", "galvan real", "daviles", "keen levy", "nyno vargas", "moncho chavea", "omar montes", "maka", "original elias", "demarco", "chambao", "ketama", "paco de lucia", "camaron", "jose merce", "diego el cigala", "estrella morente", "falete", "parrita", "bambino", "chiquetete", "manzanita", "peret", "kiko veneno", "juanito makande", "el canijo", "tomasito", "la hungara", "maria artes", "el tren de los sueños", "son de sol", "las chuches", "los caños", "andy", "lucas", "kiko y shara", "raya real", "siempre asi", "requiebros", "ecos del rocio", "cantores de hispalis", "los marismeños", "sevillanas", "rumba"};
+        for (String f : fl) if (todo.contains(simple(f))) return "Flamenkito";
+        String est = estiloDeGenero(gen);
+        return est != null ? est : "Pop";
+    }
+
 }
