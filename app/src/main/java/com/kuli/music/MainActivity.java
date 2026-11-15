@@ -425,8 +425,8 @@ public class MainActivity extends Activity {
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
         misCanciones.setOnClickListener(v -> abrirBibliotecaKuliDirecta());
-        Button btnDj = boton("🚗 Modo Coche · Sesión DJ (Mezcla sin cortes)", "#1B5E20", "#FFFFFF"); btnDj.setOnClickListener(v -> abrirModoCocheDj());
-        Button btnBus = boton("🔍 Buscar canción (Móvil + NAS)", "#0D47A1", "#FFFFFF"); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
+        Button btnDj = pastilla("🚗 Modo Coche · Sesión DJ", 0xFF1B5E20); btnDj.setOnClickListener(v -> abrirModoCocheDj());
+        Button btnBus = pastilla("🔍 Buscar (Móvil + NAS)", 0xFF0D47A1); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
         try { ViewGroup vg = (ViewGroup) misCanciones.getParent(); int ix = vg.indexOfChild(misCanciones); vg.addView(btnDj, ix + 1); vg.addView(btnBus, ix + 2); } catch (Exception ignored) {}
 
         // Acciones: secundarias
@@ -2905,7 +2905,7 @@ public class MainActivity extends Activity {
 
     private void actualizarNotificacionSegundoPlano(boolean sonando) {
         try {
-            String t = tituloCancion != null && tituloCancion.getText() != null && tituloCancion.getText().length() > 0 ? tituloCancion.getText().toString() : tituloActualNotif;
+            String t = cancion != null && cancion.getText() != null && cancion.getText().length() > 0 ? cancion.getText().toString() : tituloActualNotif;
             tituloActualNotif = t;
             Intent i = new Intent(this, KuliPlaybackService.class);
             i.putExtra("titulo", t); i.putExtra("sonando", sonando);
@@ -2915,11 +2915,11 @@ public class MainActivity extends Activity {
     void alternarDesdeNotificacion() { alternarReproduccion(); }
     void siguienteDesdeNotificacion() {
         if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-        else { try { siguienteCancion(); } catch (Exception e) { alternarReproduccion(); } }
+        else { alternarReproduccion(); }
     }
     void anteriorDesdeNotificacion() {
         if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj - 1 + colaDj.size()) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-        else { try { anteriorCancion(); } catch (Exception e) { if (reproductor != null) reproductor.seekTo(0); } }
+        else { if (reproductor != null) reproductor.seekTo(0); }
     }
     private void abrirModoCocheDj() {
         java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
