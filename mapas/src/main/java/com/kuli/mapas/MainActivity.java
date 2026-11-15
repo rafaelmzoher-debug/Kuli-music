@@ -156,23 +156,37 @@ public class MainActivity extends Activity implements LocationListener {
 
     private void buscarDireccion(String q) {
         if (q == null || q.trim().isEmpty()) return;
-        txtEstado.setText("🔍 Buscando: " + q + "...");
+        String clean = q.trim();
+        txtEstado.setText("🔍 Buscando: " + clean + "...");
         new Thread(() -> {
+            // 1. Motor rapido Photon (OpenStreetMap sin bloqueos)
             try {
-                String url = "https://openstreetmap.org" + URLEncoder.encode(q.trim(), "UTF-8");
-                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                c.setRequestProperty("User-Agent", "KuliMapas/2.0");
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                StringBuilder sb = new StringBuilder(); String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                JSONArray arr = new JSONArray(sb.toString());
-                if (arr.length() > 0) {
-                    JSONObject obj = arr.getJSONObject(0);
-                    double lat = obj.getDouble("lat"), lon = obj.getDouble("lon");
-                    String nom = obj.getString("display_name");
+                String u1 = "https://komoot.io" + URLEncoder.encode(clean + " España", "UTF-8");
+                HttpURLConnection c1 = (HttpURLConnection) new URL(u1).openConnection();
+                c1.setConnectTimeout(5000); c1.setReadTimeout(5000);
+                BufferedReader br1 = new BufferedReader(new InputStreamReader(c1.getInputStream()));
+                StringBuilder sb1 = new StringBuilder(); String l1;
+                while ((l1 = br1.readLine()) != null) sb1.append(l1);
+                JSONArray feats = new JSONObject(sb1.toString()).getJSONArray("features");
+                if (feats.length() > 0) {
+                    JSONObject f0 = feats.getJSONObject(0);
+                    JSONArray coords = f0.getJSONObject("geometry").getJSONArray("coordinates");
+                    double lon = coords.getDouble(0), lat = coords.getDouble(1);
+                    JSONObject props = f0.getJSONObject("properties");
+                    String nom = props.optString("name", clean) + ", " + props.optString("city", props.optString("state", "España"));
                     runOnUiThread(() -> mostrarDestino(new GeoPoint(lat, lon), nom));
-                } else runOnUiThread(() -> txtEstado.setText("⚠️ No encontrado: " + q));
-            } catch (Throwable e) { runOnUiThread(() -> txtEstado.setText("⚠️ Activa Online para buscar direcciones")); }
+                    return;
+                }
+            } catch (Throwable ignored) {}
+            // 2. Respaldo Offline (ciudades y zonas principales sin internet)
+            String low = clean.toLowerCase();
+            if (low.contains("luz") && low.contains("malaga")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(36.7014, -4.4452), "Av. de la Luz, Málaga (Offline)")); return; }
+            if (low.contains("malaga") || low.contains("málaga")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(36.7213, -4.4214), "Málaga Centro (Offline)")); return; }
+            if (low.contains("madrid")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(40.4168, -3.7038), "Madrid Centro (Offline)")); return; }
+            if (low.contains("sevilla")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(37.3891, -5.9845), "Sevilla Centro (Offline)")); return; }
+            if (low.contains("barcelona")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(41.3851, 2.1734), "Barcelona Centro (Offline)")); return; }
+            if (low.contains("marbella")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(36.5101, -4.8824), "Marbella (Offline)")); return; }
+            runOnUiThread(() -> txtEstado.setText("⚠️ Sin resultados para: " + clean));
         }).start();
     }
 
@@ -198,8 +212,18 @@ public class MainActivity extends Activity implements LocationListener {
     }
     private void pintarRadaresEnMapa() {
         for (double[] r : radares) {
-            Marker m = new Marker(map); m.setPosition(new GeoPoint(r[0], r[1]));
-            m.setTitle("🚨 RADAR (" + (int)r[2] + " km/h)"); map.getOverlays().add(m);
+            Marker m = new Marker(map);
+            m.setPosition(new GeoPoint(r[0], r[1]));
+            m.setTitle("🚨 RADAR (" + (int)r[2] + " km/h)");
+            m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+            Bitmap bmp = Bitmap.createBitmap(44, 44, Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(bmp); Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
+            pt.setColor(Color.WHITE); cv.drawCircle(22, 22, 20, pt);
+            pt.setColor(Color.rgb(225, 35, 45)); pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(5); cv.drawCircle(22, 22, 18, pt);
+            pt.setStyle(Paint.Style.FILL); pt.setColor(Color.BLACK); pt.setTextSize(14); pt.setFakeBoldText(true); pt.setTextAlign(Paint.Align.CENTER);
+            cv.drawText(String.valueOf((int)r[2]), 22, 27, pt);
+            m.setIcon(new android.graphics.drawable.BitmapDrawable(getResources(), bmp));
+            map.getOverlays().add(m);
         }
     }
     private void anadirRadarAqui() {
