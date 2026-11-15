@@ -16,6 +16,7 @@ public class JobCopia extends JobService {
         new Thread(() -> {
             try {
                 CopiaFotos.Resultado r = CopiaFotos.copiar(this, null, cancelar);
+            notificarResumen(r.copiadas, r.omitidas);
                 if (r.copiadas > 0) avisar(r.copiadas + " fotos y vídeos copiados al NAS");
             } catch (Throwable e) {
                 android.util.Log.e("KULI_FOTOS", "Copia automática", e);
@@ -44,4 +45,24 @@ public class JobCopia extends JobService {
             nm.notify(2, n);
         } catch (Throwable ignorar) { }
     }
+
+    private void notificarResumen(int copiadas, int omitidas) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            String ch = "kuli_fotos_resumen";
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(new android.app.NotificationChannel(ch, "Resumen Kuli Fotos", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            }
+            android.app.Notification.Builder b = android.os.Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, ch)
+                : new android.app.Notification.Builder(this);
+            b.setSmallIcon(android.R.drawable.ic_menu_gallery)
+             .setContentTitle("✅ Kuli Fotos · Copia terminada")
+             .setContentText(copiadas + " fotos con personas guardadas · " + omitidas + " omitidas")
+             .setAutoCancel(true);
+            nm.notify(9021, b.build());
+        } catch (Throwable ignored) {}
+    }
+
 }

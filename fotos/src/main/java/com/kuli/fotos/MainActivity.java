@@ -91,6 +91,14 @@ public class MainActivity extends Activity {
         Button nas = boton("⚙️ Ajustes NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
         fila2.addView(nas, lpCol); p.addView(fila2);
+        LinearLayout filaExtraFotos = new LinearLayout(this); filaExtraFotos.setOrientation(LinearLayout.HORIZONTAL);
+        Button btnElegida = boton("➕ Subir elegida", false);
+        btnElegida.setOnClickListener(v -> elegirFotoManual());
+        filaExtraFotos.addView(btnElegida, lpCol);
+        Button btnMarco = boton("🎞️ Marco Digital", false);
+        btnMarco.setOnClickListener(v -> iniciarMarcoDigital());
+        filaExtraFotos.addView(btnMarco, lpCol);
+        p.addView(filaExtraFotos);
 
         p.addView(texto("Se guardan en  FOTOS KULI / año / mes / origen\n(Camara, WhatsApp, Capturas…).\nLas que ya están copiadas no se repiten.", 12, GRIS, false),
                 margen(centro(), 26));
@@ -359,4 +367,92 @@ public class MainActivity extends Activity {
         b.setBackground(g);
         return b;
     }
+
+    private static final int REQ_ELEGIR_FOTO = 7741;
+
+    private void elegirFotoManual() {
+        try {
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+            i.setType("image/*");
+            startActivityForResult(android.content.Intent.createChooser(i, "Elige una foto para subir al NAS"), REQ_ELEGIR_FOTO);
+        } catch (Exception e) {
+            aviso("No se pudo abrir la galería");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, android.content.Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_ELEGIR_FOTO && res == RESULT_OK && data != null && data.getData() != null) {
+            final android.net.Uri uri = data.getData();
+            aviso("⬆️ Subiendo foto elegida al NAS...");
+            new Thread(() -> {
+                try {
+                    String dia = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+                    String nom = "MANUAL_" + System.currentTimeMillis() + ".jpg";
+                    String dir = CopiaFotos.CARPETA + "/" + dia;
+                    java.io.File tmp = new java.io.File(getCacheDir(), nom);
+                    try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    }
+                    String ip = CopiaFotos.ip(this);
+                    jcifs.smb.SmbFile fDir = new jcifs.smb.SmbFile("smb://" + ip + "/Public/" + dir + "/", jcifs.context.SingletonContext.getInstance().withAnonymousCredentials());
+                    if (!fDir.exists()) fDir.mkdirs();
+                    jcifs.smb.SmbFile fDest = new jcifs.smb.SmbFile(fDir, nom);
+                    try (java.io.FileInputStream fis = new java.io.FileInputStream(tmp);
+                         java.io.OutputStream sos = fDest.getOutputStream()) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = fis.read(buf)) > 0) sos.write(buf, 0, n);
+                    }
+                    tmp.delete();
+                    runOnUiThread(() -> aviso("✅ Guardada en " + dir + "/" + nom));
+                } catch (Throwable t) {
+                    runOnUiThread(() -> aviso("Error al subir: " + t.getMessage()));
+                }
+            }).start();
+        }
+    }
+
+    private void iniciarMarcoDigital() {
+        final java.util.ArrayList<android.net.Uri> uris = new java.util.ArrayList<>();
+        try (android.database.Cursor c = getContentResolver().query(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                new String[]{android.provider.MediaStore.Images.Media._ID},
+                null, null, android.provider.MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
+            if (c != null) {
+                while (c.moveToNext() && uris.size() < 80) {
+                    long id = c.getLong(0);
+                    uris.add(android.content.ContentUris.withAppendedId(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id));
+                }
+            }
+        } catch (Throwable ignored) {}
+        if (uris.isEmpty()) { aviso("No hay fotos para mostrar"); return; }
+        final android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setBackgroundColor(android.graphics.Color.BLACK);
+        iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        iv.setMinimumHeight(dp(420));
+        final int[] idx = new int[1];
+        iv.setImageURI(uris.get(0));
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final Runnable r = new Runnable() {
+            @Override public void run() {
+                idx[0] = (idx[0] + 1) % uris.size();
+                iv.setImageURI(uris.get(idx[0]));
+                h.postDelayed(this, 4000);
+            }
+        };
+        h.postDelayed(r, 4000);
+        new AlertDialog.Builder(this)
+            .setTitle("🎞️ Marco Digital · Recuerdos")
+            .setView(iv)
+            .setPositiveButton("Siguiente ⏭", (d, w) -> {})
+            .setNegativeButton("Cerrar", (d, w) -> h.removeCallbacks(r))
+            .setOnDismissListener(d -> h.removeCallbacks(r))
+            .show();
+    }
+
 }
