@@ -143,7 +143,7 @@ final class CopiaFotos {
                 if (p != null) p.alAvanzar(i, lista.size(), it.nombre);
                 if (it.video || !esFotoRealDeCamara(ctx, it)) { r.omitidas++; continue; }
                 String dirDia = dirPorDia(it);
-                String destino = dirDia + "\" + it.nombre;
+                String destino = dirDia + java.io.File.separator + it.nombre;
                 try {
                     asegurar(disco, creadas, CARPETA);
                     asegurar(disco, creadas, dirDia);
