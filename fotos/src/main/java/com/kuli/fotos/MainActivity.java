@@ -58,9 +58,9 @@ public class MainActivity extends Activity {
         p.addView(detalle, centro());
         barra = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         barra.setMax(1);
-        LinearLayout.LayoutParams lpB = new LinearLayout.LayoutParams(-1, dp(10));
-        lpB.topMargin = dp(16);
-        p.addView(barra, lpB);
+        LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(-1, dp(10));
+        lpC.topMargin = dp(16);
+        p.addView(barra, lpC);
 
         copiar = boton("Copiar ahora", true);
         copiar.setOnClickListener(v -> alPulsarCopiar());
