@@ -78,22 +78,19 @@ public class MainActivity extends Activity {
             if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN)"); return; }
             startActivity(new android.content.Intent(this, GaleriaActivity.class));
         });
-        LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpF = new LinearLayout.LayoutParams(0, dp(48), 1f); lpF2.setMargins(6, 8, 6, 8); fila1.addView(galeria, lpF);
-
-        Button ver = boton("📂  Ver qué hay en el NAS", false);
+        LinearLayout.LayoutParams lpCol = new LinearLayout.LayoutParams(0, dp(48), 1f); lpCol.setMargins(6, 8, 6, 8);
+        LinearLayout fila1 = new LinearLayout(this); fila1.setOrientation(LinearLayout.HORIZONTAL);
+        fila1.addView(galeria, lpCol);
+        Button ver = boton("📂 Ver qué hay en el NAS", false);
         ver.setOnClickListener(v -> verNas());
-        fila1.addView(ver, lpF); p.addView(fila1);
-
-        Button liberar = boton("🧹  Liberar espacio del móvil", false);
-        liberar.setOnClickListener(v -> alPulsarLiberar());
-        // Sin boton de borrar para no perder nunca ninguna foto
-
+        fila1.addView(ver, lpCol); p.addView(fila1);
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
-        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpF2 = new LinearLayout.LayoutParams(0, dp(48), 1f); lpF2.setMargins(6, 8, 6, 8); fila2.addView(auto, lpF2);
-        Button nas = boton("⚙  Dirección del NAS", false);
+        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL);
+        fila2.addView(auto, lpCol);
+        Button nas = boton("⚙ Dirección del NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
-        fila2.addView(nas, lpF2); p.addView(fila2);
+        fila2.addView(nas, lpCol); p.addView(fila2);
 
         p.addView(texto("Se guardan en  FOTOS KULI / año / mes / origen\n(Camara, WhatsApp, Capturas…).\nLas que ya están copiadas no se repiten.", 12, GRIS, false),
                 margen(centro(), 26));
