@@ -50,6 +50,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -2538,16 +2539,36 @@ public class MainActivity extends Activity {
             u.clear(); u.addAll(ordU);
         }
         if (n.isEmpty()) { aviso("No hay canales con ese nombre"); return; }
-        new AlertDialog.Builder(this).setTitle(filtro != null && filtro.equals("\u0001DEPORTES") ? "⚽ Deportes" : "📺 TV en directo")
-            .setPositiveButton(filtro == null ? "⚽ DEPORTES" : "📺 TODOS", (d, w) ->
-                mostrarCanalesTv(filtro == null ? "\u0001DEPORTES" : null))
-            .setItems(n.toArray(new String[0]), (d, i) -> {
-                if (u.get(i).startsWith("web:")) reproducirTvWeb(n.get(i), u.get(i).substring(4));
-                else reproducirTv(n.get(i), u.get(i));
-            })
-            .setNeutralButton("🎬 CINE/SERIES", (d, w) -> mostrarCanalesTv("\u0001CINE"))
-            .setNegativeButton("🔍 BUSCAR", (d, w) -> pedirTexto("🔍 Buscar canal (ej. La 1, Pluto)", q -> mostrarCanalesTv(q)))
-            .show();
+        final LinearLayout caja = new LinearLayout(this);
+        caja.setOrientation(LinearLayout.VERTICAL);
+        caja.setPadding(dp(12), dp(4), dp(12), 0);
+        final AlertDialog[] dlg = new AlertDialog[1];
+        String[] etiquetas = {filtro == null ? "⚽ DEPORTES" : "📺 TODOS", "🎬 CINE/SERIES", "🔍 BUSCAR"};
+        for (int k = 0; k < 3; k++) {
+            final int cual = k;
+            Button bt = new Button(this);
+            bt.setText(etiquetas[k]);
+            bt.setAllCaps(false);
+            bt.setOnClickListener(x -> {
+                dlg[0].dismiss();
+                if (cual == 0) mostrarCanalesTv(filtro == null ? "\u0001DEPORTES" : null);
+                else if (cual == 1) mostrarCanalesTv("\u0001CINE");
+                else pedirTexto("🔍 Buscar canal (ej. La 1, Pluto)", q -> mostrarCanalesTv(q));
+            });
+            caja.addView(bt, new LinearLayout.LayoutParams(-1, dp(46)));
+        }
+        ListView lista = new ListView(this);
+        lista.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, n));
+        lista.setOnItemClickListener((pa, vw, pos, id) -> {
+            dlg[0].dismiss();
+            if (u.get(pos).startsWith("web:")) reproducirTvWeb(n.get(pos), u.get(pos).substring(4));
+            else reproducirTv(n.get(pos), u.get(pos));
+        });
+        caja.addView(lista, new LinearLayout.LayoutParams(-1, (int) (getResources().getDisplayMetrics().heightPixels * 0.45f)));
+        dlg[0] = new AlertDialog.Builder(this)
+            .setTitle(filtro != null && filtro.equals("\u0001DEPORTES") ? "⚽ Deportes" : "📺 TV en directo")
+            .setView(caja).setNegativeButton("CERRAR", null).create();
+        dlg[0].show();
     }
 
     private String versionApp() {
