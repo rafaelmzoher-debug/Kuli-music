@@ -12,7 +12,7 @@ public class MainActivity extends Activity {
         TextView logo = new TextView(this); logo.setText("🕹️"); logo.setTextSize(46); logo.setGravity(Gravity.CENTER); root.addView(logo);
         TextView title = new TextView(this); title.setText("KULI ARCADE"); title.setTextColor(Color.WHITE); title.setTextSize(28); title.setTypeface(Typeface.DEFAULT_BOLD); title.setGravity(Gravity.CENTER); root.addView(title);
         TextView sub = new TextView(this); sub.setText("RECREATIVOS CLÁSICOS · SIN ANUNCIOS · v1.0"); sub.setTextColor(Color.rgb(155,195,240)); sub.setTextSize(12); sub.setGravity(Gravity.CENTER); sub.setPadding(0, dp(4), 0, dp(16)); root.addView(sub);
-        txtRecords = new TextView(this); txtRecords.setTextColor(Color.rgb(232,195,92)); txtRecords.setTextSize(13); txtRecords.setGravity(Gravity.CENTER); txtRecords.setPadding(dp(12), dp(8), dp(12), dp(14)); root.addView(txtRecords);
+        txtRecords.setText("🏆 RÉCORDS:  Bubble Bobble " + sp.getInt("best_1",0) + "   ·   Arkanoid " + sp.getInt("best_2",0));
         
         root.addView(btnJuego("🐉  BUBBLE BOBBLE", "Atrapa enemigos en pompas y sáltalas", 1, true));
         root.addView(btnJuego("🏓  ARKANOID RETRO", "Rompe todos los bloques", 2, false));
@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         SharedPreferences sp = getSharedPreferences("kuli_arcade_scores", MODE_PRIVATE);
-        txtRecords.setText("🏆 RÉCORDS:  Bobble " + sp.getInt("best_1",0) + " · Arkanoid " + sp.getInt("best_2",0) + ");
+        txtRecords.setText("🏆 RÉCORDS:  Bubble Bobble " + sp.getInt("best_1",0) + "   ·   Arkanoid " + sp.getInt("best_2",0));
     }
     private Button btnJuego(String t, String d, final int id, boolean dest) {
         Button b = pastilla(t + "\n" + d, dest);
