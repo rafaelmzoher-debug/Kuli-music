@@ -398,17 +398,11 @@ public class MainActivity extends Activity {
                         int n;
                         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                     }
-                    String ip = CopiaFotos.ip(this);
-                    jcifs.smb.SmbFile fDir = new jcifs.smb.SmbFile("smb://" + ip + "/Public/" + dir + "/", jcifs.context.SingletonContext.getInstance().withAnonymousCredentials());
-                    if (!fDir.exists()) fDir.mkdirs();
-                    jcifs.smb.SmbFile fDest = new jcifs.smb.SmbFile(fDir, nom);
-                    try (java.io.FileInputStream fis = new java.io.FileInputStream(tmp);
-                         java.io.OutputStream sos = fDest.getOutputStream()) {
-                        byte[] buf = new byte[8192];
-                        int n;
-                        while ((n = fis.read(buf)) > 0) sos.write(buf, 0, n);
-                    }
-                    tmp.delete();
+                    java.io.File pubDir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "KULI FOTOS");
+                    pubDir.mkdirs();
+                    java.io.File dest = new java.io.File(pubDir, nom);
+                    tmp.renameTo(dest);
+                    android.media.MediaScannerConnection.scanFile(this, new String[]{dest.getAbsolutePath()}, null, null);
                     runOnUiThread(() -> aviso("✅ Guardada en " + dir + "/" + nom));
                 } catch (Throwable t) {
                     runOnUiThread(() -> aviso("Error al subir: " + t.getMessage()));
