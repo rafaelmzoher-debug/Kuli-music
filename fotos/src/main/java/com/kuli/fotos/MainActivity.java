@@ -90,10 +90,10 @@ public class MainActivity extends Activity {
 
         auto = boton("", false);
         auto.setOnClickListener(v -> alternarAuto());
-        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpB = new LinearLayout.LayoutParams(0, dp(48), 1f); lpB.setMargins(6, 8, 6, 8); fila2.addView(auto, lpB);
+        LinearLayout fila2 = new LinearLayout(this); fila2.setOrientation(LinearLayout.HORIZONTAL); LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(0, dp(48), 1f); lpC.setMargins(6, 8, 6, 8); fila2.addView(auto, lpC);
         Button nas = boton("⚙  Dirección del NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
-        fila2.addView(nas, lpB); p.addView(fila2);
+        fila2.addView(nas, lpC); p.addView(fila2);
 
         p.addView(texto("Se guardan en  FOTOS KULI / año / mes / origen\n(Camara, WhatsApp, Capturas…).\nLas que ya están copiadas no se repiten.", 12, GRIS, false),
                 margen(centro(), 26));
