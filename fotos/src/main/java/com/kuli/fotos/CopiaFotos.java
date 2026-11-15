@@ -191,7 +191,7 @@ final class CopiaFotos {
         return dirAnio(it) + "\\" + String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1);
     }
     private static String dirOrigen(Item it) { return dirMes(it) + "\\" + it.origen; }
-    private static String destinoDe(Item it) { return dirPorDia(it) + "/" + it.nombre; }
+    private static String destinoDe(Item it) { return dirPorDia(it) + "\\" + it.nombre; }
 
     // ---- Qué hay en el NAS ----
     private static long[] contarDir(DiskShare disco, String ruta) {
@@ -331,7 +331,7 @@ final class CopiaFotos {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
         long ms = it.fecha > 100000000000L ? it.fecha : it.fecha * 1000L;
         if (ms <= 0) ms = System.currentTimeMillis();
-        return CARPETA + "/" + sdf.format(new java.util.Date(ms));
+        return CARPETA + "\\" + sdf.format(new java.util.Date(ms));
     }
 
     private static boolean tienePersonas(Context ctx, android.net.Uri uri) {
