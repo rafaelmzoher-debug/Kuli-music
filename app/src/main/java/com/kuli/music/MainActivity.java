@@ -283,7 +283,7 @@ public class MainActivity extends Activity {
         cabecera.addView(new Escudo(this), new LinearLayout.LayoutParams(dp(28), dp(32)));
         cabecera.addView(titulo, new LinearLayout.LayoutParams(-2, -2));
         pantalla.addView(cabecera, new LinearLayout.LayoutParams(-1, -2));
-        TextView lema = texto("TU MÚSICA · TU ESTILO · v2.5", 10, ORO);
+        TextView lema = texto("TU MÚSICA · TU ESTILO · v2.6", 10, ORO);
         lema.setLetterSpacing(0.2f);
         pantalla.addView(lema, new LinearLayout.LayoutParams(-1, -2));
 
@@ -425,9 +425,9 @@ public class MainActivity extends Activity {
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
         misCanciones.setOnClickListener(v -> abrirBibliotecaKuliDirecta());
-        Button btnDj = pastilla("🚗 Modo Coche · Sesión DJ", 0xFF1B5E20); btnDj.setOnClickListener(v -> abrirModoCocheDj());
-        Button btnBus = pastilla("🔍 Buscar (Móvil + NAS)", 0xFF0D47A1); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
-        try { ViewGroup vg = (ViewGroup) misCanciones.getParent(); int ix = vg.indexOfChild(misCanciones); vg.addView(btnDj, ix + 1); vg.addView(btnBus, ix + 2); } catch (Exception ignored) {}
+        Button btnDj = pastilla("🚗 Modo Coche DJ", 0xFF1B5E20); btnDj.setOnClickListener(v -> abrirModoCocheDj());
+        Button btnBus = pastilla("🔍 Buscar", 0xFF0D47A1); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
+        try { ViewGroup vg = (ViewGroup) misCanciones.getParent(); int ix = vg.indexOfChild(misCanciones); LinearLayout filaExtra = new LinearLayout(this); filaExtra.setOrientation(LinearLayout.HORIZONTAL); filaExtra.setGravity(android.view.Gravity.CENTER); LinearLayout.LayoutParams lpHalf = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); lpHalf.setMargins(8, 8, 8, 8); filaExtra.addView(btnDj, lpHalf); filaExtra.addView(btnBus, lpHalf); pantalla.addView(filaExtra, pantalla.indexOfChild(nas.getParent() instanceof View ? (View) nas.getParent() : nas) + 1); } catch (Exception ignored) {}
 
         // Acciones: secundarias
         favorito = pastilla("♡  Guardar", CONTORNO);
