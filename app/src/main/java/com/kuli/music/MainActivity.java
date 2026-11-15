@@ -440,7 +440,7 @@ public class MainActivity extends Activity {
         lpFila2.topMargin = dp(5);
         pantalla.addView(fila2, lpFila2);
         favorito.setOnClickListener(v -> alternarFavorito());
-        prism.setOnClickListener(v -> abrirApp("Prism", "prism"));
+        prism.setOnClickListener(v -> mostrarMenuPrism());
         notube.setOnClickListener(v -> abrirApp("NoTube", "notube", "noutube"));
         buscar.setOnClickListener(v -> abrirBuscador());
 
@@ -623,6 +623,13 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 9421 && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri tree = data.getData();
+            getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            getSharedPreferences("kuli_prefs", MODE_PRIVATE).edit().putString("prism_uri", tree.toString()).apply();
+            aviso("Carpeta Prism autorizada. Pulsa ahora Pasar nuevas a MP3.");
+            return;
+        }
         if (requestCode == PICK_SUBIR && resultCode == RESULT_OK && data != null) {
             final ArrayList<Uri> uris = new ArrayList<>();
             if (data.getClipData() != null) {
@@ -2438,7 +2445,7 @@ public class MainActivity extends Activity {
                     c.setRequestProperty("User-Agent", "KULIMusic/3.12");
                     String nombre = null, grupo = null, tvgId = null;
                     boolean soloEs = f.contains("Free-TV");
-                    boolean porId = f.contains("iptv-org");
+                    boolean porId = false;
                     try (java.io.BufferedReader r = new java.io.BufferedReader(
                             new java.io.InputStreamReader(c.getInputStream(), "UTF-8"))) {
                         String l;
@@ -2481,42 +2488,89 @@ public class MainActivity extends Activity {
         if (isDestroyed()) return;
         final ArrayList<String> n = new ArrayList<>(), u = new ArrayList<>();
         for (int i = 0; i < tvNombres.size(); i++)
-            if (filtro == null || (filtro.equals("\u0001DEPORTES") ? esDeportivo(tvNombres.get(i))
-                    : tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase()))) {
+            if (filtro == null || (filtro.equals("\u0001DEPORTES") ? esDeportivo(tvNombres.get(i)) : (filtro.equals("\u0001CINE") ? esCine(tvNombres.get(i))
+                    : tvNombres.get(i).toLowerCase().contains(filtro.toLowerCase())))) {
                 n.add(tvNombres.get(i)); u.add(tvUrls.get(i));
             }
         if (filtro == null) {
-            String[][] web = {
-                {"antena3", "📺 Antena 3 (abre Atresplayer)", "https://www.atresplayer.com/directos/antena3/"},
-                {"telecinco", "📺 Telecinco (abre Mitele)", "https://www.mitele.es/directo/telecinco/"},
-                {"lasexta", "📺 laSexta (abre Atresplayer)", "https://www.atresplayer.com/directos/lasexta/"},
-                {"cuatro", "📺 Cuatro (abre Mitele)", "https://www.mitele.es/directo/cuatro/"}};
-            int pos = 0;
-            for (String[] w : web) {
-                boolean esta = false;
-                for (String x : tvNombres) if (x.toLowerCase().replace(" ", "").contains(w[0])) esta = true;
-                if (!esta) { n.add(pos, w[1]); u.add(pos, "web:" + w[2]); pos++; }
+            ArrayList<String> ordN = new ArrayList<>(), ordU = new ArrayList<>();
+            String[][] top = {
+                {"1. La 1", "la 1", null},
+                {"2. La 2", "la 2", null},
+                {"3. Antena 3", "antena 3", "web:https://atresplayer.com"},
+                {"4. Cuatro", "cuatro", "web:https://mitele.es"},
+                {"5. Telecinco", "telecinco", "web:https://mitele.es"},
+                {"6. laSexta", "lasexta", "web:https://atresplayer.com"},
+                {"7. La Séptima", "la septima", "web:https://tdtchannels.com"}
+            };
+            boolean[] usados = new boolean[n.size()];
+            for (String[] t : top) {
+                if (t[2] != null && !t[1].equals("la septima")) {
+                    ordN.add(t[0]); ordU.add(t[2]);
+                    for (int i = 0; i < n.size(); i++) {
+                        String low = n.get(i).toLowerCase().replace(" ", "");
+                        if (low.contains(t[1].replace(" ", ""))) usados[i] = true;
+                    }
+                    continue;
+                }
+                int found = -1;
+                for (int i = 0; i < n.size(); i++) {
+                    String low = n.get(i).toLowerCase().replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u");
+                    if (low.equals("la7") || low.startsWith("la7 ")) continue;
+                    String key = t[1];
+                    if (!usados[i] && (low.equals(key) || low.startsWith(key + " ") || low.contains(key))) {
+                        found = i; break;
+                    }
+                }
+                if (found >= 0) {
+                    ordN.add(t[0]); ordU.add(u.get(found)); usados[found] = true;
+                } else if (t[2] != null) {
+                    ordN.add(t[0]); ordU.add(t[2]);
+                }
             }
+            for (int i = 0; i < n.size(); i++) if (!usados[i]) { ordN.add(n.get(i)); ordU.add(u.get(i)); }
+            n.clear(); n.addAll(ordN);
+            u.clear(); u.addAll(ordU);
         }
         if (n.isEmpty()) { aviso("No hay canales con ese nombre"); return; }
         new AlertDialog.Builder(this).setTitle(filtro != null && filtro.equals("\u0001DEPORTES") ? "⚽ Deportes" : "📺 TV en directo")
             .setPositiveButton(filtro == null ? "⚽ DEPORTES" : "📺 TODOS", (d, w) ->
                 mostrarCanalesTv(filtro == null ? "\u0001DEPORTES" : null))
             .setItems(n.toArray(new String[0]), (d, i) -> {
-                if (u.get(i).startsWith("web:")) abrirEnlace(u.get(i).substring(4));
+                if (u.get(i).startsWith("web:")) reproducirTvWeb(n.get(i), u.get(i).substring(4));
                 else reproducirTv(n.get(i), u.get(i));
             })
-            .setNeutralButton("🔍 BUSCAR", (d, w) ->
-                pedirTexto("🔍 Buscar canal (ej. La 1)", q -> mostrarCanalesTv(q)))
+            .setNeutralButton("🎬 CINE/SERIES", (d, w) -> mostrarCanalesTv("\u0001CINE"))
             .setNegativeButton("CERRAR", null).show();
     }
 
+    private boolean esCine(String n) { String t = n.toLowerCase(); for (String c : new String[]{"cine","pelicula","película","movie","series","serie","accion","acción","crimen","drama","pluto","runtime","rakuten","paramount","hollywood","thriller"}) if (t.contains(c)) return true; return false; }
     private boolean esDeportivo(String nombre) {
         String t = nombre.toLowerCase();
         String[] claves = {"deport", "sport", "gol", "marca", "real madrid", "barça", "barca", "futbol", "fútbol",
-                           "motor", "toros", "caza", "pesca", "padel", "pádel", "tenis", "basket", "baloncesto", "esport"};
+                           "motor", "toros", "caza", "pesca", "padel", "pádel", "tenis", "basket", "baloncesto", "esport", "teledeporte", "tdp", "fifa", "red bull", "racing", "rally", "box", "ufc", "fight", "nba"};
         for (String c : claves) if (t.contains(c)) return true;
         return false;
+    }
+
+    private void reproducirTvWeb(final String nombre, final String url) {
+        try { if (reproductor != null && reproductor.isPlaying()) reproductor.pause(); } catch (Exception ignored) { }
+        final android.app.Dialog dlg = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        android.webkit.WebView wv = new android.webkit.WebView(this);
+        wv.setBackgroundColor(Color.BLACK);
+        android.webkit.WebSettings ws = wv.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);
+        ws.setUserAgentString("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true);
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true);
+        wv.setWebChromeClient(new android.webkit.WebChromeClient());
+        wv.setWebViewClient(new android.webkit.WebViewClient());
+        dlg.setContentView(wv);
+        dlg.setOnDismissListener(d -> { try { wv.loadUrl("about:blank"); wv.destroy(); } catch (Exception ignored) { } });
+        dlg.show();
+        wv.loadUrl(url);
     }
 
     private void reproducirTv(final String nombre, final String url) {
@@ -2593,4 +2647,181 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    private void convertirMp3Termux(java.io.File src, java.io.File dst) {
+        try {
+            java.io.File sh = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "kuli_mp3.sh");
+            java.io.PrintWriter pw = new java.io.PrintWriter(sh);
+            pw.println("#!/data/data/com.termux/files/usr/bin/bash");
+            pw.println("ffmpeg -y -i '" + src.getAbsolutePath() + "' -vn -ar 44100 -ac 2 -b:a 320k '" + dst.getAbsolutePath() + "' >/dev/null 2>&1");
+            pw.println("rm -f '" + sh.getAbsolutePath() + "'");
+            pw.close();
+            Intent ti = new Intent("com.termux.RUN_COMMAND");
+            ti.setClassName("com.termux", "com.termux.app.RunCommandService");
+            ti.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash");
+            ti.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{sh.getAbsolutePath()});
+            ti.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(ti); else startService(ti);
+            for (int w = 0; w < 25; w++) { Thread.sleep(500); if (!sh.exists() && dst.exists() && dst.length() > 10000) break; }
+        } catch (Exception ignored) {}
+    }
+
+    private void clasificarSueltasPorEstilos() {
+        new Thread(() -> {
+            java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.io.File sueltas = new java.io.File(base, "Sueltas");
+            if (!sueltas.exists() || sueltas.listFiles() == null) { runOnUiThread(() -> aviso("No hay canciones en Sueltas.")); return; }
+            int mov = 0;
+            for (java.io.File f : sueltas.listFiles()) {
+                if (!f.isFile() || !f.getName().endsWith(".mp3")) continue;
+                String t = f.getName().toLowerCase();
+                String gen = "Pop y Varios";
+                if (t.matches(".*(reggaeton|perreo|daddy|bad bunny|karol|feid|rauw|ozuna|anuel|maluma|j balvin|quevedo|myke).*")) gen = "Reggaeton y Urbano";
+                else if (t.matches(".*(flamenco|rumba|camaron|paco|rosalia|tangos|bulerias|sevillanas|el barrio|niña pastori|ketama|estopa).*")) gen = "Flamenco y Rumba";
+                else if (t.matches(".*(remix|dj|techno|house|electronica|edm|dance|club|guetta|tiesto|hardwell).*")) gen = "Electronica y Dance";
+                else if (t.matches(".*(rock|metal|queen|acdc|metallica|nirvana|roll|guitar|punk).*")) gen = "Rock";
+                else if (t.matches(".*(salsa|bachata|merengue|cumbia|romeo|prince royce|marc anthony|juan luis).*")) gen = "Latino y Bachata";
+                java.io.File gDir = new java.io.File(base, gen); gDir.mkdirs();
+                if (f.renameTo(new java.io.File(gDir, f.getName()))) mov++;
+            }
+            final int total = mov;
+            runOnUiThread(() -> { aviso("Clasificadas " + total + " canciones por estilos."); recreate(); });
+        }).start();
+    }
+
+    private void copiarSafNativo(Uri treeUri, String docId, java.io.File dest) {
+        Uri childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
+        try (android.database.Cursor c = getContentResolver().query(childrenUri, new String[]{
+            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE
+        }, null, null, null)) {
+            if (c == null) return;
+            while (c.moveToNext()) {
+                String cid = c.getString(0), nm = c.getString(1), mime = c.getString(2);
+                if (nm == null || nm.equals("cache") || nm.equals("code_cache") || nm.equals("image_manager_disk_cache") || nm.equals("shared_prefs")) continue;
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    java.io.File sub = new java.io.File(dest, nm); sub.mkdirs(); copiarSafNativo(treeUri, cid, sub);
+                } else {
+                    Uri fUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, cid);
+                    try (java.io.InputStream is = getContentResolver().openInputStream(fUri); java.io.FileOutputStream fos = new java.io.FileOutputStream(new java.io.File(dest, nm))) {
+                        byte[] b = new byte[8192]; int n; while ((n = is.read(b)) > 0) fos.write(b, 0, n);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void recolectarAudiosKuli(java.io.File dir, java.util.Map<String, java.util.List<java.io.File>> byId) {
+        java.io.File[] ls = dir.listFiles(); if (ls == null) return;
+        for (java.io.File f : ls) {
+            if (f.isDirectory()) recolectarAudiosKuli(f, byId);
+            else if (f.length() > 50000 && !f.getName().contains(".db") && !f.getName().endsWith(".exi") && !f.getName().endsWith(".uid") && !f.getName().endsWith(".json") && !f.getName().startsWith("raw_")) {
+                String nm = f.getName(); String pid = nm.contains(".") ? nm.substring(0, nm.indexOf(".")) : nm;
+                if (!byId.containsKey(pid)) byId.put(pid, new java.util.ArrayList<>());
+                byId.get(pid).add(f);
+            }
+        }
+    }
+
+    private java.io.File buscarArchivoKuli(java.io.File dir, String target) {
+        java.io.File[] ls = dir.listFiles(); if (ls == null) return null;
+        for (java.io.File f : ls) { if (f.getName().equals(target)) return f; if (f.isDirectory()) { java.io.File r = buscarArchivoKuli(f, target); if (r != null) return r; } }
+        return null;
+    }
+
+    private void borrarDirKuli(java.io.File d) {
+        if (d == null || !d.exists()) return;
+        if (d.isDirectory() && d.listFiles() != null) for (java.io.File c : d.listFiles()) borrarDirKuli(c);
+        d.delete();
+    }
+
+    private void pasarNuevasDePrismAMp3() {
+        String uStr = getSharedPreferences("kuli_prefs", MODE_PRIVATE).getString("prism_uri", "content://com.prism.music.MTDataFilesProvider/tree/com.prism.music");
+        aviso("Buscando nuevas en Prism y convirtiendo a MP3...");
+        new Thread(() -> {
+            try {
+                java.io.File baseMusic = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+                baseMusic.mkdirs();
+                java.io.File workTmp = new java.io.File(getCacheDir(), "prism_import_tmp");
+                borrarDirKuli(workTmp); workTmp.mkdirs();
+                Uri treeUri = Uri.parse(uStr);
+                String rootDocId = android.provider.DocumentsContract.getTreeDocumentId(treeUri);
+                copiarSafNativo(treeUri, rootDocId, workTmp);
+                java.io.File prismDb = buscarArchivoKuli(workTmp, "prism.db");
+                java.io.File exoDb = buscarArchivoKuli(workTmp, "exoplayer_internal.db");
+                java.util.Map<String, String> idToKey = new java.util.HashMap<>();
+                if (exoDb != null && exoDb.exists()) {
+                    try {
+                        android.database.sqlite.SQLiteDatabase dbExo = android.database.sqlite.SQLiteDatabase.openDatabase(exoDb.getAbsolutePath(), null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY);
+                        android.database.Cursor ct = dbExo.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ExoPlayerCacheIndex%'", null);
+                        if (ct.moveToFirst()) {
+                            android.database.Cursor c1 = dbExo.rawQuery("SELECT id, key FROM " + ct.getString(0), null);
+                            while (c1.moveToNext()) idToKey.put(c1.getString(0), c1.getString(1));
+                            c1.close();
+                        }
+                        ct.close(); dbExo.close();
+                    } catch (Exception ignored) {}
+                }
+                java.util.Map<String, String[]> metaById = new java.util.HashMap<>();
+                if (prismDb != null && prismDb.exists()) {
+                    try {
+                        android.database.sqlite.SQLiteDatabase dbP = android.database.sqlite.SQLiteDatabase.openDatabase(prismDb.getAbsolutePath(), null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY);
+                        android.database.Cursor cs = dbP.rawQuery("SELECT id, title, albumName FROM song", null);
+                        while (cs.moveToNext()) metaById.put(cs.getString(0), new String[]{cs.getString(1), cs.getString(2)});
+                        cs.close(); dbP.close();
+                    } catch (Exception ignored) {}
+                }
+                java.util.Map<String, java.util.List<java.io.File>> byId = new java.util.HashMap<>();
+                recolectarAudiosKuli(workTmp, byId);
+                int pasadas = 0;
+                for (java.util.Map.Entry<String, java.util.List<java.io.File>> entry : byId.entrySet()) {
+                    String pid = entry.getKey();
+                    String key = idToKey.containsKey(pid) ? idToKey.get(pid) : pid;
+                    String title = null, album = null;
+                    for (java.util.Map.Entry<String, String[]> m : metaById.entrySet()) {
+                        if (key.contains(m.getKey()) || m.getKey().equals(pid)) { title = m.getValue()[0]; album = m.getValue()[1]; break; }
+                    }
+                    if (title == null || title.trim().isEmpty()) title = "Prism_" + pid;
+                    String cleanTitle = title.replace("/", "_").replace(":", "_").trim();
+                    java.io.File destDir = (album != null && !album.trim().isEmpty()) ? new java.io.File(baseMusic, "Álbumes/" + album.replace("/", "_").replace(":", "_").trim()) : new java.io.File(baseMusic, "Sueltas");
+                    destDir.mkdirs();
+                    java.io.File outMp3 = new java.io.File(destDir, cleanTitle + ".mp3");
+                    if (outMp3.exists() && outMp3.length() > 10000) continue;
+                    java.util.List<java.io.File> parts = entry.getValue();
+                    java.util.Collections.sort(parts, (a, b) -> a.getName().compareTo(b.getName()));
+                    java.io.File rawTmp = new java.io.File(workTmp, "raw_" + System.currentTimeMillis() + ".m4a");
+                    java.io.FileOutputStream fos = new java.io.FileOutputStream(rawTmp);
+                    byte[] buf = new byte[8192];
+                    for (java.io.File pf : parts) { java.io.FileInputStream fis = new java.io.FileInputStream(pf); int r; while ((r = fis.read(buf)) > 0) fos.write(buf, 0, r); fis.close(); }
+                    fos.close();
+                    convertirMp3Termux(rawTmp, outMp3);
+                    if (!outMp3.exists() || outMp3.length() < 10000) rawTmp.renameTo(outMp3); else rawTmp.delete();
+                    android.media.MediaScannerConnection.scanFile(this, new String[]{outMp3.getAbsolutePath()}, null, null);
+                    pasadas++;
+                }
+                borrarDirKuli(workTmp);
+                final int total = pasadas;
+                runOnUiThread(() -> { aviso("Listo: " + total + " canciones pasadas a MP3 (320 kbps)."); recreate(); });
+            } catch (Exception e) { runOnUiThread(() -> { aviso("Autoriza primero Prism."); autorizarCarpetaPrism(); }); }
+        }).start();
+    }
+
+
+    private void autorizarCarpetaPrism() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.putExtra("android.provider.extra.INITIAL_URI", Uri.parse("content://com.prism.music.MTDataFilesProvider/tree/com.prism.music"));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            startActivityForResult(intent, 9421);
+        } catch (Exception e) { aviso("Error selector Prism: " + e.getMessage()); }
+    }
+    private void mostrarMenuPrism() {
+        String[] ops = {"Abrir Prism (descargar canciones)", "Pasar nuevas de Prism a MP3 (320 kbps)", "Clasificar carpeta Sueltas por estilos", "Autorizar carpeta Prism (1 vez)"};
+        new android.app.AlertDialog.Builder(this).setTitle("Prism Music").setItems(ops, (d, i) -> {
+            if (i == 0) abrirApp("Prism", "prism");
+            else if (i == 1) pasarNuevasDePrismAMp3();
+            else if (i == 2) clasificarSueltasPorEstilos();
+            else autorizarCarpetaPrism();
+        }).setNegativeButton("Cerrar", null).show();
+    }
 }

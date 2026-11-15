@@ -1,0 +1,46 @@
+        actualizarBotonFavorito();
+    }
+    // Copia una canción seleccionada al NAS solo con WiFi. No borra el original.
+    private void copiarFavoritaAlNas(Uri uri) {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkCapabilities caps = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+        if (caps == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+            aviso("Favorita guardada; la copia al NAS requiere WiFi de casa");
+            return;
+        }
+        String nombre = "cancion.mp3";
+        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) nombre = c.getString(0);
+        } catch (Exception ignored) { }
+        if (nombre == null || nombre.trim().isEmpty()) nombre = "cancion.mp3";
+        nombre = nombre.replaceAll("[\\/:*?\"<>|]", "_");
+        final String archivo = nombre;
+        new Thread(() -> {
+            try (SMBClient cliente = new SMBClient();
+                 Connection conexion = cliente.connect("192.168.1.46")) {
+                Session sesion = conexion.authenticate(AuthenticationContext.anonymous());
+                try (DiskShare disco = (DiskShare) sesion.connectShare("Public");
+                     InputStream origen = getContentResolver().openInputStream(uri)) {
+                    if (origen == null) throw new Exception("No se puede leer la canción");
+                    try (File destino = disco.openFile("KULI MUSIC\\" + archivo,
+                            EnumSet.of(AccessMask.GENERIC_WRITE),
+                            null,
+                            SMB2ShareAccess.ALL,
+                            SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                            EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
+                         OutputStream salida = destino.getOutputStream()) {
+                        byte[] buffer = new byte[65536];
+                        int leidos;
+                        while ((leidos = origen.read(buffer)) != -1) salida.write(buffer, 0, leidos);
+                        salida.flush();
+                    }
+                }
+                runOnUiThread(() -> aviso("☁ Copiada al NAS: " + archivo));
+            } catch (Exception e) {
+                runOnUiThread(() -> aviso("No se copió al NAS: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    private void mostrarFavoritas() {
+        Map<String, ?> datos = favoritos.getAll();

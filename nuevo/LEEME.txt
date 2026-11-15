@@ -1,0 +1,11 @@
+KULI MUSIC - PROYECTO NUEVO
+
+1. Sube este ZIP a un repositorio nuevo de GitHub (descomprimido).
+2. Abre el repositorio en Codespaces.
+3. En la terminal ejecuta: gradle assembleDebug (si gradle está instalado).
+   O copia los archivos a un proyecto Android con gradlew y ejecuta ./gradlew assembleDebug.
+4. APK: app/build/outputs/apk/debug/app-debug.apk
+
+NAS: IP 192.168.1.46, recurso Public, carpeta KULI MUSIC. Usa acceso SMB anónimo. Si el NAS requiere usuario/contraseña, hay que configurarlo.
+
+AVISO: El ZIP es el código fuente, NO es un APK ya compilado.
