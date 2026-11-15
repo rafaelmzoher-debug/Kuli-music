@@ -2763,17 +2763,25 @@ public class MainActivity extends Activity {
                     } catch (Exception ignored) {}
                 }
                 java.util.Map<String, String[]> metaById = new java.util.HashMap<>();
+                java.util.Map<String, Integer> albumCounts = new java.util.HashMap<>();
                 if (prismDb != null && prismDb.exists()) {
                     try {
                         android.database.sqlite.SQLiteDatabase dbP = android.database.sqlite.SQLiteDatabase.openDatabase(prismDb.getAbsolutePath(), null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY);
                         android.database.Cursor cs = dbP.rawQuery("SELECT id, title, albumName FROM song", null);
-                        while (cs.moveToNext()) metaById.put(cs.getString(0), new String[]{cs.getString(1), cs.getString(2)});
+                        while (cs.moveToNext()) {
+                            String sid = cs.getString(0), st = cs.getString(1), sa = cs.getString(2);
+                            metaById.put(sid, new String[]{st, sa});
+                            if (sa != null && !sa.trim().isEmpty() && !sa.trim().equalsIgnoreCase(st != null ? st.trim() : "")) {
+                                String kAlb = sa.trim().toLowerCase();
+                                albumCounts.put(kAlb, (albumCounts.containsKey(kAlb) ? albumCounts.get(kAlb) : 0) + 1);
+                            }
+                        }
                         cs.close(); dbP.close();
                     } catch (Exception ignored) {}
                 }
                 java.util.Map<String, java.util.List<java.io.File>> byId = new java.util.HashMap<>();
                 recolectarAudiosKuli(workTmp, byId);
-                int pasadas = 0;
+                final java.util.ArrayList<Uri> nuevasUris = new java.util.ArrayList<>();
                 for (java.util.Map.Entry<String, java.util.List<java.io.File>> entry : byId.entrySet()) {
                     String pid = entry.getKey();
                     String key = idToKey.containsKey(pid) ? idToKey.get(pid) : pid;
@@ -2783,7 +2791,12 @@ public class MainActivity extends Activity {
                     }
                     if (title == null || title.trim().isEmpty()) title = "Prism_" + pid;
                     String cleanTitle = title.replace("/", "_").replace(":", "_").trim();
-                    java.io.File destDir = (album != null && !album.trim().isEmpty()) ? new java.io.File(baseMusic, "Álbumes/" + album.replace("/", "_").replace(":", "_").trim()) : new java.io.File(baseMusic, "Sueltas");
+                    boolean esAlbumReal = false;
+                    if (album != null && !album.trim().isEmpty()) {
+                        Integer cnt = albumCounts.get(album.trim().toLowerCase());
+                        if (cnt != null && cnt > 1) esAlbumReal = true;
+                    }
+                    java.io.File destDir = esAlbumReal ? new java.io.File(baseMusic, "Álbumes/" + album.replace("/", "_").replace(":", "_").trim()) : baseMusic;
                     destDir.mkdirs();
                     java.io.File outMp3 = new java.io.File(destDir, cleanTitle + ".mp3");
                     if (outMp3.exists() && outMp3.length() > 10000) continue;
@@ -2797,15 +2810,27 @@ public class MainActivity extends Activity {
                     convertirMp3Termux(rawTmp, outMp3);
                     if (!outMp3.exists() || outMp3.length() < 10000) rawTmp.renameTo(outMp3); else rawTmp.delete();
                     android.media.MediaScannerConnection.scanFile(this, new String[]{outMp3.getAbsolutePath()}, null, null);
-                    pasadas++;
+                    nuevasUris.add(Uri.fromFile(outMp3));
                 }
                 borrarDirKuli(workTmp);
-                final int total = pasadas;
-                runOnUiThread(() -> { aviso("Listo: " + total + " canciones pasadas a MP3 (320 kbps)."); recreate(); });
-            } catch (Exception e) { runOnUiThread(() -> { aviso("Autoriza primero Prism."); autorizarCarpetaPrism(); }); }
+                runOnUiThread(() -> {
+                    if (nuevasUris.isEmpty()) {
+                        aviso("No hay canciones nuevas en Prism (o autoriza carpeta Prism).");
+                        abrirCanciones();
+                    } else {
+                        new android.app.AlertDialog.Builder(this)
+                            .setTitle("Prism: " + nuevasUris.size() + " canciones nuevas")
+                            .setMessage("Ya están en MP3 (320 kbps) dentro de KULI MUSIC. ¿Qué quieres hacer ahora?")
+                            .setPositiveButton("Subir al NAS (clasificar y quitar repetidas)", (d, w) -> subirAutomatico(nuevasUris, null))
+                            .setNegativeButton("Ver en Mi música del móvil", (d, w) -> abrirCanciones())
+                            .show();
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> { aviso("Autoriza primero Prism."); autorizarCarpetaPrism(); });
+            }
         }).start();
     }
-
 
     private void autorizarCarpetaPrism() {
         try {
@@ -2815,12 +2840,13 @@ public class MainActivity extends Activity {
             startActivityForResult(intent, 9421);
         } catch (Exception e) { aviso("Error selector Prism: " + e.getMessage()); }
     }
+
     private void mostrarMenuPrism() {
-        String[] ops = {"Abrir Prism (descargar canciones)", "Pasar nuevas de Prism a MP3 (320 kbps)", "Clasificar carpeta Sueltas por estilos", "Autorizar carpeta Prism (1 vez)"};
+        String[] ops = {"Abrir Prism (descargar canciones)", "Pasar nuevas de Prism a MP3 + Subir al NAS", "Clasificar descargas (Prism · NoTube)", "Autorizar carpeta Prism (1 vez)"};
         new android.app.AlertDialog.Builder(this).setTitle("Prism Music").setItems(ops, (d, i) -> {
             if (i == 0) abrirApp("Prism", "prism");
             else if (i == 1) pasarNuevasDePrismAMp3();
-            else if (i == 2) clasificarSueltasPorEstilos();
+            else if (i == 2) clasificarDescargas();
             else autorizarCarpetaPrism();
         }).setNegativeButton("Cerrar", null).show();
     }
