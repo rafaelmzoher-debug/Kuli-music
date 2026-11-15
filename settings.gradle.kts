@@ -5,3 +5,5 @@ include(":app")
 include(":fotos")
 include(":familia")
 include(":ordenes")
+
+include(":arcade")
