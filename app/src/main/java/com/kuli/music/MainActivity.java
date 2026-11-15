@@ -283,7 +283,7 @@ public class MainActivity extends Activity {
         cabecera.addView(new Escudo(this), new LinearLayout.LayoutParams(dp(28), dp(32)));
         cabecera.addView(titulo, new LinearLayout.LayoutParams(-2, -2));
         pantalla.addView(cabecera, new LinearLayout.LayoutParams(-1, -2));
-        TextView lema = texto("TU MÚSICA · TU ESTILO · v2.6", 10, ORO);
+        TextView lema = texto("TU MÚSICA · TU ESTILO · v" + versionApp(), 10, ORO);
         lema.setLetterSpacing(0.2f);
         pantalla.addView(lema, new LinearLayout.LayoutParams(-1, -2));
 
@@ -2546,7 +2546,12 @@ public class MainActivity extends Activity {
                 else reproducirTv(n.get(i), u.get(i));
             })
             .setNeutralButton("🎬 CINE/SERIES", (d, w) -> mostrarCanalesTv("\u0001CINE"))
-            .setNegativeButton("CERRAR", null).show();
+            .setNegativeButton("🔍 BUSCAR", (d, w) -> pedirTexto("🔍 Buscar canal (ej. La 1, Pluto)", q -> mostrarCanalesTv(q)))
+            .show();
+    }
+
+    private String versionApp() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Throwable e) { return ""; }
     }
 
     private boolean esCine(String n) { String t = n.toLowerCase(); for (String c : new String[]{"cine","pelicula","película","movie","series","serie","accion","acción","crimen","drama","pluto","runtime","rakuten","paramount","hollywood","thriller"}) if (t.contains(c)) return true; return false; }
