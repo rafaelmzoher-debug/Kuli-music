@@ -39,6 +39,16 @@ final class OrdenarMusica {
         }
     }
 
+    // ¿Está el archivo dentro de una carpeta de género (cualquier subcarpeta que no sea Álbumes, Sueltas o Duplicadas)?
+    static boolean enGenero(File base, File f) {
+        File d = f.getParentFile();
+        File top = null;
+        while (d != null && !d.equals(base)) { top = d; d = d.getParentFile(); }
+        if (d == null || top == null) return false;
+        String n = top.getName();
+        return !(n.equals(ALBUMES) || n.equals(SUELTAS) || n.equals(DUPLICADAS));
+    }
+
     static String norm(String t) {
         String n = Normalizer.normalize(t == null ? "" : t, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
         return n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
@@ -145,7 +155,7 @@ final class OrdenarMusica {
         for (Pista p : pistas) if (!sobran.contains(p.f)) validas.add(p);
         HashMap<String, Integer> cuenta = new HashMap<>();
         for (Pista p : validas) {
-            if (p.album.isEmpty()) continue;
+            if (p.album.isEmpty() || enGenero(base, p.f)) continue;
             String k = norm(p.artista) + "|" + norm(p.album);
             Integer c = cuenta.get(k);
             cuenta.put(k, c == null ? 1 : c + 1);
@@ -159,7 +169,9 @@ final class OrdenarMusica {
                 plan.renombradas++;
                 if (plan.ejemplos.size() < 8) plan.ejemplos.add("• " + p.f.getName() + "\n   → " + nom);
             }
-            if (!p.album.isEmpty() && cuenta.get(k) >= MIN_ALBUM) {
+            if (enGenero(base, p.f)) {
+                destino = new File(p.f.getParentFile(), nom); // carpeta de género: solo se cambia el nombre
+            } else if (!p.album.isEmpty() && cuenta.get(k) >= MIN_ALBUM) {
                 String carpeta = seguro((p.artista.isEmpty() ? "" : p.artista + " - ") + p.album);
                 destino = new File(new File(new File(base, ALBUMES), carpeta), nom);
                 plan.enAlbumes++;
