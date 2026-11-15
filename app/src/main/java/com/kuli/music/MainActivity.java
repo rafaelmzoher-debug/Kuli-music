@@ -2866,7 +2866,7 @@ public class MainActivity extends Activity {
                     subirAutomatico(uris, null);
                 } else {
                     java.io.File sel = lista.get(i - 1);
-                    reproducir(Uri.fromFile(sel), sel.getName().replace(".mp3", ""));
+                    reproducir(Uri.fromFile(sel));
                 }
             })
             .setNegativeButton("Cerrar", null)
