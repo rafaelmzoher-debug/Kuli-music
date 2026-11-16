@@ -1194,6 +1194,76 @@ public class MainActivity extends Activity {
         } catch (Throwable ignored) {}
     }
 
+    
+    private void analizarYLimpiarMovil() {
+        new Thread(() -> {
+            java.util.ArrayList<File> basura = new java.util.ArrayList<>();
+            long bytesTotales = 0;
+            File root = android.os.Environment.getExternalStorageDirectory();
+            File dl = new File(root, "Download");
+            java.util.HashSet<String> keepApk = new java.util.HashSet<>(java.util.Arrays.asList(
+                "app-debug.apk", "ordenes-debug.apk", "mapas-debug.apk"
+            ));
+            if (dl.exists() && dl.listFiles() != null) {
+                for (File f : dl.listFiles()) {
+                    String n = f.getName().toLowerCase();
+                    if (f.isFile() && n.endsWith(".apk") && !keepApk.contains(f.getName())) {
+                        basura.add(f);
+                        bytesTotales += f.length();
+                    } else if (f.isFile() && (n.endsWith(".tmp") || n.endsWith(".crdownload") || n.startsWith("raw_"))) {
+                        basura.add(f);
+                        bytesTotales += f.length();
+                    }
+                }
+            }
+            java.util.ArrayList<File> vacias = new java.util.ArrayList<>();
+            escanearVacias(root, vacias, 0);
+
+            final long mb = bytesTotales / (1024 * 1024);
+            final StringBuilder resumen = new StringBuilder();
+            resumen.append("📦 APKs viejas / temporales: ").append(basura.size()).append(" archivos (").append(mb).append(" MB)\n");
+            for (int i = 0; i < Math.min(8, basura.size()); i++) resumen.append("  • ").append(basura.get(i).getName()).append("\n");
+            resumen.append("\n📂 Carpetas vacías obsoletas: ").append(vacias.size()).append("\n");
+            for (int i = 0; i < Math.min(8, vacias.size()); i++) resumen.append("  • ").append(vacias.get(i).getName()).append("\n");
+
+            runOnUiThread(() -> {
+                if (basura.isEmpty() && vacias.isEmpty()) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("✨ Móvil limpio")
+                        .setMessage("No hay APKs duplicadas, temporales ni carpetas vacías obsoletas.\n\nTus carpetas Almacen de Rafa, Music y DCIM están intactas.")
+                        .setPositiveButton("Aceptar", null).show();
+                    return;
+                }
+                new AlertDialog.Builder(this)
+                    .setTitle("🧹 Limpieza segura disponible")
+                    .setMessage(resumen.toString() + "\n(Protegidas: Almacen de Rafa, Music, DCIM y Documents)")
+                    .setPositiveButton("🗑️ Borrar ahora", (d, w) -> {
+                        int borrados = 0;
+                        for (File f : basura) if (f.delete()) borrados++;
+                        java.util.Collections.sort(vacias, (a, b) -> Integer.compare(b.getAbsolutePath().length(), a.getAbsolutePath().length()));
+                        for (File v : vacias) if (v.delete()) borrados++;
+                        android.widget.Toast.makeText(this, "✅ Limpieza completada: " + borrados + " elementos borrados", android.widget.Toast.LENGTH_LONG).show();
+                    })
+                    .setNegativeButton("Cancelar", null)
+                    .show();
+            });
+        }).start();
+    }
+
+    private void escanearVacias(File dir, java.util.ArrayList<File> out, int nivel) {
+        if (dir == null || !dir.isDirectory() || nivel > 4) return;
+        String path = dir.getAbsolutePath();
+        if (path.contains("/Android") || path.contains("/DCIM") || path.contains("/Music")
+            || path.contains("/Almacen de Rafa") || path.contains("/Documents") || path.contains("/Pictures")) return;
+        File[] hijos = dir.listFiles();
+        if (hijos == null) return;
+        if (hijos.length == 0 && nivel > 0) {
+            out.add(dir);
+            return;
+        }
+        for (File h : hijos) if (h.isDirectory()) escanearVacias(h, out, nivel + 1);
+    }
+
     private void verPendienteReponer() {
         try {
             File f = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa/pendiente_reponer.txt");
@@ -1312,6 +1382,9 @@ public class MainActivity extends Activity {
         Button btnVerRep = boton("📋 Pendiente de reponer por almacén", false);
         btnVerRep.setOnClickListener(v -> verPendienteReponer());
         p.addView(btnVerRep, margen(-1, -2, 6));
+        Button btnLimpiar = boton("🧹 Limpiar móvil (APKs y carpetas vacías)", false);
+        btnLimpiar.setOnClickListener(v -> analizarYLimpiarMovil());
+        p.addView(btnLimpiar, margen(-1, -2, 6));
         ListView lista = new ListView(this);
         lista.setDivider(null);
         lista.setAdapter(adaptador);
