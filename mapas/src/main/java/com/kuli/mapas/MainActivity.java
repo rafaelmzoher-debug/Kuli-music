@@ -37,6 +37,11 @@ public class MainActivity extends Activity implements LocationListener {
     private final List<Marker> marcadoresPoi = new ArrayList<>();
     private Marker marcadorDestino;
     private Polyline lineaRuta;
+    private Button btnIniciarRuta;
+    private boolean navegando = false;
+    private final List<String> pasosVoz = new ArrayList<>();
+    private final List<GeoPoint> pasosPts = new ArrayList<>();
+    private int pasoActual = 0;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -200,6 +205,22 @@ public class MainActivity extends Activity implements LocationListener {
         navBot.addView(tabBaj, new LinearLayout.LayoutParams(0, -2, 1f));
         root.addView(navBot, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
+        btnIniciarRuta = new Button(this);
+        btnIniciarRuta.setText("▶️ INICIAR RUTA");
+        btnIniciarRuta.setTextColor(Color.WHITE);
+        btnIniciarRuta.setTextSize(15);
+        btnIniciarRuta.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable gdIni = new GradientDrawable();
+        gdIni.setColor(Color.rgb(26, 115, 232));
+        gdIni.setCornerRadius(dp(24));
+        btnIniciarRuta.setBackground(gdIni);
+        btnIniciarRuta.setElevation(dp(8));
+        btnIniciarRuta.setVisibility(View.GONE);
+        btnIniciarRuta.setOnClickListener(v -> alternarNavegacion());
+        FrameLayout.LayoutParams lpIni = new FrameLayout.LayoutParams(dp(180), dp(46), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lpIni.setMargins(0, 0, 0, dp(76));
+        root.addView(btnIniciarRuta, lpIni);
+
         setContentView(root);
         iniciarGps();
     }
@@ -282,7 +303,7 @@ public class MainActivity extends Activity implements LocationListener {
             GeoPoint ini = locOverlay.getMyLocation(); String perfil = modoCoche ? "driving" : "foot";
             new Thread(() -> {
                 try {
-                    String u = "https://project-osrm.org" + perfil + "/" + ini.getLongitude() + "," + ini.getLatitude() + ";" + dest.getLongitude() + "," + dest.getLatitude() + "?overview=full&geometries=geojson";
+                    String u = "https://project-osrm.org" + perfil + "/" + ini.getLongitude() + "," + ini.getLatitude() + ";" + dest.getLongitude() + "," + dest.getLatitude() + "?overview=full&geometries=geojson&steps=true";
                     HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection(); c.setConnectTimeout(5000);
                     BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
                     StringBuilder sb = new StringBuilder(); String ln; while ((ln = br.readLine()) != null) sb.append(ln);
@@ -299,6 +320,17 @@ public class MainActivity extends Activity implements LocationListener {
                         cal.add(java.util.Calendar.MINUTE, min);
                         String eta = String.format(Locale.US, "%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE));
                         txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min (Llegas %s) · %s", modoCoche ? "🚗" : "🚶", km, min, eta, nombre));
+                        pasosVoz.clear(); pasosPts.clear(); pasoActual = 0;
+                        JSONArray steps = r0.getJSONArray("legs").getJSONObject(0).getJSONArray("steps");
+                        for (int k = 0; k < steps.length(); k++) {
+                            JSONObject st = steps.getJSONObject(k);
+                            String calle = st.optString("name", "");
+                            String tipo = st.getJSONObject("maneuver").optString("modifier", "recto");
+                            JSONArray locSt = st.getJSONObject("maneuver").getJSONArray("location");
+                            pasosPts.add(new GeoPoint(locSt.getDouble(1), locSt.getDouble(0)));
+                            pasosVoz.add("Gire " + tipo.replace("left","a la izquierda").replace("right","a la derecha").replace("straight","recto") + (calle.isEmpty() ? "" : " hacia " + calle));
+                        }
+                        btnIniciarRuta.setVisibility(View.VISIBLE);
                     });
                 } catch (Throwable ignored) {}
             }).start();
@@ -313,6 +345,28 @@ public class MainActivity extends Activity implements LocationListener {
             String[] p = items[i].split("\\|");
             if (p.length == 2) { String[] ll = p[1].split(","); mostrarDestino(new GeoPoint(Double.parseDouble(ll[0]), Double.parseDouble(ll[1])), p[0]); }
         }).show();
+    }
+
+    
+    private void alternarNavegacion() {
+        navegando = !navegando;
+        if (navegando) {
+            btnIniciarRuta.setText("⏹️ SALIR RUTA");
+            btnIniciarRuta.getBackground().setTint(Color.rgb(217, 48, 37));
+            if (locOverlay != null) locOverlay.enableFollowLocation();
+            map.getController().setZoom(17.5);
+            String msg = pasosVoz.isEmpty() ? "Iniciando ruta hacia destino" : pasosVoz.get(0);
+            txtBanner.setText("🧭 " + msg);
+            if (tts != null) tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, null);
+        } else {
+            btnIniciarRuta.setText("▶️ INICIAR RUTA");
+            btnIniciarRuta.getBackground().setTint(Color.rgb(26, 115, 232));
+            btnIniciarRuta.setVisibility(View.GONE);
+            if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
+            if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
+            map.invalidate();
+            txtBanner.setText("🧭 Ruta finalizada");
+        }
     }
 
     private void cargarRadares() {
@@ -419,6 +473,19 @@ public class MainActivity extends Activity implements LocationListener {
             }
         }
         txtVel.setTextColor(kmh > limiteActual ? Color.rgb(255, 75, 85) : Color.WHITE);
+        if (navegando && pasoActual < pasosPts.size()) {
+            double dPaso = yo.distanceToAsDouble(pasosPts.get(pasoActual));
+            if (dPaso < 65) {
+                String ind = pasosVoz.get(pasoActual);
+                txtBanner.setText("➡️ " + ind);
+                if (tts != null) tts.speak(ind, TextToSpeech.QUEUE_FLUSH, null, null);
+                pasoActual++;
+            }
+        }
+        if (navegando && marcadorDestino != null && yo.distanceToAsDouble(marcadorDestino.getPosition()) < 35) {
+            if (tts != null) tts.speak("Has llegado a tu destino", TextToSpeech.QUEUE_FLUSH, null, null);
+            alternarNavegacion();
+        }
     }
 
     @Override public void onRequestPermissionsResult(int req, String[] p, int[] r) { iniciarGps(); }
