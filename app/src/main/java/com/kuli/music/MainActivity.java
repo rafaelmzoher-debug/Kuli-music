@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.Collections;
 
 public class MainActivity extends Activity {
+    private android.widget.TextView bannerNas;
     public static MainActivity instanciaActiva;
     private static final int PICK_AUDIO = 100;
     private static final int PICK_SUBIR = 101;
@@ -1124,8 +1125,28 @@ public class MainActivity extends Activity {
 
     private void subirGrupos(final ArrayList<Map.Entry<String, ArrayList<Uri>>> cola, final int i,
                              final java.util.function.Consumer<Uri> alSubir) {
-        if (i >= cola.size()) return;
-        subirVariasAlNas(cola.get(i).getValue(), cola.get(i).getKey(), alSubir,
+        if (i >= cola.size()) {
+            runOnUiThread(() -> {
+                if (bannerNas != null) {
+                    bannerNas.setBackgroundColor(0xFF14362B);
+                    bannerNas.setTextColor(0xFF80ED99);
+                    bannerNas.setText("✅ NAS al día · Subida completada");
+                    bannerNas.postDelayed(() -> bannerNas.setVisibility(android.view.View.GONE), 6000);
+                }
+            });
+            return;
+        }
+        final String estiloAct = cola.get(i).getKey();
+        final int cantAct = cola.get(i).getValue().size();
+        runOnUiThread(() -> {
+            if (bannerNas != null) {
+                bannerNas.setBackgroundColor(0xFF0D253F);
+                bannerNas.setTextColor(0xFFFFD166);
+                bannerNas.setVisibility(android.view.View.VISIBLE);
+                bannerNas.setText("☁️ NAS: Subiendo (" + (i + 1) + "/" + cola.size() + ") · " + estiloAct + " (" + cantAct + " temas)...");
+            }
+        });
+        subirVariasAlNas(cola.get(i).getValue(), estiloAct, alSubir,
                 () -> subirGrupos(cola, i + 1, alSubir));
     }
 
