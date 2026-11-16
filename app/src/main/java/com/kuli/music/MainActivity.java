@@ -3008,26 +3008,98 @@ public class MainActivity extends Activity {
             aviso("No hay canciones aún en Music/KULI MUSIC");
             return;
         }
+        java.io.File dirAlbumes = new java.io.File(base, "Álbumes");
+        final java.util.ArrayList<java.io.File> carpetasAlbum = new java.util.ArrayList<>();
+        if (dirAlbumes.exists() && dirAlbumes.listFiles() != null) {
+            java.io.File[] sub = dirAlbumes.listFiles(java.io.File::isDirectory);
+            if (sub != null) {
+                java.util.Arrays.sort(sub, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                for (java.io.File d : sub) {
+                    java.util.ArrayList<java.io.File> tmp = new java.util.ArrayList<>();
+                    recolectarMp3Directo(d, tmp);
+                    if (!tmp.isEmpty()) carpetasAlbum.add(d);
+                }
+            }
+        }
         java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
         nombres.add("⬆️ SUBIR TODAS AL NAS (clasificar y quitar repetidas) [" + lista.size() + "]");
+        for (java.io.File d : carpetasAlbum) {
+            java.util.ArrayList<java.io.File> tmp = new java.util.ArrayList<>();
+            recolectarMp3Directo(d, tmp);
+            nombres.add("💿 ÁLBUM: " + d.getName() + " (" + tmp.size() + " temas)");
+        }
         for (java.io.File f : lista) {
             String rel = f.getParentFile() != null && !f.getParentFile().equals(base) ? " [" + f.getParentFile().getName() + "]" : "";
-            nombres.add("🎵 " + f.getName().replace(".mp3", "") + rel);
+            nombres.add("🎵 " + f.getName().replace(".mp3", "").replace(".m4a", "") + rel);
         }
+        final int nAlb = carpetasAlbum.size();
         new android.app.AlertDialog.Builder(this)
-            .setTitle("Mi música del móvil (" + lista.size() + ")")
-            .setItems(nombres.toArray(new String[0]), (d, i) -> {
-                if (i == 0) {
-                    java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
-                    for (java.io.File f : lista) uris.add(Uri.fromFile(f));
-                    subirAutomatico(uris, null);
-                } else {
-                    java.io.File sel = lista.get(i - 1);
-                    reproducir(Uri.fromFile(sel));
-                }
-            })
-            .setNegativeButton("Cerrar", null)
-            .show();
+                .setTitle("Mi música del móvil (" + nAlb + " álbumes · " + lista.size() + " temas)")
+                .setItems(nombres.toArray(new String[0]), (d, i) -> {
+                    if (i == 0) {
+                        java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+                        for (java.io.File f : lista) uris.add(Uri.fromFile(f));
+                        subirAutomatico(uris, null);
+                    } else if (i <= nAlb) {
+                        abrirVistaAlbumConPortada(carpetasAlbum.get(i - 1));
+                    } else {
+                        java.io.File sel = lista.get(i - 1 - nAlb);
+                        reproducir(Uri.fromFile(sel));
+                    }
+                })
+                .setNegativeButton("Cerrar", null)
+                .show();
+    }
+
+    private void abrirVistaAlbumConPortada(java.io.File carpetaAlbum) {
+        final java.util.ArrayList<java.io.File> pistas = new java.util.ArrayList<>();
+        recolectarMp3Directo(carpetaAlbum, pistas);
+        java.util.Collections.sort(pistas, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        if (pistas.isEmpty()) return;
+
+        android.widget.LinearLayout lay = new android.widget.LinearLayout(this);
+        lay.setOrientation(android.widget.LinearLayout.VERTICAL);
+        lay.setPadding(dp(16), dp(12), dp(16), dp(8));
+
+        java.io.File cov = new java.io.File(carpetaAlbum, "cover.jpg");
+        if (cov.exists()) {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(cov.getAbsolutePath());
+            if (bmp != null) {
+                iv.setImageBitmap(bmp);
+                iv.setAdjustViewBounds(true);
+                iv.setMaxHeight(dp(180));
+                lay.addView(iv);
+            }
+        }
+
+        String[] titulos = new String[pistas.size()];
+        for (int k = 0; k < pistas.size(); k++) {
+            titulos[k] = (k + 1) + ". " + pistas.get(k).getName().replace(".mp3", "").replace(".m4a", "");
+        }
+        android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, titulos));
+        lay.addView(lv);
+
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("💿 " + carpetaAlbum.getName())
+                .setView(lay)
+                .setPositiveButton("▶️ Reproducir álbum", (d, w) -> {
+                    colaDj = new java.util.ArrayList<>(pistas);
+                    indiceDj = 0;
+                    modoDjActivo = true;
+                    reproducir(Uri.fromFile(pistas.get(0)));
+                })
+                .setNegativeButton("Volver", null)
+                .create();
+        lv.setOnItemClickListener((av, v, pos, id) -> {
+            colaDj = new java.util.ArrayList<>(pistas);
+            indiceDj = pos;
+            modoDjActivo = true;
+            reproducir(Uri.fromFile(pistas.get(pos)));
+            dlg.dismiss();
+        });
+        dlg.show();
     }
 
     private void recolectarMp3Directo(java.io.File dir, java.util.List<java.io.File> out) {
@@ -3036,7 +3108,7 @@ public class MainActivity extends Activity {
         if (fs == null) return;
         for (java.io.File f : fs) {
             if (f.isDirectory()) recolectarMp3Directo(f, out);
-            else if (f.getName().toLowerCase().endsWith(".mp3") && f.length() > 10000) out.add(f);
+            else if ((f.getName().toLowerCase().endsWith(".mp3") || f.getName().toLowerCase().endsWith(".m4a")) && f.length() > 10000) out.add(f);
         }
     }
 
