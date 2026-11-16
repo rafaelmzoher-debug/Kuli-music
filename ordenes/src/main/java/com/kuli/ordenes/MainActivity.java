@@ -1302,7 +1302,13 @@ public class MainActivity extends Activity {
                 return caja;
             }
         };
-        total.setText(filas.size() + " unidades · la más antigua arriba");
+        java.util.Collections.sort(filas, (a, b) -> {
+            int ca = a[1].toLowerCase().contains("router") ? 1 : a[1].toLowerCase().contains("deco") ? 2 : a[1].toLowerCase().contains("amplificador") ? 3 : a[1].toLowerCase().contains("acometida") ? 4 : 5;
+            int cb = b[1].toLowerCase().contains("router") ? 1 : b[1].toLowerCase().contains("deco") ? 2 : b[1].toLowerCase().contains("amplificador") ? 3 : b[1].toLowerCase().contains("acometida") ? 4 : 5;
+            if (ca != cb) return Integer.compare(ca, cb);
+            return a[0].compareTo(b[0]);
+        });
+        total.setText(filas.size() + " unidades · agrupadas por equipo");
         Button btnVerRep = boton("📋 Pendiente de reponer por almacén", false);
         btnVerRep.setOnClickListener(v -> verPendienteReponer());
         p.addView(btnVerRep, margen(-1, -2, 6));
