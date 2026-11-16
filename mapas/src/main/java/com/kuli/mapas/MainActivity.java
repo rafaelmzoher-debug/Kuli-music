@@ -323,6 +323,7 @@ public class MainActivity extends Activity implements LocationListener {
                         cal.add(java.util.Calendar.MINUTE, min);
                         String eta = String.format(Locale.US, "%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE));
                         txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min (Llegas %s) · %s", modoCoche ? "🚗" : "🚶", km, min, eta, nombre));
+                        try {
                         pasosVoz.clear(); pasosPts.clear(); pasoActual = 0;
                         JSONArray steps = r0.getJSONArray("legs").getJSONObject(0).getJSONArray("steps");
                         for (int k = 0; k < steps.length(); k++) {
@@ -334,6 +335,7 @@ public class MainActivity extends Activity implements LocationListener {
                             pasosVoz.add("Gire " + tipo.replace("left","a la izquierda").replace("right","a la derecha").replace("straight","recto") + (calle.isEmpty() ? "" : " hacia " + calle));
                         }
                         btnIniciarRuta.setVisibility(View.VISIBLE);
+                        } catch (Throwable ignored) {}
                     });
                 } catch (Throwable ignored) {}
             }).start();
