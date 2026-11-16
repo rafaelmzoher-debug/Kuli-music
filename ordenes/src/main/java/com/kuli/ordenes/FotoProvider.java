@@ -34,7 +34,9 @@ public class FotoProvider extends ContentProvider {
 
     @Override public String getType(Uri uri) {
         String n = uri.getLastPathSegment();
-        return n != null && n.toLowerCase().endsWith(".zip") ? "application/zip" : "image/jpeg";
+        if (n == null) return "image/jpeg";
+        String m = n.toLowerCase();
+        return m.endsWith(".zip") ? "application/zip" : m.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
     }
 
     @Override public Cursor query(Uri uri, String[] proj, String sel, String[] args, String orden) {

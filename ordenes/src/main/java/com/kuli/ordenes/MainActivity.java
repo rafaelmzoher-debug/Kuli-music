@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
 
-    static final class Resumen { String nombre; int fotos; int mat; long ultima; boolean cerrada; String datos = ""; }
+    static final class Resumen { String nombre; int fotos; int mat; long ultima; boolean cerrada; String datos = ""; double metros; }
     private String filtro = "";
 
     @Override protected void onCreate(Bundle b) {
@@ -416,6 +416,39 @@ public class MainActivity extends Activity {
         catch (Exception e) { aviso("No se pudo abrir el selector de archivos"); }
     }
 
+    // Al abrir la app, busca PDF de albaranes nuevos en Descargas y pregunta si cargarlos.
+    private void buscarAlbaranesNuevos() {
+        try {
+            final android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
+            final java.util.Set<String> vistos = new java.util.HashSet<>(sp.getStringSet("pdfs_vistos", new java.util.HashSet<String>()));
+            File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            File[] fs = dl.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".pdf") && n.toLowerCase(Locale.ROOT).startsWith("alb"));
+            if (fs == null) return;
+            File nuevo = null;
+            for (File f : fs) {
+                String clave = f.getName() + "|" + f.length();
+                if (!vistos.contains(clave) && (nuevo == null || f.lastModified() > nuevo.lastModified())) nuevo = f;
+            }
+            if (nuevo == null) return;
+            final File cand = nuevo;
+            final String clave = cand.getName() + "|" + cand.length();
+            new AlertDialog.Builder(this).setTitle("📄 Albarán nuevo en Descargas")
+                .setMessage("He encontrado:\n" + cand.getName() + "\n\n¿Lo cargo al almacén?\n(Si ya lo cargaste, no se suma dos veces.)")
+                .setPositiveButton("CARGAR", (d, w) -> {
+                    vistos.add(clave);
+                    sp.edit().putStringSet("pdfs_vistos", vistos).apply();
+                    importarPdf(Uri.fromFile(cand));
+                })
+                .setNegativeButton("IGNORAR", (d, w) -> {
+                    vistos.add(clave);
+                    sp.edit().putStringSet("pdfs_vistos", vistos).apply();
+                })
+                .setNeutralButton("DESPUÉS", null).show();
+        } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Buscando albaranes", t); }
+    }
+
+    private boolean albaranesRevisados = false;
+
     private void importarPdf(final Uri uri) {
         aviso("Leyendo el PDF…");
         hilos.execute(() -> {
@@ -542,6 +575,7 @@ public class MainActivity extends Activity {
     // ---------- Pantalla de inicio ----------
     private void mostrarInicio() {
         sincronizarFotos();
+        if (!albaranesRevisados) { albaranesRevisados = true; buscarAlbaranesNuevos(); }
         ordenAbierta = null;
         enAlmacen = false;
         contenido.removeAllViews();
@@ -816,6 +850,7 @@ public class MainActivity extends Activity {
             x.cerrada = new File(d, "cerrada.txt").exists();
             String[] dt = leerDatos(d.getName());
             x.datos = (dt[0] + " " + dt[1]).trim();
+            x.metros = numero(dt[2]);
             if (fs != null) for (File f : fs) x.ultima = Math.max(x.ultima, fechaDeArchivo(f));
             if (mat.exists()) x.ultima = Math.max(x.ultima, mat.lastModified());
             r.add(x);
@@ -896,9 +931,10 @@ public class MainActivity extends Activity {
         filaD.addView(paq, lpaq);
         p.addView(filaD, margen(-1, -2, 4));
         String[] dtos = leerDatos(nombre);
-        if (!dtos[0].isEmpty() || !dtos[1].isEmpty() || cerr) {
+        if (!dtos[0].isEmpty() || !dtos[1].isEmpty() || !dtos[2].isEmpty() || cerr) {
             TextView td = texto((cerr ? "✔ Cerrada" + (dtos[0].isEmpty() && dtos[1].isEmpty() ? "" : "\n") : "")
-                + (dtos[0].isEmpty() ? "" : "👤 " + dtos[0]) + (dtos[1].isEmpty() ? "" : (dtos[0].isEmpty() ? "" : "\n") + "📍 " + dtos[1]), 13, GRIS, false);
+                + (dtos[0].isEmpty() ? "" : "👤 " + dtos[0]) + (dtos[1].isEmpty() ? "" : (dtos[0].isEmpty() ? "" : "\n") + "📍 " + dtos[1])
+                + (dtos[2].isEmpty() ? "" : "\n📏 " + dtos[2] + " m de cable"), 13, GRIS, false);
             td.setPadding(dp(4), dp(8), dp(4), dp(2));
             p.addView(td);
         }
@@ -912,6 +948,7 @@ public class MainActivity extends Activity {
         }
 
         final ArrayList<File> fotos = fotosDe(nombre);
+        final java.util.HashMap<String, String> etiquetas = leerEtiquetas(nombre);
         if (fotos.isEmpty()) {
             TextView v = texto("Esta orden no tiene fotos.", 14, GRIS, false);
             v.setGravity(Gravity.CENTER);
@@ -951,7 +988,8 @@ public class MainActivity extends Activity {
                     img = (ImageView) vs[0];
                     pie = (TextView) vs[1];
                     File f = fotos.get(i);
-                    pie.setText(formatoCorto(fechaDeArchivo(f)));
+                    String et = etiquetas.get(f.getName());
+                    pie.setText((et == null ? "" : et + " · ") + formatoCorto(fechaDeArchivo(f)));
                     img.setTag(f.getAbsolutePath());
                     miniatura(f, img);
                     return caja;
@@ -1002,11 +1040,15 @@ public class MainActivity extends Activity {
         abajo.setBackgroundColor(Color.argb(170, 0, 0, 0));
         abajo.setGravity(Gravity.CENTER);
         abajo.setPadding(dp(8), dp(8), dp(8), dp(22));
-        TextView info = texto("Orden " + orden + "  ·  " + formatoLargo(fechaDeArchivo(f)), 13, Color.WHITE, false);
+        String etqF = leerEtiquetas(orden).get(f.getName());
+        TextView info = texto("Orden " + orden + (etqF == null ? "" : "  ·  " + etqF) + "  ·  " + formatoLargo(fechaDeArchivo(f)), 13, Color.WHITE, false);
         abajo.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
         Button comp = boton("↗", false);
         comp.setOnClickListener(v -> compartir(new ArrayList<>(Arrays.asList(f)), orden));
         abajo.addView(comp, new LinearLayout.LayoutParams(dp(54), dp(44)));
+        Button etq = boton("🏷", false);
+        etq.setOnClickListener(v -> elegirEtiqueta(orden, f));
+        abajo.addView(etq, new LinearLayout.LayoutParams(dp(54), dp(44)));
         Button borrar = boton("🗑", false);
         borrar.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("¿Borrar esta foto?")
             .setMessage("Se borra del móvil y no se puede recuperar.")
@@ -1525,15 +1567,57 @@ public class MainActivity extends Activity {
             .setPositiveButton("CERRAR", null).show();
     }
 
+    private double numero(String t) {
+        try { return t == null || t.isEmpty() ? 0 : Double.parseDouble(t.replace(",", ".")); } catch (Exception e) { return 0; }
+    }
+
+    // ---------- Etiquetas de las fotos (antes, después, ONT…) ----------
+    private java.util.HashMap<String, String> leerEtiquetas(String orden) {
+        java.util.HashMap<String, String> m = new java.util.HashMap<>();
+        File f = new File(new File(raiz, limpiar(orden)), "etiquetas.txt");
+        if (!f.exists()) return m;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            for (String l : new String(leerTodo(in), "UTF-8").split("\n")) {
+                int k = l.indexOf('|');
+                if (k > 0) m.put(l.substring(0, k), l.substring(k + 1).trim());
+            }
+        } catch (Throwable ignorar) { }
+        return m;
+    }
+
+    private void ponerEtiqueta(String orden, File foto, String tag) {
+        java.util.HashMap<String, String> m = leerEtiquetas(orden);
+        if (tag == null || tag.isEmpty()) m.remove(foto.getName()); else m.put(foto.getName(), tag);
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, String> e : m.entrySet()) sb.append(e.getKey()).append("|").append(e.getValue()).append("\n");
+        try (FileOutputStream o = new FileOutputStream(new File(new File(raiz, limpiar(orden)), "etiquetas.txt"))) { o.write(sb.toString().getBytes("UTF-8")); }
+        catch (Exception e) { aviso("No se pudo guardar la etiqueta"); }
+    }
+
+    static final String[] ETIQUETAS = {"Antes", "Después", "ONT", "Roseta", "Test/Potencia", "Otra"};
+
+    private void elegirEtiqueta(final String orden, final File foto) {
+        new AlertDialog.Builder(this).setTitle("🏷 ¿Qué foto es?").setItems(ETIQUETAS, (d, i) -> {
+            ponerEtiqueta(orden, foto, ETIQUETAS[i]);
+            if (visor != null) visor.dismiss();
+            mostrarOrden(orden);
+        }).setNeutralButton("QUITAR", (d, w) -> {
+            ponerEtiqueta(orden, foto, "");
+            if (visor != null) visor.dismiss();
+            mostrarOrden(orden);
+        }).setNegativeButton("CANCELAR", null).show();
+    }
+
     // ---------- Datos de la orden (cliente y dirección) ----------
     private String[] leerDatos(String orden) {
         File f = new File(new File(raiz, limpiar(orden)), "datos.txt");
-        String[] r = {"", ""};
+        String[] r = {"", "", ""};
         if (!f.exists()) return r;
         try (InputStream in = new java.io.FileInputStream(f)) {
             String[] l = new String(leerTodo(in), "UTF-8").split("\n", -1);
             if (l.length > 0) r[0] = l[0].trim();
             if (l.length > 1) r[1] = l[1].trim();
+            if (l.length > 2) r[2] = l[2].trim();
         } catch (Throwable ignorar) { }
         return r;
     }
@@ -1547,13 +1631,16 @@ public class MainActivity extends Activity {
         cli.setText(actual[0]);
         final EditText dir = campo("Dirección (calle, nº, localidad)", InputType.TYPE_CLASS_TEXT);
         dir.setText(actual[1]);
+        final EditText met = campo("Metros de cable usados (opcional)", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        met.setText(actual[2]);
         caja.addView(cli, margen(-1, -2, 4));
-        caja.addView(dir, margen(-1, -2, 8));
+        caja.addView(dir, margen(-1, -2, 4));
+        caja.addView(met, margen(-1, -2, 8));
         new AlertDialog.Builder(this).setTitle("✏ Datos de la orden " + orden).setView(caja)
             .setPositiveButton("GUARDAR", (d, w) -> {
                 File dirOrden = new File(raiz, limpiar(orden));
                 dirOrden.mkdirs();
-                String txt = cli.getText().toString().replace("\n", " ").trim() + "\n" + dir.getText().toString().replace("\n", " ").trim() + "\n";
+                String txt = cli.getText().toString().replace("\n", " ").trim() + "\n" + dir.getText().toString().replace("\n", " ").trim() + "\n" + met.getText().toString().replace(",", ".").trim() + "\n";
                 try (FileOutputStream o = new FileOutputStream(new File(dirOrden, "datos.txt"))) { o.write(txt.getBytes("UTF-8")); }
                 catch (Exception e) { aviso("No se pudo guardar"); return; }
                 aviso("✓ Datos guardados");
@@ -1562,7 +1649,25 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Cerrar / reabrir una orden ----------
-    private void cerrarOrden(String orden, boolean cerrar) {
+    private void cerrarOrden(final String orden, boolean cerrar) {
+        if (cerrar && !new File(new File(raiz, limpiar(orden)), "cerrada.txt").exists()) {
+            ArrayList<String> faltan = new ArrayList<>();
+            if (fotosDe(orden).isEmpty()) faltan.add("Ninguna foto");
+            if (leerMaterial(orden).isEmpty()) faltan.add("Material sin apuntar");
+            java.util.Collection<String> tags = leerEtiquetas(orden).values();
+            for (String t : new String[]{"ONT", "Roseta", "Test/Potencia"}) if (!tags.contains(t)) faltan.add("Foto «" + t + "» (etiqueta 🏷)");
+            if (!faltan.isEmpty()) {
+                new AlertDialog.Builder(this).setTitle("✅ Antes de cerrar la orden " + orden)
+                    .setMessage("Te falta:\n\n• " + android.text.TextUtils.join("\n• ", faltan) + "\n\n¿La cierras igualmente?")
+                    .setPositiveButton("CERRAR IGUAL", (d, w) -> cerrarDeVerdad(orden, true))
+                    .setNegativeButton("VOLVER", null).show();
+                return;
+            }
+        }
+        cerrarDeVerdad(orden, cerrar);
+    }
+
+    private void cerrarDeVerdad(String orden, boolean cerrar) {
         File m = new File(new File(raiz, limpiar(orden)), "cerrada.txt");
         if (cerrar) {
             try (FileOutputStream o = new FileOutputStream(m)) { o.write(formatoLargo(System.currentTimeMillis()).getBytes("UTF-8")); }
@@ -1613,7 +1718,7 @@ public class MainActivity extends Activity {
                     File[] fs = dirOrden.listFiles();
                     if (fs != null) for (File f : fs) {
                         String n = f.getName().toLowerCase(Locale.ROOT);
-                        if (!f.isFile() || !(n.endsWith(".jpg") || n.equals("material.txt") || n.equals("datos.txt"))) continue;
+                        if (!f.isFile() || !(n.endsWith(".jpg") || n.equals("material.txt") || n.equals("datos.txt") || n.equals("etiquetas.txt"))) continue;
                         z.putNextEntry(new java.util.zip.ZipEntry(f.getName()));
                         try (InputStream in = new java.io.FileInputStream(f)) {
                             byte[] b = new byte[65536];
@@ -1788,10 +1893,13 @@ public class MainActivity extends Activity {
         StringBuilder ords = new StringBuilder();
         ArrayList<String> retirados = new ArrayList<>();
         int nOrd = 0, total = 0, sinFoto = 0;
+        double metrosTotal = 0;
+        java.util.TreeMap<String, Integer> porDia = new java.util.TreeMap<>();
         ArrayList<Resumen> todas = listarOrdenes();
         Collections.sort(todas, (a, b) -> a.nombre.compareTo(b.nombre));
         for (Resumen r : todas) {
             int k = 0;
+            String diaOrden = null;
             for (String l : leerMaterial(r.nombre)) {
                 String[] p = l.split(" \\| ");
                 if (p.length < 2) continue;
@@ -1803,9 +1911,13 @@ public class MainActivity extends Activity {
                 Integer c = cuenta.get(nom);
                 cuenta.put(nom, c == null ? 1 : c + 1);
                 total++; k++;
+                if (diaOrden == null) diaOrden = fecha.substring(0, 5);
             }
             if (k == 0) continue;
             nOrd++;
+            metrosTotal += r.metros;
+            Integer cd = porDia.get(diaOrden);
+            porDia.put(diaOrden, cd == null ? 1 : cd + 1);
             if (r.fotos == 0) sinFoto++;
             ords.append("• ").append(r.nombre).append(r.datos.isEmpty() ? "" : " — " + r.datos).append(r.cerrada ? " ✔" : "").append(": ").append(k).append(k == 1 ? " material" : " materiales")
                 .append(r.fotos == 0 ? " (SIN FOTO)" : " · " + r.fotos + (r.fotos == 1 ? " foto" : " fotos")).append("\n");
@@ -1814,6 +1926,12 @@ public class MainActivity extends Activity {
         Collections.sort(lista, (a, b) -> b.getValue() - a.getValue());
         final StringBuilder sb = new StringBuilder("INFORME DE " + titulo.toUpperCase(new Locale("es", "ES")) + "\n");
         sb.append("Órdenes: ").append(nOrd).append("\nUnidades de material: ").append(total).append("\n");
+        if (!porDia.isEmpty()) {
+            String mejor = ""; int mx = 0;
+            for (java.util.Map.Entry<String, Integer> e : porDia.entrySet()) if (e.getValue() > mx) { mx = e.getValue(); mejor = e.getKey(); }
+            sb.append("Días con órdenes: ").append(porDia.size()).append("\nMedia: ").append(String.format(Locale.ROOT, "%.1f", nOrd / (double) porDia.size())).append(" órdenes/día\nMejor día: ").append(mejor).append(" (").append(mx).append(")\n");
+        }
+        if (metrosTotal > 0) sb.append("Cable usado: ").append(String.format(Locale.ROOT, "%.0f", metrosTotal)).append(" m\n");
         if (sinFoto > 0) sb.append("Órdenes sin foto: ").append(sinFoto).append("\n");
         if (!retirados.isEmpty()) sb.append("Equipos retirados: ").append(retirados.size()).append("\n");
         sb.append("\nMATERIAL USADO\n");
@@ -1825,15 +1943,73 @@ public class MainActivity extends Activity {
             for (String s : retirados) sb.append("• ").append(s).append("\n");
         }
         new AlertDialog.Builder(this).setTitle("📨 Informe " + titulo).setMessage(sb.toString())
-            .setPositiveButton("ENVIAR", (d, w) -> {
-                Intent i = new Intent(Intent.ACTION_SEND);
-                i.setType("text/plain");
-                i.putExtra(Intent.EXTRA_SUBJECT, "Informe " + titulo);
-                i.putExtra(Intent.EXTRA_TEXT, sb.toString());
-                startActivity(Intent.createChooser(i, "Enviar informe del mes"));
-            })
+            .setPositiveButton("ENVIAR", (d, w) -> enviarInforme(titulo, sb.toString()))
             .setNeutralButton(atras == 0 ? "MES ANTERIOR" : "ESTE MES", (d, w) -> informeMes(atras == 0 ? 1 : 0))
             .setNegativeButton("CERRAR", null).show();
+    }
+
+    private void enviarInforme(final String titulo, final String texto) {
+        new AlertDialog.Builder(this).setTitle("¿Cómo lo envías?").setItems(new String[]{"💬 Como texto (WhatsApp, correo)", "📄 Como PDF"}, (d, i) -> {
+            if (i == 0) {
+                Intent it = new Intent(Intent.ACTION_SEND);
+                it.setType("text/plain");
+                it.putExtra(Intent.EXTRA_SUBJECT, "Informe " + titulo);
+                it.putExtra(Intent.EXTRA_TEXT, texto);
+                startActivity(Intent.createChooser(it, "Enviar informe del mes"));
+            } else informePdf(titulo, texto);
+        }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void informePdf(final String titulo, final String texto) {
+        hilos.execute(() -> {
+            try {
+                String limpio = texto.replaceAll("[\\uD800-\\uDFFF]", "").replace("✔", "(cerrada)").replace("→", "->").replace("•", "-");
+                android.graphics.pdf.PdfDocument doc = new android.graphics.pdf.PdfDocument();
+                Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
+                pt.setTypeface(Typeface.MONOSPACE);
+                pt.setTextSize(10f);
+                pt.setColor(Color.BLACK);
+                Paint ptT = new Paint(pt);
+                ptT.setTextSize(14f);
+                ptT.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+                ArrayList<String> lineas = new ArrayList<>();
+                for (String l : limpio.split("\n")) {
+                    while (l.length() > 84) { lineas.add(l.substring(0, 84)); l = "   " + l.substring(84); }
+                    lineas.add(l);
+                }
+                int pagina = 1, y = 0, i = 0;
+                android.graphics.pdf.PdfDocument.Page pg = null;
+                Canvas cv = null;
+                while (i < lineas.size()) {
+                    if (pg == null) {
+                        pg = doc.startPage(new android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pagina).create());
+                        cv = pg.getCanvas();
+                        y = 50;
+                    }
+                    cv.drawText(lineas.get(i), 40, y, i == 0 ? ptT : pt);
+                    y += i == 0 ? 22 : 14;
+                    i++;
+                    if (y > 800) { doc.finishPage(pg); pg = null; pagina++; }
+                }
+                if (pg != null) doc.finishPage(pg);
+                File dirT = new File(getCacheDir(), "tmp");
+                dirT.mkdirs();
+                final String nombre = "Informe_" + titulo.replaceAll("[^A-Za-z0-9_-]", "_") + ".pdf";
+                try (FileOutputStream o = new FileOutputStream(new File(dirT, nombre))) { doc.writeTo(o); }
+                doc.close();
+                final Uri uri = Uri.parse("content://com.kuli.ordenes.fotos/" + Uri.encode(nombre));
+                runOnUiThread(() -> {
+                    Intent it = new Intent(Intent.ACTION_SEND);
+                    it.setType("application/pdf");
+                    it.putExtra(Intent.EXTRA_STREAM, uri);
+                    it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(it, "Enviar informe en PDF"));
+                });
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Informe PDF", t);
+                runOnUiThread(() -> aviso("No se pudo crear el PDF"));
+            }
+        });
     }
 
     // ---------- Resumen del mes ----------
@@ -2039,6 +2215,7 @@ public class MainActivity extends Activity {
         String[] dd = leerDatos(orden);
         if (!dd[0].isEmpty()) sb.append("Cliente: ").append(dd[0]).append("\n");
         if (!dd[1].isEmpty()) sb.append("Dirección: ").append(dd[1]).append("\n");
+        if (!dd[2].isEmpty()) sb.append("Cable: ").append(dd[2]).append(" m\n");
         ArrayList<File> fs = fotosDe(orden);
         sb.append("Fotos: ").append(fs.size()).append("\n");
         ArrayList<String> u = leerMaterial(orden);
