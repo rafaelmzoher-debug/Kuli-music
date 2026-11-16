@@ -750,6 +750,26 @@ public class MainActivity extends Activity implements LocationListener {
     @Override public void onLocationChanged(Location loc) {
         int kmh = Math.round(loc.getSpeed() * 3.6f); txtVel.setText(kmh + "\nkm/h");
         GeoPoint yo = new GeoPoint(loc.getLatitude(), loc.getLongitude());
+        if (navegando && locOverlay != null) {
+            locOverlay.enableFollowLocation();
+            map.getController().animateTo(yo);
+            if (loc.hasBearing()) map.setMapOrientation(-loc.getBearing());
+            map.getController().setZoom(kmh < 50 ? 18.8 : (kmh < 90 ? 17.0 : 15.5));
+            if (lineaRuta != null && lineaRuta.getActualPoints().size() > 2) {
+                java.util.List<GeoPoint> pts = new java.util.ArrayList<>(lineaRuta.getActualPoints());
+                int idx = 0; double minD = Double.MAX_VALUE;
+                for (int i = 0; i < pts.size(); i++) {
+                    double d = yo.distanceToAsDouble(pts.get(i));
+                    if (d < minD) { minD = d; idx = i; }
+                }
+                if (minD > 85 && marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
+                else if (idx > 0) {
+                    java.util.List<GeoPoint> rest = new java.util.ArrayList<>();
+                    rest.add(yo); rest.addAll(pts.subList(idx, pts.size()));
+                    lineaRuta.setPoints(rest); map.invalidate();
+                }
+            }
+        }
         for (int i = 0; i < radares.size(); i++) {
             double[] r = radares.get(i);
             double dist = yo.distanceToAsDouble(new GeoPoint(r[0], r[1]));
