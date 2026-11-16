@@ -24,4 +24,6 @@ android {
 }
 dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("androidx.car.app:app:1.4.0")
+    implementation("androidx.car.app:app-projected:1.4.0")
 }
