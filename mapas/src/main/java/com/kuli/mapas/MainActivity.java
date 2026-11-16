@@ -61,8 +61,8 @@ public class MainActivity extends Activity implements LocationListener {
         map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
         map.setTilesScaleFactor(2.3f);
-        map.getController().setZoom(16.5);
-        map.getController().setZoom(14.5);
+        map.getController().setZoom(18.8);
+        map.getController().setZoom(18.8);
         map.getController().setCenter(new GeoPoint(36.7014, -4.4452));
         root.addView(map, new FrameLayout.LayoutParams(-1, -1));
         pintarRadaresEnMapa();
@@ -158,6 +158,7 @@ public class MainActivity extends Activity implements LocationListener {
         txtBanner.setBackground(gdBan);
         txtBanner.setText("🧭 KULI MAPAS · Online · Modo Coche activo");
         topWrap.addView(txtBanner);
+        topWrap.setVisibility(View.GONE);
         root.addView(topWrap, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         // Velocimetro + Senal de limite abajo izquierda (encima de barra inferior)
@@ -187,6 +188,14 @@ public class MainActivity extends Activity implements LocationListener {
         fabCol.setOrientation(LinearLayout.VERTICAL);
         FrameLayout.LayoutParams lpFab = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         lpFab.setMargins(0, 0, dp(14), dp(76));
+
+        Button fabPlus = fabBtn("+", Color.WHITE, Color.rgb(50, 54, 60));
+        fabPlus.setOnClickListener(v -> map.getController().zoomIn());
+        fabCol.addView(fabPlus);
+
+        Button fabMinus = fabBtn("−", Color.WHITE, Color.rgb(50, 54, 60));
+        fabMinus.setOnClickListener(v -> map.getController().zoomOut());
+        fabCol.addView(fabMinus);
 
         Button fabGps = fabBtn("🎯", Color.WHITE, Color.rgb(26, 115, 232));
         fabGps.setOnClickListener(v -> centrarGps());
@@ -228,40 +237,52 @@ public class MainActivity extends Activity implements LocationListener {
         navBot.setElevation(dp(10));
         navBot.setPadding(dp(8), dp(6), dp(8), dp(6));
 
-        Button tabExp = tabBtn("📍\nExplorar"); tabExp.setOnClickListener(v -> centrarGps());
-        Button tabGua = tabBtn("🔖\nGuardados"); tabGua.setOnClickListener(v -> verGuardados());
-        final Button tabRed = tabBtn("🌐\nOnline");
-        tabRed.setOnClickListener(v -> {
-            modoOffline = !modoOffline; map.setUseDataConnection(!modoOffline);
-            tabRed.setText(modoOffline ? "📴\nSin Red" : "🌐\nOnline");
-            txtBanner.setText(modoOffline ? "📴 Modo 100% SIN INTERNET (mapas y radares locales)" : "🌐 Modo ONLINE (caché automática activa)");
+        Button tabBruj = tabBtn("🧭\nKuli");
+        tabBruj.setOnClickListener(v -> {
+            map.setMapOrientation(0f);
+            centrarGps();
         });
-        Button tabBaj = tabBtn("📥\nBajar Zona"); tabBaj.setOnClickListener(v -> descargarZonaActual());
+        Button tabBus = tabBtn("🔍\nBuscar");
+        tabBus.setOnClickListener(v -> {
+            topWrapRef.setVisibility(topWrapRef.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            if (topWrapRef.getVisibility() == View.VISIBLE) txtBuscar.requestFocus();
+        });
+        Button tabGua = tabBtn("⭐\nGuardados");
+        tabGua.setOnClickListener(v -> verGuardados());
+        Button tabMen = tabBtn("☰\nMenú");
+        tabMen.setOnClickListener(v -> abrirMenuOrganic());
 
-        navBot.addView(tabExp, new LinearLayout.LayoutParams(0, -2, 1f));
+        navBot.addView(tabBruj, new LinearLayout.LayoutParams(0, -2, 1f));
+        navBot.addView(tabBus, new LinearLayout.LayoutParams(0, -2, 1f));
         navBot.addView(tabGua, new LinearLayout.LayoutParams(0, -2, 1f));
-        navBot.addView(tabRed, new LinearLayout.LayoutParams(0, -2, 1f));
-        navBot.addView(tabBaj, new LinearLayout.LayoutParams(0, -2, 1f));
+        navBot.addView(tabMen, new LinearLayout.LayoutParams(0, -2, 1f));
         root.addView(navBot, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
-
-        btnIniciarRuta = new Button(this);
-        btnIniciarRuta.setText("▶️ INICIAR RUTA");
-        btnIniciarRuta.setTextColor(Color.WHITE);
-        btnIniciarRuta.setTextSize(15);
-        btnIniciarRuta.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable gdIni = new GradientDrawable();
-        gdIni.setColor(Color.rgb(26, 115, 232));
-        gdIni.setCornerRadius(dp(24));
-        btnIniciarRuta.setBackground(gdIni);
-        btnIniciarRuta.setElevation(dp(8));
-        btnIniciarRuta.setVisibility(View.GONE);
-        btnIniciarRuta.setOnClickListener(v -> alternarNavegacion());
-        FrameLayout.LayoutParams lpIni = new FrameLayout.LayoutParams(dp(180), dp(46), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        lpIni.setMargins(0, 0, 0, dp(76));
-        root.addView(btnIniciarRuta, lpIni);
 
         setContentView(root);
         iniciarGps();
+    }
+
+    
+    private void abrirMenuOrganic() {
+        String[] ops = {
+            "📥 Descargar mapas sin internet (Málaga / Andalucía)",
+            modoOffline ? "🌐 Cambiar a modo ONLINE" : "📴 Activar modo 100% SIN INTERNET",
+            "🚨 Añadir radar en este punto",
+            "🔄 Ver total radares Málaga y Andalucía (" + radares.size() + ")",
+            "🎙️ Buscar dirección por voz"
+        };
+        new AlertDialog.Builder(this).setTitle("🧭 KULI MAPAS · Menú").setItems(ops, (d, i) -> {
+            if (i == 0) descargarZonaActual();
+            else if (i == 1) {
+                modoOffline = !modoOffline;
+                map.setUseDataConnection(!modoOffline);
+                Toast.makeText(this, modoOffline ? "📴 Modo SIN INTERNET activo" : "🌐 Modo ONLINE activo", Toast.LENGTH_SHORT).show();
+            } else if (i == 2) anadirRadarAqui();
+            else if (i == 3) {
+                cargarRadares(); pintarRadaresEnMapa(); map.invalidate();
+                Toast.makeText(this, "🚨 " + radares.size() + " radares activos en Málaga y Andalucía", Toast.LENGTH_SHORT).show();
+            } else if (i == 4) escucharVoz();
+        }).show();
     }
 
     private void escucharVoz() {
