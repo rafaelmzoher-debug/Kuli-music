@@ -302,6 +302,7 @@ public class MainActivity extends Activity implements LocationListener {
         String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
         if (!prev.contains(nombre)) getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nombre + "|" + dest.getLatitude() + "," + dest.getLongitude() + ";" + prev).apply();
         if (tts != null) tts.speak("Destino fijado", TextToSpeech.QUEUE_FLUSH, null, null);
+        if (btnIniciarRuta != null) btnIniciarRuta.setVisibility(View.VISIBLE);
         if (locOverlay != null && locOverlay.getMyLocation() != null) {
             GeoPoint ini = locOverlay.getMyLocation(); String perfil = modoCoche ? "driving" : "foot";
             new Thread(() -> {
