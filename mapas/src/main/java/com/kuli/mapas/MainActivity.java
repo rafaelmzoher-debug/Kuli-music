@@ -52,8 +52,7 @@ public class MainActivity extends Activity implements LocationListener {
         FrameLayout root = new FrameLayout(this);
         map = new MapView(this);
         // Mapa claro estilo Google Maps (Carto Voyager)
-        map.setTileSource(new XYTileSource("Voyager", 0, 19, 256, ".png",
-            new String[]{"https://cartocdn.com", "https://cartocdn.com"}));
+        map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
         map.getController().setZoom(14.5);
         map.getController().setCenter(new GeoPoint(36.7014, -4.4452));
@@ -208,11 +207,32 @@ public class MainActivity extends Activity implements LocationListener {
         String clean = q.trim();
         txtBanner.setText("🔍 Buscando: " + clean + "...");
         new Thread(() -> {
+            // Motor 1: ArcGIS World Geocoder (encuentra cualquier calle y numero en Espana al instante)
+            try {
+                String u0 = "https://arcgis.com" + URLEncoder.encode(clean, "UTF-8");
+                HttpURLConnection c0 = (HttpURLConnection) new URL(u0).openConnection();
+                c0.setRequestProperty("User-Agent", "Mozilla/5.0");
+                c0.setConnectTimeout(6000); c0.setReadTimeout(6000);
+                BufferedReader br0 = new BufferedReader(new InputStreamReader(c0.getInputStream()));
+                StringBuilder sb0 = new StringBuilder(); String l0;
+                while ((l0 = br0.readLine()) != null) sb0.append(l0);
+                JSONArray cands = new JSONObject(sb0.toString()).getJSONArray("candidates");
+                if (cands.length() > 0) {
+                    JSONObject top = cands.getJSONObject(0);
+                    JSONObject loc = top.getJSONObject("location");
+                    double lat = loc.getDouble("y"), lon = loc.getDouble("x");
+                    String nom = top.optString("address", clean);
+                    runOnUiThread(() -> mostrarDestino(new GeoPoint(lat, lon), nom));
+                    return;
+                }
+            } catch (Throwable ignored) {}
+            // Motor 2: Photon con User-Agent Mozilla
             try {
                 GeoPoint ref = (locOverlay != null && locOverlay.getMyLocation() != null) ? locOverlay.getMyLocation() : (GeoPoint) map.getMapCenter();
                 String u1 = "https://komoot.io" + ref.getLatitude() + "&lon=" + ref.getLongitude() + "&q=" + URLEncoder.encode(clean, "UTF-8");
                 HttpURLConnection c1 = (HttpURLConnection) new URL(u1).openConnection();
-                c1.setConnectTimeout(5000); c1.setReadTimeout(5000);
+                c1.setRequestProperty("User-Agent", "Mozilla/5.0");
+                c1.setConnectTimeout(6000);
                 BufferedReader br1 = new BufferedReader(new InputStreamReader(c1.getInputStream()));
                 StringBuilder sb1 = new StringBuilder(); String l1;
                 while ((l1 = br1.readLine()) != null) sb1.append(l1);
@@ -221,31 +241,12 @@ public class MainActivity extends Activity implements LocationListener {
                     JSONObject f0 = feats.getJSONObject(0);
                     JSONArray coords = f0.getJSONObject("geometry").getJSONArray("coordinates");
                     double lon = coords.getDouble(0), lat = coords.getDouble(1);
-                    JSONObject props = f0.getJSONObject("properties");
-                    String nom = props.optString("name", clean) + ", " + props.optString("city", props.optString("state", "España"));
-                    runOnUiThread(() -> {
-                        for (Marker mk : marcadoresPoi) map.getOverlays().remove(mk);
-                        marcadoresPoi.clear();
-                        for (int k = 1; k < feats.length(); k++) {
-                            try {
-                                JSONObject fk = feats.getJSONObject(k);
-                                JSONArray ck = fk.getJSONObject("geometry").getJSONArray("coordinates");
-                                Marker mp = new Marker(map); mp.setPosition(new GeoPoint(ck.getDouble(1), ck.getDouble(0)));
-                                mp.setTitle(fk.getJSONObject("properties").optString("name", clean));
-                                map.getOverlays().add(mp); marcadoresPoi.add(mp);
-                            } catch (Throwable ignored) {}
-                        }
-                        mostrarDestino(new GeoPoint(lat, lon), nom);
-                    });
+                    String nom = f0.getJSONObject("properties").optString("name", clean);
+                    runOnUiThread(() -> mostrarDestino(new GeoPoint(lat, lon), nom));
                     return;
                 }
             } catch (Throwable ignored) {}
-            String low = clean.toLowerCase();
-            if (low.contains("luz") && low.contains("malaga")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(36.7014, -4.4452), "Av. de la Luz, Málaga")); return; }
-            if (low.contains("malaga") || low.contains("málaga")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(36.7213, -4.4214), "Málaga Centro")); return; }
-            if (low.contains("madrid")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(40.4168, -3.7038), "Madrid Centro")); return; }
-            if (low.contains("sevilla")) { runOnUiThread(() -> mostrarDestino(new GeoPoint(37.3891, -5.9845), "Sevilla Centro")); return; }
-            runOnUiThread(() -> txtBanner.setText("⚠️ Sin resultados para: " + clean));
+            runOnUiThread(() -> txtBanner.setText("⚠️ Sin conexión o dirección no encontrada: " + clean));
         }).start();
     }
 
