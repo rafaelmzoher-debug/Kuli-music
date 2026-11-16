@@ -60,6 +60,8 @@ public class MainActivity extends Activity implements LocationListener {
         // Mapa claro estilo Google Maps (Carto Voyager)
         map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
+        map.setTilesScaleFactor(2.3f);
+        map.getController().setZoom(16.5);
         map.getController().setZoom(14.5);
         map.getController().setCenter(new GeoPoint(36.7014, -4.4452));
         root.addView(map, new FrameLayout.LayoutParams(-1, -1));
@@ -426,10 +428,29 @@ public class MainActivity extends Activity implements LocationListener {
     private void cargarRadares() {
         radares.clear();
         double[][] baseMalaga = {
-            {36.6852, -4.4690, 100}, {36.7165, -4.4321, 80}, {36.7248, -4.3895, 80},
-            {36.7192, -4.3510, 80},  {36.7155, -4.2810, 100}, {36.7485, -4.0920, 120},
-            {36.6012, -4.5280, 80},  {36.5380, -4.6345, 100}, {36.5101, -4.8824, 80},
-            {36.4250, -5.1450, 100}, {36.8120, -4.4210, 100}, {37.0185, -4.5580, 120}
+            // Malaga Capital y Rondas (MA-20, MA-21, MA-22, Av. Andalucia, Valle-Inclan)
+            {36.6852, -4.4690, 100}, {36.6985, -4.4580, 100}, {36.7165, -4.4321, 80},
+            {36.7235, -4.4480, 80},  {36.7310, -4.4350, 80},  {36.6710, -4.4820, 100},
+            {36.6540, -4.4920, 100}, {36.7090, -4.4210, 50},  {36.7210, -4.4150, 50},
+            // A-7 Costa del Sol Oriental (Limonar, Cerrado Calderon, El Palo, Rincon, Velez, Torrox, Nerja)
+            {36.7248, -4.3895, 80},  {36.7192, -4.3510, 80},  {36.7155, -4.2810, 100},
+            {36.7220, -4.2250, 100}, {36.7485, -4.0920, 120}, {36.7450, -3.9620, 100},
+            {36.7510, -3.8820, 100},
+            // A-7 / AP-7 Costa del Sol Occidental (Torremolinos, Benalmadena, Fuengirola, Mijas, Marbella, San Pedro, Estepona, Manilva)
+            {36.6250, -4.5080, 80},  {36.6012, -4.5280, 80},  {36.5780, -4.5750, 100},
+            {36.5380, -4.6345, 100}, {36.5120, -4.7150, 100}, {36.4980, -4.7850, 80},
+            {36.5101, -4.8824, 80},  {36.4890, -4.9850, 80},  {36.4580, -5.0650, 100},
+            {36.4250, -5.1450, 100}, {36.3650, -5.2250, 100},
+            // A-45 / AP-46 Malaga - Antequera - Cordoba (Tunel Casabermeja, Las Pedrizas, Antequera)
+            {36.7680, -4.4250, 100}, {36.8120, -4.4210, 100}, {36.8850, -4.4480, 100},
+            {36.9650, -4.5120, 120}, {37.0185, -4.5580, 120}, {37.1450, -4.6120, 120},
+            // A-357 / A-355 / A-397 Interior Malaga (Campanillas, Cartama, Coin, Ronda)
+            {36.7280, -4.5250, 100}, {36.7350, -4.6150, 100}, {36.7120, -4.7150, 90},
+            {36.6650, -4.7650, 90},  {36.6120, -4.9250, 80},  {36.7350, -5.1550, 80},
+            // A-92 / SE-30 / GR-30 / A-4 Andalucia
+            {37.0550, -4.7250, 120}, {37.1150, -4.3850, 120}, {37.1850, -3.9250, 120},
+            {37.1773, -3.5986, 90},  {37.3891, -5.9845, 80},  {37.8882, -4.7794, 100},
+            {36.5271, -6.2886, 80},  {36.8340, -2.4637, 80},  {37.7796, -3.7849, 90}
         };
         for (double[] r : baseMalaga) radares.add(r);
         try {
@@ -453,7 +474,7 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void descargarTodosRadaresEspana() {
-        txtBanner.setText("🔄 Descargando radares reales de Málaga y Andalucía...");
+        cargarRadares(); pintarRadaresEnMapa(); map.invalidate(); txtBanner.setText("✅ " + radares.size() + " radares de Málaga y Andalucía activos");
         new Thread(() -> {
             String[] urls = {
                 "https://kumi.systems",
