@@ -426,7 +426,18 @@ public class MainActivity extends Activity {
         subir.setOnClickListener(v -> elegirCancionesParaSubir());
         movil.setOnClickListener(v -> abrirCanciones());
         misCanciones.setOnClickListener(v -> abrirBibliotecaKuliDirecta());
-        Button btnDj = pastilla("🚗 Modo Coche DJ", 0xFF1B5E20); btnDj.setOnClickListener(v -> abrirModoCocheDj());
+        final Button btnDj = pastilla("🎧 Modo DJ · 3x3", 0xFF0F172A);
+        btnDj.setTextColor(0xFFF5D061);
+        btnDjRef = btnDj;
+        btnDj.setOnClickListener(v -> abrirModoCocheDj());
+        btnDj.setOnLongClickListener(v -> {
+            if (modoDjActivo && colaDj.size() > 3) {
+                indiceDj = ((indiceDj / 3) + 1) * 3 % colaDj.size();
+                reproducirConFundidoDj(colaDj.get(indiceDj));
+                aviso("🎧 Saltando al siguiente estilo");
+            }
+            return true;
+        });
         Button btnBus = pastilla("🔍 Buscar", 0xFF0D47A1); btnBus.setOnClickListener(v -> abrirBuscadorGlobal());
         try { ViewGroup vg = (ViewGroup) misCanciones.getParent(); int ix = vg.indexOfChild(misCanciones); LinearLayout filaExtra = new LinearLayout(this); filaExtra.setOrientation(LinearLayout.HORIZONTAL); filaExtra.setGravity(android.view.Gravity.CENTER); LinearLayout.LayoutParams lpHalf = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); lpHalf.setMargins(8, 8, 8, 8); filaExtra.addView(btnDj, lpHalf); filaExtra.addView(btnBus, lpHalf); pantalla.addView(filaExtra, pantalla.indexOfChild(nas.getParent() instanceof View ? (View) nas.getParent() : nas) + 1); } catch (Exception ignored) {}
 
@@ -2926,6 +2937,8 @@ public class MainActivity extends Activity {
 
     private String tituloActualNotif = "Kuli Music";
     private boolean modoDjActivo = false;
+    private Button btnDjRef = null;
+    private boolean modoDjBloques3 = false;
     private java.util.List<java.io.File> colaDj = new java.util.ArrayList<>();
     private int indiceDj = 0;
 
@@ -2951,25 +2964,66 @@ public class MainActivity extends Activity {
         java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
         java.util.ArrayList<java.io.File> todas = new java.util.ArrayList<>();
         recolectarMp3Directo(base, todas);
+        java.io.File flowDir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Flow");
+        if (flowDir.exists()) recolectarMp3Directo(flowDir, todas);
         if (todas.isEmpty()) { aviso("No hay canciones en Music/KULI MUSIC"); return; }
-        String[] modos = {"🔥 Mezcla Total Aleatoria (" + todas.size() + " temas)", "💃 Sesión Flamenkito", "🆕 Sesión Novedades 2026", "🌴 Sesión Latino / Dance"};
-        new AlertDialog.Builder(this).setTitle("🚗 Modo Coche · Sesión DJ").setItems(modos, (d, which) -> {
+        String[] modos = {
+            "✨ DJ Elegante · 3 canciones por estilo (" + todas.size() + " temas)",
+            "🔀 Mezcla Total Aleatoria",
+            "💃 Solo Sesión Flamenkito",
+            "🆕 Solo Sesión Novedades 2026",
+            "🌴 Solo Sesión Latino / Dance"
+        };
+        new AlertDialog.Builder(this).setTitle("🎧 Modo DJ · Selección de Sesión").setItems(modos, (d, which) -> {
             java.util.ArrayList<java.io.File> sel = new java.util.ArrayList<>();
-            for (java.io.File f : todas) {
-                String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
-                if (which == 0) sel.add(f);
-                else if (which == 1 && "Flamenkito".equals(st)) sel.add(f);
-                else if (which == 2 && "Novedades 2026".equals(st)) sel.add(f);
-                else if (which == 3 && ("Latino".equals(st) || "Dance".equals(st))) sel.add(f);
+            modoDjBloques3 = (which == 0);
+            if (which == 0) {
+                java.util.LinkedHashMap<String, java.util.ArrayList<java.io.File>> grupos = new java.util.LinkedHashMap<>();
+                for (java.io.File f : todas) {
+                    String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+                    if (st == null || st.trim().isEmpty()) st = "Variados";
+                    grupos.computeIfAbsent(st, k -> new java.util.ArrayList<>()).add(f);
+                }
+                java.util.ArrayList<String> estilos = new java.util.ArrayList<>(grupos.keySet());
+                java.util.Collections.shuffle(estilos);
+                for (String est : estilos) java.util.Collections.shuffle(grupos.get(est));
+                boolean quedan = true;
+                while (quedan) {
+                    quedan = false;
+                    for (String est : estilos) {
+                        java.util.ArrayList<java.io.File> listaEst = grupos.get(est);
+                        for (int k = 0; k < 3 && !listaEst.isEmpty(); k++) {
+                            sel.add(listaEst.remove(0));
+                            quedan = true;
+                        }
+                    }
+                }
+            } else {
+                for (java.io.File f : todas) {
+                    String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+                    if (which == 1) sel.add(f);
+                    else if (which == 2 && "Flamenkito".equals(st)) sel.add(f);
+                    else if (which == 3 && "Novedades 2026".equals(st)) sel.add(f);
+                    else if (which == 4 && ("Latino".equals(st) || "Dance".equals(st))) sel.add(f);
+                }
+                if (sel.isEmpty()) sel.addAll(todas);
+                java.util.Collections.shuffle(sel);
             }
-            if (sel.isEmpty()) sel.addAll(todas);
-            java.util.Collections.shuffle(sel); colaDj = sel; indiceDj = 0; modoDjActivo = true;
-            aviso("🚗 Sesión DJ iniciada (" + colaDj.size() + " temas)");
+            colaDj = sel;
+            indiceDj = 0;
+            modoDjActivo = true;
+            aviso(modoDjBloques3 ? "🎧 DJ Elegante: 3 temas por estilo iniciado" : "🎧 Sesión DJ iniciada (" + colaDj.size() + " temas)");
             reproducirConFundidoDj(colaDj.get(0));
         }).setNegativeButton("Cancelar", null).show();
     }
+
     private void reproducirConFundidoDj(java.io.File f) {
-        tituloActualNotif = f.getName().replace(".mp3", "");
+        tituloActualNotif = f.getName().replace(".mp3", "").replace(".m4a", "");
+        if (btnDjRef != null && modoDjActivo) {
+            String estNow = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+            int numBloque = (indiceDj % 3) + 1;
+            btnDjRef.setText(modoDjBloques3 ? ("🎧 " + estNow + " (" + numBloque + "/3)") : ("🎧 DJ · " + estNow));
+        }
         reproducir(Uri.fromFile(f));
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (reproductor != null) {
