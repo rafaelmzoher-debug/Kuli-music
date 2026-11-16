@@ -365,7 +365,7 @@ public class MainActivity extends Activity implements LocationListener {
             txtBanner.setTextColor(Color.WHITE);
             txtBanner.getBackground().setTint(Color.rgb(12, 42, 88));
             txtBanner.setPadding(dp(14), dp(12), dp(14), dp(12));
-            if (lineaRuta != null) lineaRuta.getOutlinePaint().setStrokeWidth(18f);
+            if (lineaRuta != null) lineaRuta.getOutlinePaint().setStrokeWidth(18f); else if (marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
             if (locOverlay != null) {
                 locOverlay.enableFollowLocation();
                 if (locOverlay.getMyLocation() != null) map.getController().animateTo(locOverlay.getMyLocation());
