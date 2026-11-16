@@ -1182,6 +1182,7 @@ public class MainActivity extends Activity {
         return filas;
     }
 
+    private String ordenDestinoDirecto = null;
     private void mostrarExistencias() {
         enAlmacen = true;
         ordenAbierta = null;
@@ -1265,6 +1266,13 @@ public class MainActivity extends Activity {
             if (dirs != null) {
                 java.util.Arrays.sort(dirs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
                 for (File d : dirs) if (!d.getName().startsWith(".")) nOrds.add(d.getName());
+            }
+            if (ordenDestinoDirecto != null) {
+                String ordSel = ordenDestinoDirecto;
+                ordenDestinoDirecto = null;
+                gastarCodigo(ordSel, codEq, serEq.isEmpty() ? null : serEq, false);
+                Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, Toast.LENGTH_SHORT).show();
+                return;
             }
             if (nOrds.isEmpty()) {
                 Toast.makeText(MainActivity.this, "No hay órdenes abiertas", Toast.LENGTH_SHORT).show();
