@@ -104,6 +104,9 @@ public class MainActivity extends Activity implements LocationListener {
         chips.addView(chip("⛽ Gasolineras", "gasolinera"));
         chips.addView(chip("🍴 Restaurantes", "restaurante"));
         chips.addView(chip("🛒 Supermercados", "supermercado"));
+        Button chSyncRad = chip("🔄 Radares ES", "");
+        chSyncRad.setOnClickListener(v -> descargarTodosRadaresEspana());
+        chips.addView(chSyncRad);
         Button chRad = chip("🚨 + Radar", "");
         chRad.setOnClickListener(v -> anadirRadarAqui());
         chips.addView(chRad);
@@ -370,44 +373,99 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void cargarRadares() {
-        double[][] base = {
-            // Malaga y Costa del Sol (MA-20, A-7, A-45, AP-7)
-            {36.6852, -4.4690, 100}, // MA-20 Aeropuerto / Guadalhorce
-            {36.7165, -4.4321, 80},  // Av. Andalucia / Centro
-            {36.7248, -4.3895, 80},  // A-7 Cerrado de Calderon
-            {36.7192, -4.3510, 80},  // A-7 El Palo / Candado
-            {36.7155, -4.2810, 100}, // A-7 Rincon de la Victoria
-            {36.7485, -4.0920, 120}, // A-7 Velez-Malaga
-            {36.6012, -4.5280, 80},  // A-7 Benalmadena / Torremolinos
-            {36.5380, -4.6345, 100}, // A-7 Fuengirola / Mijas
-            {36.5101, -4.8824, 80},  // A-7 Marbella Arco
-            {36.4250, -5.1450, 100}, // A-7 Estepona
-            {36.8120, -4.4210, 100}, // A-45 Casabermeja / Las Pedrizas
-            {37.0185, -4.5580, 120}, // A-45 Antequera
-            // Principales autovias de Andalucia (Sevilla, Granada, Cordoba, Cadiz)
-            {37.3891, -5.9845, 80},  // SE-30 Sevilla
-            {37.1773, -3.5986, 90},  // GR-30 Granada
-            {37.8882, -4.7794, 100}, // A-4 Cordoba
-            {36.5271, -6.2886, 80}   // CA-33 Cadiz
+        radares.clear();
+        double[][] baseMalaga = {
+            {36.6852, -4.4690, 100}, {36.7165, -4.4321, 80}, {36.7248, -4.3895, 80},
+            {36.7192, -4.3510, 80},  {36.7155, -4.2810, 100}, {36.7485, -4.0920, 120},
+            {36.6012, -4.5280, 80},  {36.5380, -4.6345, 100}, {36.5101, -4.8824, 80},
+            {36.4250, -5.1450, 100}, {36.8120, -4.4210, 100}, {37.0185, -4.5580, 120}
         };
-        for (double[] r : base) radares.add(r);
+        for (double[] r : baseMalaga) radares.add(r);
+        try {
+            File f = new File(getFilesDir(), "radares_espana.csv");
+            if (f.exists()) {
+                BufferedReader br = new BufferedReader(new FileReader(f));
+                String ln;
+                while ((ln = br.readLine()) != null) {
+                    String[] parts = ln.split(",");
+                    if (parts.length >= 3) {
+                        radares.add(new double[]{Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2])});
+                    }
+                }
+                br.close();
+            }
+        } catch (Throwable ignored) {}
         for (String item : getSharedPreferences("kuli_radares", MODE_PRIVATE).getString("lista", "").split(";")) {
-            String[] p = item.split(",");
-            if (p.length == 3) radares.add(new double[]{Double.parseDouble(p[0]), Double.parseDouble(p[1]), Double.parseDouble(p[2])});
+            String[] pts = item.split(",");
+            if (pts.length == 3) radares.add(new double[]{Double.parseDouble(pts[0]), Double.parseDouble(pts[1]), Double.parseDouble(pts[2])});
         }
     }
 
+    private void descargarTodosRadaresEspana() {
+        txtBanner.setText("🔄 Descargando todos los radares de España y Málaga...");
+        new Thread(() -> {
+            try {
+                // Consulta Overpass OpenStreetMap de todos los radares (speed_camera) en Espana
+                String q = "[out:json][timeout:25];area[\"ISO3166-1\"=\"ES\"]->.a;node[\"highway\"=\"speed_camera\"](area.a);out body;";
+                HttpURLConnection c = (HttpURLConnection) new URL("https://overpass-api.de").openConnection();
+                c.setRequestMethod("POST");
+                c.setDoOutput(true);
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(25000);
+                c.getOutputStream().write(("data=" + URLEncoder.encode(q, "UTF-8")).getBytes("UTF-8"));
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String ln;
+                while ((ln = br.readLine()) != null) sb.append(ln);
+                JSONArray elems = new JSONObject(sb.toString()).getJSONArray("elements");
+                File out = new File(getFilesDir(), "radares_espana.csv");
+                FileWriter fw = new FileWriter(out);
+                int count = 0;
+                for (int i = 0; i < elems.length(); i++) {
+                    JSONObject el = elems.getJSONObject(i);
+                    double lat = el.getDouble("lat"), lon = el.getDouble("lon");
+                    int lim = 90;
+                    if (el.has("tags")) {
+                        String ms = el.getJSONObject("tags").optString("maxspeed", "90").replaceAll("[^0-9]", "");
+                        if (!ms.isEmpty()) lim = Integer.parseInt(ms);
+                    }
+                    fw.write(lat + "," + lon + "," + lim + "\n");
+                    count++;
+                }
+                fw.close();
+                final int total = count;
+                runOnUiThread(() -> {
+                    cargarRadares();
+                    pintarRadaresEnMapa();
+                    map.invalidate();
+                    txtBanner.setText("✅ " + total + " radares de España y Málaga guardados offline");
+                    Toast.makeText(this, "🚨 " + total + " radares descargados para usar sin internet", Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> txtBanner.setText("⚠️ Error al descargar radares (revisa conexión)"));
+            }
+        }).start();
+    }
+
     private void pintarRadaresEnMapa() {
+        GeoPoint centro = (GeoPoint) map.getMapCenter();
+        int pintados = 0;
         for (double[] r : radares) {
-            Marker m = new Marker(map); m.setPosition(new GeoPoint(r[0], r[1]));
-            m.setTitle("🚨 RADAR (" + (int)r[2] + " km/h)"); m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+            GeoPoint gp = new GeoPoint(r[0], r[1]);
+            if (centro.distanceToAsDouble(gp) > 85000 && pintados > 120) continue;
+            Marker m = new Marker(map);
+            m.setPosition(gp);
+            m.setTitle("🚨 RADAR (" + (int)r[2] + " km/h)");
+            m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
             Bitmap bmp = Bitmap.createBitmap(44, 44, Bitmap.Config.ARGB_8888);
             Canvas cv = new Canvas(bmp); Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
             pt.setColor(Color.WHITE); cv.drawCircle(22, 22, 20, pt);
             pt.setColor(Color.rgb(225, 35, 45)); pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(5); cv.drawCircle(22, 22, 18, pt);
             pt.setStyle(Paint.Style.FILL); pt.setColor(Color.BLACK); pt.setTextSize(14); pt.setFakeBoldText(true); pt.setTextAlign(Paint.Align.CENTER);
             cv.drawText(String.valueOf((int)r[2]), 22, 27, pt);
-            m.setIcon(new BitmapDrawable(getResources(), bmp)); map.getOverlays().add(m);
+            m.setIcon(new BitmapDrawable(getResources(), bmp));
+            map.getOverlays().add(m);
+            pintados++;
+            if (pintados >= 350) break;
         }
     }
 
