@@ -41,7 +41,7 @@ final class Almacen {
         try {
             File ext = new File("/sdcard/Almacen de Rafa/almacen.json");
             if (ext.exists() && (!archivo.exists() || ext.lastModified() > archivo.lastModified())) {
-                try (InputStream in = new FileInputStream(ext); OutputStream out = new FileOutputStream(archivo)) {
+                try (InputStream in = new FileInputStream(ext); java.io.OutputStream out = new java.io.FileOutputStream(archivo)) {
                     byte[] buf = new byte[4096]; int n;
                     while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                 }

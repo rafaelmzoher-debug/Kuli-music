@@ -1260,7 +1260,7 @@ public class MainActivity extends Activity {
         lista.setOnItemClickListener((av, view, pos, id) -> {
             final String[] f = filas.get(pos);
             final String codEq = f[0], nomEq = f[1], serEq = f[2];
-            File dirOrd = new File(rutaBase);
+            File dirOrd = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa");
             File[] dirs = dirOrd.listFiles(File::isDirectory);
             final java.util.ArrayList<String> nOrds = new java.util.ArrayList<>();
             if (dirs != null) {
@@ -1271,11 +1271,11 @@ public class MainActivity extends Activity {
                 String ordSel = ordenDestinoDirecto;
                 ordenDestinoDirecto = null;
                 gastarCodigo(ordSel, codEq, serEq.isEmpty() ? null : serEq, false);
-                Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, android.widget.Toast.LENGTH_SHORT).show();
                 return;
             }
             if (nOrds.isEmpty()) {
-                Toast.makeText(MainActivity.this, "No hay órdenes abiertas", Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(MainActivity.this, "No hay órdenes abiertas", android.widget.Toast.LENGTH_SHORT).show();
                 return;
             }
             new AlertDialog.Builder(MainActivity.this)
@@ -1283,7 +1283,7 @@ public class MainActivity extends Activity {
                 .setItems(nOrds.toArray(new String[0]), (dlg, idx) -> {
                     String ordSel = nOrds.get(idx);
                     gastarCodigo(ordSel, codEq, serEq.isEmpty() ? null : serEq, false);
-                    Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, Toast.LENGTH_SHORT).show();
+                    android.widget.Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, android.widget.Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -2414,7 +2414,7 @@ public class MainActivity extends Activity {
 
     private void anotarMaterial(String orden, String codigo, String nombre) { anotarMaterial(orden, codigo, nombre, null); }
 
-    private void avisoLargo(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
+    private void avisoLargo(String s) { android.widget.Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
 
     private void anotarMaterial(String orden, String codigo, String nombre, String codMaterial) {
         File dir = new File(raiz, limpiar(orden));
@@ -2712,7 +2712,7 @@ public class MainActivity extends Activity {
 
     private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
     private void aviso(String s) {
-        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+        android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show();
         if (s.startsWith("Esa ") || s.startsWith("Ese ") || s.startsWith("No ") || s.startsWith("Escanea")) pitar(false);
         else if (s.startsWith("➕") || s.startsWith("✓") || s.startsWith("↩") || s.startsWith("↶")) pitar(true);
     }
