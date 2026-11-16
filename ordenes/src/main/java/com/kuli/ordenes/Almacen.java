@@ -38,6 +38,15 @@ final class Almacen {
     }
 
     synchronized void cargar() {
+        try {
+            File ext = new File("/sdcard/Almacen de Rafa/almacen.json");
+            if (ext.exists() && (!archivo.exists() || ext.lastModified() > archivo.lastModified())) {
+                try (InputStream in = new FileInputStream(ext); OutputStream out = new FileOutputStream(archivo)) {
+                    byte[] buf = new byte[4096]; int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+            }
+        } catch (Throwable ignored) {}
         items.clear();
         try {
             if (!archivo.exists()) { restaurarUltimaSiHay(); return; }

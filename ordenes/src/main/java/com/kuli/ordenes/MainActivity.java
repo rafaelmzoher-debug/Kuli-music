@@ -1256,6 +1256,30 @@ public class MainActivity extends Activity {
         ListView lista = new ListView(this);
         lista.setDivider(null);
         lista.setAdapter(adaptador);
+        lista.setOnItemClickListener((av, view, pos, id) -> {
+            final String[] f = filas.get(pos);
+            final String codEq = f[0], nomEq = f[1], serEq = f[2];
+            File dirOrd = new File(rutaBase);
+            File[] dirs = dirOrd.listFiles(File::isDirectory);
+            final java.util.ArrayList<String> nOrds = new java.util.ArrayList<>();
+            if (dirs != null) {
+                java.util.Arrays.sort(dirs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+                for (File d : dirs) if (!d.getName().startsWith(".")) nOrds.add(d.getName());
+            }
+            if (nOrds.isEmpty()) {
+                Toast.makeText(MainActivity.this, "No hay órdenes abiertas", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            new AlertDialog.Builder(MainActivity.this)
+                .setTitle("➕ Asignar " + nomEq + (serEq.isEmpty() ? "" : " (" + serEq + ")"))
+                .setItems(nOrds.toArray(new String[0]), (dlg, idx) -> {
+                    String ordSel = nOrds.get(idx);
+                    gastarCodigo(ordSel, codEq, serEq.isEmpty() ? null : serEq, false);
+                    Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+        });
         p.addView(lista, new LinearLayout.LayoutParams(-1, 0, 1f));
         buscar.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
