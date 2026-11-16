@@ -287,7 +287,7 @@ public class MainActivity extends Activity implements LocationListener {
         if (raw.isEmpty()) { Toast.makeText(this, "Aún no tienes sitios guardados", Toast.LENGTH_SHORT).show(); return; }
         String[] items = raw.split(";");
         new AlertDialog.Builder(this).setTitle("🔖 Sitios recientes y guardados").setItems(items, (d, i) -> {
-            String[] p = items[i].split("\|");
+            String[] p = items[i].split("\\|");
             if (p.length == 2) { String[] ll = p[1].split(","); mostrarDestino(new GeoPoint(Double.parseDouble(ll[0]), Double.parseDouble(ll[1])), p[0]); }
         }).show();
     }
