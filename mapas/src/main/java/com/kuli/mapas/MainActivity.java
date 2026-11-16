@@ -240,6 +240,7 @@ public class MainActivity extends Activity implements LocationListener {
         Button tabBruj = tabBtn("🧭\nKuli");
         tabBruj.setOnClickListener(v -> {
             map.setMapOrientation(0f);
+            if (topWrapRef != null) { barra.setVisibility(View.VISIBLE); hsv.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
             centrarGps();
         });
         Button tabBus = tabBtn("🔍\nBuscar");
@@ -369,54 +370,90 @@ public class MainActivity extends Activity implements LocationListener {
     private void mostrarDestino(GeoPoint dest, String nombre) {
         if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
         if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
-        marcadorDestino = new Marker(map); marcadorDestino.setPosition(dest); marcadorDestino.setTitle(nombre); map.getOverlays().add(marcadorDestino);
-        map.getController().animateTo(dest); map.getController().setZoom(modoCoche ? 15.5 : 17.0);
+        marcadorDestino = new Marker(map);
+        marcadorDestino.setPosition(dest);
+        marcadorDestino.setTitle(nombre);
+        map.getOverlays().add(marcadorDestino);
+
+        GeoPoint ini = (locOverlay != null && locOverlay.getMyLocation() != null) ? locOverlay.getMyLocation() : (GeoPoint) map.getMapCenter();
+        // Pintar linea azul inmediata de respaldo mientras llega la ruta exacta por calles
+        lineaRuta = new Polyline();
+        lineaRuta.addPoint(ini);
+        lineaRuta.addPoint(dest);
+        lineaRuta.getOutlinePaint().setColor(Color.rgb(26, 115, 232));
+        lineaRuta.getOutlinePaint().setStrokeWidth(16f);
+        map.getOverlays().add(0, lineaRuta);
+        map.invalidate();
+
+        map.getController().animateTo(dest);
+        map.getController().setZoom(16.5);
         txtBanner.setText("📍 " + nombre);
+        if (topWrapRef != null) topWrapRef.setVisibility(View.GONE);
+        if (btnIniciarRuta != null) { btnIniciarRuta.setVisibility(View.VISIBLE); btnIniciarRuta.bringToFront(); }
+
         String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
         if (!prev.contains(nombre)) getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nombre + "|" + dest.getLatitude() + "," + dest.getLongitude() + ";" + prev).apply();
         if (tts != null) tts.speak("Destino fijado", TextToSpeech.QUEUE_FLUSH, null, null);
-        if (topWrapRef != null) topWrapRef.setVisibility(View.GONE);
-        if (btnIniciarRuta != null) { btnIniciarRuta.setVisibility(View.VISIBLE); btnIniciarRuta.bringToFront(); }
-        if (locOverlay != null && locOverlay.getMyLocation() != null) {
-            GeoPoint ini = locOverlay.getMyLocation(); String perfil = modoCoche ? "driving" : "foot";
-            new Thread(() -> {
+
+        new Thread(() -> {
+            String[] bases = modoCoche ? new String[]{
+                "https://openstreetmap.de",
+                "https://project-osrm.org"
+            } : new String[]{
+                "https://openstreetmap.de",
+                "https://project-osrm.org"
+            };
+            for (String baseUrl : bases) {
                 try {
-                    String u = "https://project-osrm.org" + perfil + "/" + ini.getLongitude() + "," + ini.getLatitude() + ";" + dest.getLongitude() + "," + dest.getLatitude() + "?overview=full&geometries=geojson&steps=true";
-                    HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection(); c.setConnectTimeout(5000);
+                    String u = baseUrl + ini.getLongitude() + "," + ini.getLatitude() + ";" + dest.getLongitude() + "," + dest.getLatitude() + "?overview=full&geometries=geojson&steps=true";
+                    HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+                    c.setRequestProperty("User-Agent", "KuliMapas/4.5");
+                    c.setConnectTimeout(6000);
+                    c.setReadTimeout(6000);
                     BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                    StringBuilder sb = new StringBuilder(); String ln; while ((ln = br.readLine()) != null) sb.append(ln);
+                    StringBuilder sb = new StringBuilder(); String ln;
+                    while ((ln = br.readLine()) != null) sb.append(ln);
                     JSONObject r0 = new JSONObject(sb.toString()).getJSONArray("routes").getJSONObject(0);
-                    double km = r0.getDouble("distance") / 1000.0; int min = (int) Math.round(r0.getDouble("duration") / 60.0);
+                    double km = r0.getDouble("distance") / 1000.0;
+                    int min = (int) Math.round(r0.getDouble("duration") / 60.0);
                     JSONArray pts = r0.getJSONObject("geometry").getJSONArray("coordinates");
                     ArrayList<GeoPoint> lista = new ArrayList<>();
-                    for (int i = 0; i < pts.length(); i++) { JSONArray par = pts.getJSONArray(i); lista.add(new GeoPoint(par.getDouble(1), par.getDouble(0))); }
+                    for (int i = 0; i < pts.length(); i++) {
+                        JSONArray par = pts.getJSONArray(i);
+                        lista.add(new GeoPoint(par.getDouble(1), par.getDouble(0)));
+                    }
                     runOnUiThread(() -> {
-                        lineaRuta = new Polyline(); lineaRuta.setPoints(lista);
-                        lineaRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(26, 115, 232) : Color.rgb(15, 157, 88));
-                        lineaRuta.getOutlinePaint().setStrokeWidth(11f); map.getOverlays().add(lineaRuta); map.invalidate();
-                        java.util.Calendar cal = java.util.Calendar.getInstance();
-                        cal.add(java.util.Calendar.MINUTE, min);
-                        String eta = String.format(Locale.US, "%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE));
-                        txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min (Llegas %s) · %s", modoCoche ? "🚗" : "🚶", km, min, eta, nombre));
                         try {
-                        try {
-                        pasosVoz.clear(); pasosPts.clear(); pasoActual = 0;
-                        JSONArray steps = r0.getJSONArray("legs").getJSONObject(0).getJSONArray("steps");
-                        for (int k = 0; k < steps.length(); k++) {
-                            JSONObject st = steps.getJSONObject(k);
-                            String calle = st.optString("name", "");
-                            String tipo = st.getJSONObject("maneuver").optString("modifier", "recto");
-                            JSONArray locSt = st.getJSONObject("maneuver").getJSONArray("location");
-                            pasosPts.add(new GeoPoint(locSt.getDouble(1), locSt.getDouble(0)));
-                            pasosVoz.add("Gire " + tipo.replace("left","a la izquierda").replace("right","a la derecha").replace("straight","recto") + (calle.isEmpty() ? "" : " hacia " + calle));
-                        }
-                        btnIniciarRuta.setVisibility(View.VISIBLE);
-                        } catch (Throwable ignored) {}
+                            if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
+                            lineaRuta = new Polyline();
+                            lineaRuta.setPoints(lista);
+                            lineaRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(26, 115, 232) : Color.rgb(15, 157, 88));
+                            lineaRuta.getOutlinePaint().setStrokeWidth(18f);
+                            map.getOverlays().add(0, lineaRuta);
+                            map.invalidate();
+
+                            java.util.Calendar cal = java.util.Calendar.getInstance();
+                            cal.add(java.util.Calendar.MINUTE, min);
+                            String eta = String.format(Locale.US, "%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE));
+                            txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min (Llegas %s) · %s", modoCoche ? "🚗" : "🚶", km, min, eta, nombre));
+
+                            pasosVoz.clear(); pasosPts.clear(); pasoActual = 0;
+                            JSONArray steps = r0.getJSONArray("legs").getJSONObject(0).getJSONArray("steps");
+                            for (int k = 0; k < steps.length(); k++) {
+                                JSONObject st = steps.getJSONObject(k);
+                                String calle = st.optString("name", "");
+                                String tipo = st.getJSONObject("maneuver").optString("modifier", "recto");
+                                JSONArray locSt = st.getJSONObject("maneuver").getJSONArray("location");
+                                pasosPts.add(new GeoPoint(locSt.getDouble(1), locSt.getDouble(0)));
+                                pasosVoz.add("Gire " + tipo.replace("left","a la izquierda").replace("right","a la derecha").replace("straight","recto") + (calle.isEmpty() ? "" : " hacia " + calle));
+                            }
+                            if (navegando && !pasosVoz.isEmpty()) txtBanner.setText("⬆️ " + pasosVoz.get(0));
                         } catch (Throwable ignored) {}
                     });
+                    return;
                 } catch (Throwable ignored) {}
-            }).start();
-        }
+            }
+        }).start();
     }
 
     private void verGuardados() {
@@ -439,7 +476,7 @@ public class MainActivity extends Activity implements LocationListener {
             txtBanner.setTextColor(Color.WHITE);
             txtBanner.getBackground().setTint(Color.rgb(12, 42, 88));
             txtBanner.setPadding(dp(14), dp(12), dp(14), dp(12));
-            if (lineaRuta != null) lineaRuta.getOutlinePaint().setStrokeWidth(18f); else if (marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
+            if (topWrapRef != null) { topWrapRef.setVisibility(View.VISIBLE); barra.setVisibility(View.GONE); hsv.setVisibility(View.GONE); }
             if (locOverlay != null) {
                 locOverlay.enableFollowLocation();
                 if (locOverlay.getMyLocation() != null) map.getController().animateTo(locOverlay.getMyLocation());
@@ -456,6 +493,7 @@ public class MainActivity extends Activity implements LocationListener {
             txtBanner.setTextColor(Color.rgb(25, 45, 85));
             txtBanner.getBackground().setTint(Color.argb(235, 255, 255, 255));
             map.setMapOrientation(0f);
+            if (topWrapRef != null) { barra.setVisibility(View.VISIBLE); hsv.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
             if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
             if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
             map.invalidate();
