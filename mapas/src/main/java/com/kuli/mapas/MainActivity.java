@@ -31,7 +31,7 @@ public class MainActivity extends Activity implements LocationListener {
     private EditText txtBuscar;
     private TextView txtVel, txtLimite, txtBanner;
     private boolean modoOffline = false, modoCoche = true, modoNoche = false, pantallaDespejada = false;
-    private LinearLayout topWrapRef, navBotRef;
+    private LinearLayout topWrapRef, navBotRef, barraRef; private HorizontalScrollView hsvRef;
     private int limiteActual = 120, ultimoRadarAvisado = -1;
     private TextToSpeech tts;
     private final List<double[]> radares = new ArrayList<>();
@@ -105,7 +105,7 @@ public class MainActivity extends Activity implements LocationListener {
         topWrap.setOrientation(LinearLayout.VERTICAL);
         topWrap.setPadding(dp(12), dp(28), dp(12), dp(6));
 
-        LinearLayout barra = new LinearLayout(this);
+        LinearLayout barra = new LinearLayout(this); barraRef = barra;
         barra.setOrientation(LinearLayout.HORIZONTAL);
         barra.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable gdBus = new GradientDrawable();
@@ -132,7 +132,7 @@ public class MainActivity extends Activity implements LocationListener {
         topWrap.addView(barra);
 
         // Fila de chips rapidos: Gasolineras, Restaurantes, Supermercados, + Radar
-        HorizontalScrollView hsv = new HorizontalScrollView(this);
+        HorizontalScrollView hsv = new HorizontalScrollView(this); hsvRef = hsv;
         hsv.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = new LinearLayout(this);
         chips.setOrientation(LinearLayout.HORIZONTAL);
@@ -240,7 +240,7 @@ public class MainActivity extends Activity implements LocationListener {
         Button tabBruj = tabBtn("🧭\nKuli");
         tabBruj.setOnClickListener(v -> {
             map.setMapOrientation(0f);
-            if (topWrapRef != null) { barra.setVisibility(View.VISIBLE); hsv.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
+            if (topWrapRef != null) { barraRef.setVisibility(View.VISIBLE); hsvRef.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
             centrarGps();
         });
         Button tabBus = tabBtn("🔍\nBuscar");
@@ -476,7 +476,7 @@ public class MainActivity extends Activity implements LocationListener {
             txtBanner.setTextColor(Color.WHITE);
             txtBanner.getBackground().setTint(Color.rgb(12, 42, 88));
             txtBanner.setPadding(dp(14), dp(12), dp(14), dp(12));
-            if (topWrapRef != null) { topWrapRef.setVisibility(View.VISIBLE); barra.setVisibility(View.GONE); hsv.setVisibility(View.GONE); }
+            if (topWrapRef != null) { topWrapRef.setVisibility(View.VISIBLE); barraRef.setVisibility(View.GONE); hsvRef.setVisibility(View.GONE); }
             if (locOverlay != null) {
                 locOverlay.enableFollowLocation();
                 if (locOverlay.getMyLocation() != null) map.getController().animateTo(locOverlay.getMyLocation());
@@ -493,7 +493,7 @@ public class MainActivity extends Activity implements LocationListener {
             txtBanner.setTextColor(Color.rgb(25, 45, 85));
             txtBanner.getBackground().setTint(Color.argb(235, 255, 255, 255));
             map.setMapOrientation(0f);
-            if (topWrapRef != null) { barra.setVisibility(View.VISIBLE); hsv.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
+            if (topWrapRef != null) { barraRef.setVisibility(View.VISIBLE); hsvRef.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
             if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
             if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
             map.invalidate();
