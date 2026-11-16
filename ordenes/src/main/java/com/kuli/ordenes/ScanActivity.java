@@ -220,6 +220,7 @@ public class ScanActivity extends ComponentActivity {
 
     private void entregar(String v) {
         if (terminado) return;
+        if (terminado) return;
         terminado = true;
         try { ((Vibrator) getSystemService(VIBRATOR_SERVICE)).vibrate(60); } catch (Throwable ignorar) { }
         setResult(RESULT_OK, new Intent().putExtra("raw", v));

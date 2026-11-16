@@ -2308,7 +2308,7 @@ public class MainActivity extends Activity {
     private void gastarSeguido(final String orden) {
         escanear(raw -> {
             if (Almacen.esEtiquetaLarga(raw)) {
-                gastarCodigo(orden, Almacen.clave(raw), raw, true);
+                gastarCodigo(orden, Almacen.clave(raw), raw, false);
             } else if (Almacen.esSerie(raw)) {
                 final String serie = raw.trim().toUpperCase(Locale.ROOT);
                 Almacen.Item it = almacen.buscarPorRaw(serie);
@@ -2331,7 +2331,7 @@ public class MainActivity extends Activity {
                             .setPositiveButton("USAR ESTE", (d, w) -> gastarCodigo(orden, itF.codigo, serie, true))
                             .setNegativeButton("ESCANEAR OTRO", (d, w) -> gastarSeguido(orden)).show();
                     } else {
-                        gastarCodigo(orden, it.codigo, serie, true);
+                        gastarCodigo(orden, it.codigo, serie, false);
                     }
                 } else {
                     new AlertDialog.Builder(this).setTitle("No estaba en el almacén")
