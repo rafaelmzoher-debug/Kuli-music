@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.kuli.mapas"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 33
         versionCode = 4
         versionName = "1.3"
     }
