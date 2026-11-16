@@ -30,7 +30,8 @@ public class MainActivity extends Activity implements LocationListener {
     private MyLocationNewOverlay locOverlay;
     private EditText txtBuscar;
     private TextView txtVel, txtLimite, txtBanner;
-    private boolean modoOffline = false, modoCoche = true, modoNoche = false;
+    private boolean modoOffline = false, modoCoche = true, modoNoche = false, pantallaDespejada = false;
+    private LinearLayout topWrapRef, navBotRef;
     private int limiteActual = 120, ultimoRadarAvisado = -1;
     private TextToSpeech tts;
     private final List<double[]> radares = new ArrayList<>();
@@ -64,8 +65,41 @@ public class MainActivity extends Activity implements LocationListener {
         root.addView(map, new FrameLayout.LayoutParams(-1, -1));
         pintarRadaresEnMapa();
 
+        org.osmdroid.views.overlay.MapEventsOverlay evOverlay = new org.osmdroid.views.overlay.MapEventsOverlay(new org.osmdroid.events.MapEventsReceiver() {
+            @Override public boolean singleTapConfirmedHelper(GeoPoint gp) {
+                String coord = String.format(Locale.US, "%.5f, %.5f", gp.getLatitude(), gp.getLongitude());
+                String[] ops = {"🧭 RUTA HACIA aquí", "⭐ GUARDAR en Mis lugares", "📲 COMPARTIR por WhatsApp"};
+                new AlertDialog.Builder(MainActivity.this).setTitle("📍 Punto (" + coord + ")").setItems(ops, (d, idx) -> {
+                    if (idx == 0) {
+                        mostrarDestino(gp, "Punto seleccionado (" + coord + ")");
+                    } else if (idx == 1) {
+                        String nom = "Lugar " + coord;
+                        String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
+                        getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nom + "|" + gp.getLatitude() + "," + gp.getLongitude() + ";" + prev).apply();
+                        Toast.makeText(MainActivity.this, "⭐ Guardado en Mis lugares", Toast.LENGTH_SHORT).show();
+                    } else if (idx == 2) {
+                        Intent wa = new Intent(Intent.ACTION_SEND);
+                        wa.setType("text/plain");
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        startActivity(Intent.createChooser(wa, "Compartir ubicación"));
+                    }
+                }).show();
+                return true;
+            }
+            @Override public boolean longPressHelper(GeoPoint gp) {
+                pantallaDespejada = !pantallaDespejada;
+                int vis = pantallaDespejada ? View.GONE : View.VISIBLE;
+                if (topWrapRef != null) topWrapRef.setVisibility(vis);
+                if (navBotRef != null) navBotRef.setVisibility(vis);
+                Toast.makeText(MainActivity.this, pantallaDespejada ? "👁️ Pantalla despejada (mantén pulsado para volver)" : "👁️ Controles visibles", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        });
+        map.getOverlays().add(0, evOverlay);
+
+
         // Zona superior estilo Google Maps: Capsula blanca "Buscar aqui" + Chips horizontales
-        LinearLayout topWrap = new LinearLayout(this);
+        LinearLayout topWrap = new LinearLayout(this); topWrapRef = topWrap;
         topWrap.setOrientation(LinearLayout.VERTICAL);
         topWrap.setPadding(dp(12), dp(28), dp(12), dp(6));
 
@@ -186,7 +220,7 @@ public class MainActivity extends Activity implements LocationListener {
         root.addView(fabCol, lpFab);
 
         // Barra inferior blanca estilo Google Maps (Explorar, Guardados, Sin Red / Bajar)
-        LinearLayout navBot = new LinearLayout(this);
+        LinearLayout navBot = new LinearLayout(this); navBotRef = navBot;
         navBot.setOrientation(LinearLayout.HORIZONTAL);
         navBot.setBackgroundColor(Color.WHITE);
         navBot.setElevation(dp(10));
@@ -419,47 +453,89 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void descargarTodosRadaresEspana() {
-        txtBanner.setText("🔄 Descargando todos los radares de España y Málaga...");
+        txtBanner.setText("🔄 Descargando radares reales de Málaga y Andalucía...");
         new Thread(() -> {
-            try {
-                // Consulta Overpass OpenStreetMap de todos los radares (speed_camera) en Espana
-                String q = "[out:json][timeout:25];area[\"ISO3166-1\"=\"ES\"]->.a;node[\"highway\"=\"speed_camera\"](area.a);out body;";
-                HttpURLConnection c = (HttpURLConnection) new URL("https://overpass-api.de").openConnection();
-                c.setRequestMethod("POST");
-                c.setDoOutput(true);
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(25000);
-                c.getOutputStream().write(("data=" + URLEncoder.encode(q, "UTF-8")).getBytes("UTF-8"));
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                StringBuilder sb = new StringBuilder(); String ln;
-                while ((ln = br.readLine()) != null) sb.append(ln);
-                JSONArray elems = new JSONObject(sb.toString()).getJSONArray("elements");
-                File out = new File(getFilesDir(), "radares_espana.csv");
-                FileWriter fw = new FileWriter(out);
-                int count = 0;
-                for (int i = 0; i < elems.length(); i++) {
-                    JSONObject el = elems.getJSONObject(i);
-                    double lat = el.getDouble("lat"), lon = el.getDouble("lon");
-                    int lim = 90;
-                    if (el.has("tags")) {
-                        String ms = el.getJSONObject("tags").optString("maxspeed", "90").replaceAll("[^0-9]", "");
-                        if (!ms.isEmpty()) lim = Integer.parseInt(ms);
+            String[] urls = {
+                "https://kumi.systems",
+                "https://overpass-api.de"
+            };
+            // Caja geografica de Andalucia y Malaga (rapida, sin timeout) + principales corredores
+            String q = "[out:json][timeout:20];(node[\"highway\"=\"speed_camera\"](35.95,-7.55,38.75,-1.60);node[\"highway\"=\"speed_camera\"](38.75,-6.50,41.20,-2.50););out body;";
+            for (String api : urls) {
+                try {
+                    HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                    c.setRequestMethod("POST");
+                    c.setRequestProperty("User-Agent", "KuliMapas/4.0");
+                    c.setDoOutput(true);
+                    c.setConnectTimeout(10000);
+                    c.setReadTimeout(20000);
+                    c.getOutputStream().write(("data=" + URLEncoder.encode(q, "UTF-8")).getBytes("UTF-8"));
+                    BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                    StringBuilder sb = new StringBuilder(); String ln;
+                    while ((ln = br.readLine()) != null) sb.append(ln);
+                    JSONArray elems = new JSONObject(sb.toString()).getJSONArray("elements");
+                    if (elems.length() > 0) {
+                        File out = new File(getFilesDir(), "radares_espana.csv");
+                        FileWriter fw = new FileWriter(out);
+                        int count = 0;
+                        for (int i = 0; i < elems.length(); i++) {
+                            JSONObject el = elems.getJSONObject(i);
+                            double lat = el.getDouble("lat"), lon = el.getDouble("lon");
+                            int lim = 90;
+                            if (el.has("tags")) {
+                                String ms = el.getJSONObject("tags").optString("maxspeed", "90").replaceAll("[^0-9]", "");
+                                if (!ms.isEmpty()) lim = Integer.parseInt(ms);
+                            }
+                            fw.write(lat + "," + lon + "," + lim + "\n");
+                            count++;
+                        }
+                        fw.close();
+                        final int total = count;
+                        runOnUiThread(() -> {
+                            cargarRadares();
+                            pintarRadaresEnMapa();
+
+        org.osmdroid.views.overlay.MapEventsOverlay evOverlay = new org.osmdroid.views.overlay.MapEventsOverlay(new org.osmdroid.events.MapEventsReceiver() {
+            @Override public boolean singleTapConfirmedHelper(GeoPoint gp) {
+                String coord = String.format(Locale.US, "%.5f, %.5f", gp.getLatitude(), gp.getLongitude());
+                String[] ops = {"🧭 RUTA HACIA aquí", "⭐ GUARDAR en Mis lugares", "📲 COMPARTIR por WhatsApp"};
+                new AlertDialog.Builder(MainActivity.this).setTitle("📍 Punto (" + coord + ")").setItems(ops, (d, idx) -> {
+                    if (idx == 0) {
+                        mostrarDestino(gp, "Punto seleccionado (" + coord + ")");
+                    } else if (idx == 1) {
+                        String nom = "Lugar " + coord;
+                        String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
+                        getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nom + "|" + gp.getLatitude() + "," + gp.getLongitude() + ";" + prev).apply();
+                        Toast.makeText(MainActivity.this, "⭐ Guardado en Mis lugares", Toast.LENGTH_SHORT).show();
+                    } else if (idx == 2) {
+                        Intent wa = new Intent(Intent.ACTION_SEND);
+                        wa.setType("text/plain");
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        startActivity(Intent.createChooser(wa, "Compartir ubicación"));
                     }
-                    fw.write(lat + "," + lon + "," + lim + "\n");
-                    count++;
-                }
-                fw.close();
-                final int total = count;
-                runOnUiThread(() -> {
-                    cargarRadares();
-                    pintarRadaresEnMapa();
-                    map.invalidate();
-                    txtBanner.setText("✅ " + total + " radares de España y Málaga guardados offline");
-                    Toast.makeText(this, "🚨 " + total + " radares descargados para usar sin internet", Toast.LENGTH_LONG).show();
-                });
-            } catch (Throwable e) {
-                runOnUiThread(() -> txtBanner.setText("⚠️ Error al descargar radares (revisa conexión)"));
+                }).show();
+                return true;
             }
+            @Override public boolean longPressHelper(GeoPoint gp) {
+                pantallaDespejada = !pantallaDespejada;
+                int vis = pantallaDespejada ? View.GONE : View.VISIBLE;
+                if (topWrapRef != null) topWrapRef.setVisibility(vis);
+                if (navBotRef != null) navBotRef.setVisibility(vis);
+                Toast.makeText(MainActivity.this, pantallaDespejada ? "👁️ Pantalla despejada (mantén pulsado para volver)" : "👁️ Controles visibles", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        });
+        map.getOverlays().add(0, evOverlay);
+
+                            map.invalidate();
+                            txtBanner.setText("✅ " + total + " radares de Andalucía y España guardados offline");
+                            Toast.makeText(this, "🚨 " + total + " radares listos sin internet", Toast.LENGTH_LONG).show();
+                        });
+                        return;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            runOnUiThread(() -> txtBanner.setText("⚠️ Servidor ocupado, usando radares locales de Málaga"));
         }).start();
     }
 
@@ -493,7 +569,40 @@ public class MainActivity extends Activity implements LocationListener {
             int lim = lims[idx]; radares.add(new double[]{p.getLatitude(), p.getLongitude(), lim});
             String prev = getSharedPreferences("kuli_radares", MODE_PRIVATE).getString("lista", "");
             getSharedPreferences("kuli_radares", MODE_PRIVATE).edit().putString("lista", prev + p.getLatitude() + "," + p.getLongitude() + "," + lim + ";").apply();
-            pintarRadaresEnMapa(); map.invalidate();
+            pintarRadaresEnMapa();
+
+        org.osmdroid.views.overlay.MapEventsOverlay evOverlay = new org.osmdroid.views.overlay.MapEventsOverlay(new org.osmdroid.events.MapEventsReceiver() {
+            @Override public boolean singleTapConfirmedHelper(GeoPoint gp) {
+                String coord = String.format(Locale.US, "%.5f, %.5f", gp.getLatitude(), gp.getLongitude());
+                String[] ops = {"🧭 RUTA HACIA aquí", "⭐ GUARDAR en Mis lugares", "📲 COMPARTIR por WhatsApp"};
+                new AlertDialog.Builder(MainActivity.this).setTitle("📍 Punto (" + coord + ")").setItems(ops, (d, idx) -> {
+                    if (idx == 0) {
+                        mostrarDestino(gp, "Punto seleccionado (" + coord + ")");
+                    } else if (idx == 1) {
+                        String nom = "Lugar " + coord;
+                        String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
+                        getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nom + "|" + gp.getLatitude() + "," + gp.getLongitude() + ";" + prev).apply();
+                        Toast.makeText(MainActivity.this, "⭐ Guardado en Mis lugares", Toast.LENGTH_SHORT).show();
+                    } else if (idx == 2) {
+                        Intent wa = new Intent(Intent.ACTION_SEND);
+                        wa.setType("text/plain");
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        startActivity(Intent.createChooser(wa, "Compartir ubicación"));
+                    }
+                }).show();
+                return true;
+            }
+            @Override public boolean longPressHelper(GeoPoint gp) {
+                pantallaDespejada = !pantallaDespejada;
+                int vis = pantallaDespejada ? View.GONE : View.VISIBLE;
+                if (topWrapRef != null) topWrapRef.setVisibility(vis);
+                if (navBotRef != null) navBotRef.setVisibility(vis);
+                Toast.makeText(MainActivity.this, pantallaDespejada ? "👁️ Pantalla despejada (mantén pulsado para volver)" : "👁️ Controles visibles", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        });
+        map.getOverlays().add(0, evOverlay);
+ map.invalidate();
         }).show();
     }
 
