@@ -258,6 +258,22 @@ public class MainActivity extends Activity implements LocationListener {
         navBot.addView(tabMen, new LinearLayout.LayoutParams(0, -2, 1f));
         root.addView(navBot, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
+        btnIniciarRuta = new Button(this);
+        btnIniciarRuta.setText("▶️ INICIAR RUTA");
+        btnIniciarRuta.setTextColor(Color.WHITE);
+        btnIniciarRuta.setTextSize(16);
+        btnIniciarRuta.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable gdIni = new GradientDrawable();
+        gdIni.setColor(Color.rgb(26, 115, 232));
+        gdIni.setCornerRadius(dp(26));
+        btnIniciarRuta.setBackground(gdIni);
+        btnIniciarRuta.setElevation(dp(12));
+        btnIniciarRuta.setVisibility(View.GONE);
+        btnIniciarRuta.setOnClickListener(v -> alternarNavegacion());
+        FrameLayout.LayoutParams lpIni = new FrameLayout.LayoutParams(dp(190), dp(50), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lpIni.setMargins(0, 0, 0, dp(82));
+        root.addView(btnIniciarRuta, lpIni);
+
         setContentView(root);
         iniciarGps();
     }
@@ -359,7 +375,8 @@ public class MainActivity extends Activity implements LocationListener {
         String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
         if (!prev.contains(nombre)) getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nombre + "|" + dest.getLatitude() + "," + dest.getLongitude() + ";" + prev).apply();
         if (tts != null) tts.speak("Destino fijado", TextToSpeech.QUEUE_FLUSH, null, null);
-        if (btnIniciarRuta != null) btnIniciarRuta.setVisibility(View.VISIBLE);
+        if (topWrapRef != null) topWrapRef.setVisibility(View.GONE);
+        if (btnIniciarRuta != null) { btnIniciarRuta.setVisibility(View.VISIBLE); btnIniciarRuta.bringToFront(); }
         if (locOverlay != null && locOverlay.getMyLocation() != null) {
             GeoPoint ini = locOverlay.getMyLocation(); String perfil = modoCoche ? "driving" : "foot";
             new Thread(() -> {
