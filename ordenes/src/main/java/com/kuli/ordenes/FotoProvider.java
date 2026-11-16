@@ -32,7 +32,10 @@ public class FotoProvider extends ContentProvider {
         return ParcelFileDescriptor.open(f, m);
     }
 
-    @Override public String getType(Uri uri) { return "image/jpeg"; }
+    @Override public String getType(Uri uri) {
+        String n = uri.getLastPathSegment();
+        return n != null && n.toLowerCase().endsWith(".zip") ? "application/zip" : "image/jpeg";
+    }
 
     @Override public Cursor query(Uri uri, String[] proj, String sel, String[] args, String orden) {
         File f = archivo(uri);

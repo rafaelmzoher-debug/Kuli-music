@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
 
-    static final class Resumen { String nombre; int fotos; int mat; long ultima; }
+    static final class Resumen { String nombre; int fotos; int mat; long ultima; boolean cerrada; String datos = ""; }
     private String filtro = "";
 
     @Override protected void onCreate(Bundle b) {
@@ -624,7 +624,7 @@ public class MainActivity extends Activity {
         Button res = boton("📍 Resumen de trabajos (WK y direcciones)", false);
         res.setOnClickListener(v -> resumenTrabajos());
         p.addView(res, margen(-1, dp(46), 4));
-        Button bo = boton("🔎  Buscar orden (WK o material)", false);
+        Button bo = boton("🔎  Buscar orden (WK, dirección, material)", false);
         bo.setOnClickListener(v -> buscarOrden());
         p.addView(bo, margen(-1, dp(46), 8));
         Button pl = boton("📋  Plantillas de material", false);
@@ -634,7 +634,10 @@ public class MainActivity extends Activity {
         inf.setOnClickListener(v -> informeMes(0));
         p.addView(inf, margen(-1, dp(46), 4));
         agrupar(p, "📦  Almacén, búsqueda y plantillas", alm, bus, bo, pl);
-        agrupar(p, "📊  Resúmenes e informe", filaC, res, inf);
+        Button ped = boton("🛒  Pedido de material (lo que queda poco)", false);
+        ped.setOnClickListener(v -> pedidoMaterial());
+        p.addView(ped, margen(-1, dp(46), 4));
+        agrupar(p, "📊  Resúmenes e informe", filaC, res, inf, ped);
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -654,11 +657,23 @@ public class MainActivity extends Activity {
         }
         final boolean plegada = prefs.getBoolean("plegada", false);
         final ArrayList<Resumen> ordenes = listarOrdenes();
+        if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 17) {
+            java.util.Calendar c0 = java.util.Calendar.getInstance();
+            c0.set(java.util.Calendar.HOUR_OF_DAY, 0); c0.set(java.util.Calendar.MINUTE, 0);
+            c0.set(java.util.Calendar.SECOND, 0); c0.set(java.util.Calendar.MILLISECOND, 0);
+            int abiertas = 0;
+            for (Resumen r0 : ordenes) if (!r0.cerrada && r0.ultima >= c0.getTimeInMillis()) abiertas++;
+            if (abiertas > 0) {
+                TextView rec = texto("🔔 Tienes " + abiertas + (abiertas == 1 ? " orden de hoy sin cerrar" : " órdenes de hoy sin cerrar"), 13, Color.rgb(255, 190, 90), true);
+                rec.setPadding(dp(4), dp(4), dp(4), dp(4));
+                p.addView(rec);
+            }
+        }
         if (!filtro.isEmpty()) {
             String q = filtro.toLowerCase(Locale.ROOT);
             for (int k = ordenes.size() - 1; k >= 0; k--) {
                 Resumen r = ordenes.get(k);
-                boolean ok2 = r.nombre.toLowerCase(Locale.ROOT).contains(q);
+                boolean ok2 = r.nombre.toLowerCase(Locale.ROOT).contains(q) || r.datos.toLowerCase(Locale.ROOT).contains(q);
                 if (!ok2) for (String l : leerMaterial(r.nombre)) if (l.toLowerCase(Locale.ROOT).contains(q)) { ok2 = true; break; }
                 if (!ok2) ordenes.remove(k);
             }
@@ -695,6 +710,8 @@ public class MainActivity extends Activity {
                     tv.setPadding(dp(14), dp(12), dp(14), dp(12));
                     tv.setText("Orden " + r.nombre + "\n" + r.fotos + (r.fotos == 1 ? " foto" : " fotos")
                         + "  ·  última: " + formatoCorto(r.ultima)
+                        + (r.datos.isEmpty() ? "" : "\n📍 " + r.datos)
+                        + (r.cerrada ? "\n✔ cerrada" : "")
                         + (r.fotos == 0 ? "\n⚠ sin foto" : "") + (r.mat == 0 ? (r.fotos == 0 ? "  ·  " : "\n") + "⚠ sin material" : ""));
                     AbsListView.LayoutParams lp = new AbsListView.LayoutParams(-1, -2);
                     tv.setLayoutParams(lp);
@@ -791,11 +808,14 @@ public class MainActivity extends Activity {
             if (!d.isDirectory()) continue;
             File[] fs = d.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
             File mat = new File(d, "material.txt");
-            if ((fs == null || fs.length == 0) && !mat.exists()) continue;
+            if ((fs == null || fs.length == 0) && !mat.exists() && !new File(d, "datos.txt").exists()) continue;
             Resumen x = new Resumen();
             x.nombre = d.getName();
             x.fotos = fs == null ? 0 : fs.length;
             x.mat = leerMaterial(d.getName()).size();
+            x.cerrada = new File(d, "cerrada.txt").exists();
+            String[] dt = leerDatos(d.getName());
+            x.datos = (dt[0] + " " + dt[1]).trim();
             if (fs != null) for (File f : fs) x.ultima = Math.max(x.ultima, fechaDeArchivo(f));
             if (mat.exists()) x.ultima = Math.max(x.ultima, mat.lastModified());
             r.add(x);
@@ -859,6 +879,29 @@ public class MainActivity extends Activity {
         ld.leftMargin = dp(10);
         filaB.addView(des, ld);
         p.addView(filaB, margen(-1, -2, 4));
+        LinearLayout filaD = new LinearLayout(this);
+        Button dat = boton("✏ Datos", false);
+        dat.setOnClickListener(v -> editarDatos(nombre));
+        filaD.addView(dat, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        final boolean cerr = new File(new File(raiz, limpiar(nombre)), "cerrada.txt").exists();
+        Button cer = boton(cerr ? "↺ Reabrir" : "✔ Cerrar", false);
+        cer.setOnClickListener(v -> cerrarOrden(nombre, !cerr));
+        LinearLayout.LayoutParams lcer = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lcer.leftMargin = dp(8);
+        filaD.addView(cer, lcer);
+        Button paq = boton("📦 Paquete", false);
+        paq.setOnClickListener(v -> paqueteOrden(nombre));
+        LinearLayout.LayoutParams lpaq = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lpaq.leftMargin = dp(8);
+        filaD.addView(paq, lpaq);
+        p.addView(filaD, margen(-1, -2, 4));
+        String[] dtos = leerDatos(nombre);
+        if (!dtos[0].isEmpty() || !dtos[1].isEmpty() || cerr) {
+            TextView td = texto((cerr ? "✔ Cerrada" + (dtos[0].isEmpty() && dtos[1].isEmpty() ? "" : "\n") : "")
+                + (dtos[0].isEmpty() ? "" : "👤 " + dtos[0]) + (dtos[1].isEmpty() ? "" : (dtos[0].isEmpty() ? "" : "\n") + "📍 " + dtos[1]), 13, GRIS, false);
+            td.setPadding(dp(4), dp(8), dp(4), dp(2));
+            p.addView(td);
+        }
         final ArrayList<String> usado = leerMaterial(nombre);
         if (!usado.isEmpty()) {
             TextView mt = texto("📦 Material usado en esta orden: " + usado.size() + "  (toca para ver)", 13, GRIS, false);
@@ -1467,7 +1510,7 @@ public class MainActivity extends Activity {
         if (dirs != null) {
             Arrays.sort(dirs);
             for (File d : dirs) {
-                if (!d.isDirectory() || d.getName().equals("Albaranes")) continue;
+                if (!d.isDirectory() || d.getName().equals("Albaranes") || new File(d, "cerrada.txt").exists()) continue;
                 int fotos = fotosDe(d.getName()).size();
                 int mat = leerMaterial(d.getName()).size();
                 if (fotos == 0 && mat > 0) sinFoto.append("• ").append(d.getName()).append("\n");
@@ -1482,9 +1525,126 @@ public class MainActivity extends Activity {
             .setPositiveButton("CERRAR", null).show();
     }
 
+    // ---------- Datos de la orden (cliente y dirección) ----------
+    private String[] leerDatos(String orden) {
+        File f = new File(new File(raiz, limpiar(orden)), "datos.txt");
+        String[] r = {"", ""};
+        if (!f.exists()) return r;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            String[] l = new String(leerTodo(in), "UTF-8").split("\n", -1);
+            if (l.length > 0) r[0] = l[0].trim();
+            if (l.length > 1) r[1] = l[1].trim();
+        } catch (Throwable ignorar) { }
+        return r;
+    }
+
+    private void editarDatos(final String orden) {
+        String[] actual = leerDatos(orden);
+        LinearLayout caja = new LinearLayout(this);
+        caja.setOrientation(LinearLayout.VERTICAL);
+        caja.setPadding(dp(16), dp(8), dp(16), 0);
+        final EditText cli = campo("Cliente (opcional)", InputType.TYPE_CLASS_TEXT);
+        cli.setText(actual[0]);
+        final EditText dir = campo("Dirección (calle, nº, localidad)", InputType.TYPE_CLASS_TEXT);
+        dir.setText(actual[1]);
+        caja.addView(cli, margen(-1, -2, 4));
+        caja.addView(dir, margen(-1, -2, 8));
+        new AlertDialog.Builder(this).setTitle("✏ Datos de la orden " + orden).setView(caja)
+            .setPositiveButton("GUARDAR", (d, w) -> {
+                File dirOrden = new File(raiz, limpiar(orden));
+                dirOrden.mkdirs();
+                String txt = cli.getText().toString().replace("\n", " ").trim() + "\n" + dir.getText().toString().replace("\n", " ").trim() + "\n";
+                try (FileOutputStream o = new FileOutputStream(new File(dirOrden, "datos.txt"))) { o.write(txt.getBytes("UTF-8")); }
+                catch (Exception e) { aviso("No se pudo guardar"); return; }
+                aviso("✓ Datos guardados");
+                mostrarOrden(orden);
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    // ---------- Cerrar / reabrir una orden ----------
+    private void cerrarOrden(String orden, boolean cerrar) {
+        File m = new File(new File(raiz, limpiar(orden)), "cerrada.txt");
+        if (cerrar) {
+            try (FileOutputStream o = new FileOutputStream(m)) { o.write(formatoLargo(System.currentTimeMillis()).getBytes("UTF-8")); }
+            catch (Exception e) { aviso("No se pudo cerrar"); return; }
+            aviso("✔ Orden " + orden + " cerrada");
+        } else {
+            m.delete();
+            aviso("Orden " + orden + " reabierta");
+        }
+        mostrarOrden(orden);
+    }
+
+    // ---------- Pedido de material ----------
+    private void pedidoMaterial() {
+        ArrayList<Almacen.Item> bajos = almacen.bajos();
+        if (bajos.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("🛒 Pedido de material")
+                .setMessage("Ahora mismo no hay nada con poco stock.\n\nPara que un material salga aquí, ponle un mínimo en el almacén.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
+        final StringBuilder sb = new StringBuilder("🛒 PEDIDO DE MATERIAL · " + new SimpleDateFormat("dd/MM/yyyy", Locale.ROOT).format(new Date()) + "\n\n");
+        for (Almacen.Item it : bajos) {
+            int pedir = Math.max(it.minimo * 2 - it.cantidad, 1);
+            sb.append("• ").append(it.nombre).append(" (").append(it.codigo).append("): quedan ").append(it.cantidad)
+                .append(" → pedir ").append(pedir).append("\n");
+        }
+        new AlertDialog.Builder(this).setTitle("🛒 Pedido de material").setMessage(sb.toString())
+            .setPositiveButton("ENVIAR", (d, w) -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, sb.toString());
+                startActivity(Intent.createChooser(i, "Enviar pedido de material"));
+            }).setNegativeButton("CERRAR", null).show();
+    }
+
+    // ---------- Paquete de una orden (zip con fotos + material + datos) ----------
+    private void paqueteOrden(final String orden) {
+        aviso("Preparando el paquete…");
+        hilos.execute(() -> {
+            try {
+                File dirT = new File(getCacheDir(), "tmp");
+                dirT.mkdirs();
+                final String nombreZip = "Orden_" + limpiar(orden).replaceAll("[^A-Za-z0-9_-]", "_") + ".zip";
+                File zip = new File(dirT, nombreZip);
+                try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(new FileOutputStream(zip))) {
+                    File dirOrden = new File(raiz, limpiar(orden));
+                    File[] fs = dirOrden.listFiles();
+                    if (fs != null) for (File f : fs) {
+                        String n = f.getName().toLowerCase(Locale.ROOT);
+                        if (!f.isFile() || !(n.endsWith(".jpg") || n.equals("material.txt") || n.equals("datos.txt"))) continue;
+                        z.putNextEntry(new java.util.zip.ZipEntry(f.getName()));
+                        try (InputStream in = new java.io.FileInputStream(f)) {
+                            byte[] b = new byte[65536];
+                            int k;
+                            while ((k = in.read(b)) != -1) z.write(b, 0, k);
+                        }
+                        z.closeEntry();
+                    }
+                    z.putNextEntry(new java.util.zip.ZipEntry("resumen.txt"));
+                    z.write(resumenOrden(orden).getBytes("UTF-8"));
+                    z.closeEntry();
+                }
+                final Uri uri = Uri.parse("content://com.kuli.ordenes.fotos/" + Uri.encode(nombreZip));
+                runOnUiThread(() -> {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("application/zip");
+                    i.putExtra(Intent.EXTRA_STREAM, uri);
+                    i.putExtra(Intent.EXTRA_TEXT, resumenOrden(orden));
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(i, "Enviar paquete de la orden " + orden));
+                });
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Paquete", t);
+                runOnUiThread(() -> aviso("No se pudo preparar el paquete"));
+            }
+        });
+    }
+
     // ---------- Buscar orden ----------
     private void buscarOrden() {
-        final EditText q = campo("WK, nº de orden o material", InputType.TYPE_CLASS_TEXT);
+        final EditText q = campo("WK, orden, dirección, cliente o material", InputType.TYPE_CLASS_TEXT);
         q.setText(filtro);
         AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("🔎 Buscar orden").setView(q)
             .setPositiveButton("BUSCAR", (d, w) -> { filtro = q.getText().toString().trim(); mostrarInicio(); })
@@ -1647,7 +1807,7 @@ public class MainActivity extends Activity {
             if (k == 0) continue;
             nOrd++;
             if (r.fotos == 0) sinFoto++;
-            ords.append("• ").append(r.nombre).append(": ").append(k).append(k == 1 ? " material" : " materiales")
+            ords.append("• ").append(r.nombre).append(r.datos.isEmpty() ? "" : " — " + r.datos).append(r.cerrada ? " ✔" : "").append(": ").append(k).append(k == 1 ? " material" : " materiales")
                 .append(r.fotos == 0 ? " (SIN FOTO)" : " · " + r.fotos + (r.fotos == 1 ? " foto" : " fotos")).append("\n");
         }
         ArrayList<java.util.Map.Entry<String, Integer>> lista = new ArrayList<>(cuenta.entrySet());
@@ -1876,6 +2036,9 @@ public class MainActivity extends Activity {
     // ---------- Resumen de la orden (se envía con las fotos) ----------
     private String resumenOrden(String orden) {
         StringBuilder sb = new StringBuilder("Orden " + orden + "\n");
+        String[] dd = leerDatos(orden);
+        if (!dd[0].isEmpty()) sb.append("Cliente: ").append(dd[0]).append("\n");
+        if (!dd[1].isEmpty()) sb.append("Dirección: ").append(dd[1]).append("\n");
         ArrayList<File> fs = fotosDe(orden);
         sb.append("Fotos: ").append(fs.size()).append("\n");
         ArrayList<String> u = leerMaterial(orden);
@@ -2205,6 +2368,8 @@ public class MainActivity extends Activity {
         ArrayList<String> lineas = new ArrayList<>();
         lineas.add("ORDEN " + orden);
         lineas.add(formatoLargo(fecha));
+        String[] dsel = leerDatos(orden);
+        if (!dsel[1].isEmpty()) lineas.add(dsel[1]);
         if (nota != null && !nota.isEmpty()) lineas.add(nota);
         float alto = lineas.size() * tam * 1.25f + tam * 0.6f;
         Paint fondo = new Paint();
