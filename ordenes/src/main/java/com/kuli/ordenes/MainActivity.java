@@ -1183,6 +1183,55 @@ public class MainActivity extends Activity {
     }
 
     private String ordenDestinoDirecto = null;
+    
+    private void registrarPendienteReponer(String orden, String cod, String nombre, String raw) {
+        try {
+            File f = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa/pendiente_reponer.txt");
+            f.getParentFile().mkdirs();
+            String fecha = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.US).format(new java.util.Date());
+            String linea = fecha + " | Orden: " + orden + " | " + cod + " | " + nombre + (raw != null && !raw.isEmpty() ? " | Serie: " + raw : "") + "\n";
+            try (java.io.FileWriter fw = new java.io.FileWriter(f, true)) { fw.write(linea); }
+        } catch (Throwable ignored) {}
+    }
+
+    private void verPendienteReponer() {
+        try {
+            File f = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa/pendiente_reponer.txt");
+            String texto = "";
+            int count = 0;
+            if (f.exists()) {
+                java.util.List<String> lns = java.nio.file.Files.readAllLines(f.toPath());
+                StringBuilder sb = new StringBuilder();
+                for (String l : lns) {
+                    if (!l.trim().isEmpty()) { count++; sb.append("• ").append(l).append("\n\n"); }
+                }
+                texto = sb.toString();
+            }
+            final String contenidoFinal = texto.isEmpty() ? "✅ Todo repuesto. No hay equipos pendientes." : texto;
+            new AlertDialog.Builder(this)
+                .setTitle("📋 Pendiente de reponer (" + count + " uds.)")
+                .setMessage(contenidoFinal)
+                .setPositiveButton("📲 Enviar lista", (d, w) -> {
+                    Intent sh = new Intent(Intent.ACTION_SEND);
+                    sh.setType("text/plain");
+                    sh.putExtra(Intent.EXTRA_TEXT, "📋 MATERIAL PENDIENTE DE REPONER - RAFA:\n\n" + contenidoFinal);
+                    startActivity(Intent.createChooser(sh, "Compartir parte de reposición"));
+                })
+                .setNeutralButton("✅ Ya repuesto (Limpiar)", (d, w) -> {
+                    try {
+                        if (f.exists()) {
+                            File hist = new File(f.getParentFile(), "historial_repuestos.txt");
+                            try (java.io.FileWriter fw = new java.io.FileWriter(hist, true)) { fw.write(contenidoFinal + "\n---\n"); }
+                            f.delete();
+                        }
+                        android.widget.Toast.makeText(this, "✅ Lista marcada como repuesta y limpiada", android.widget.Toast.LENGTH_SHORT).show();
+                    } catch (Throwable ignored) {}
+                })
+                .setNegativeButton("Cerrar", null)
+                .show();
+        } catch (Throwable ignored) {}
+    }
+
     private void mostrarExistencias() {
         enAlmacen = true;
         ordenAbierta = null;
@@ -1254,6 +1303,9 @@ public class MainActivity extends Activity {
             }
         };
         total.setText(filas.size() + " unidades · la más antigua arriba");
+        Button btnVerRep = boton("📋 Pendiente de reponer por almacén", false);
+        btnVerRep.setOnClickListener(v -> verPendienteReponer());
+        p.addView(btnVerRep, margen(-1, -2, 6));
         ListView lista = new ListView(this);
         lista.setDivider(null);
         lista.setAdapter(adaptador);
@@ -2396,6 +2448,7 @@ public class MainActivity extends Activity {
         }
         String nombre = it.nombre;
         int quedan = almacen.gastar(clave, raw);
+        registrarPendienteReponer(orden, it.codigo, nombre, raw);
         pila("USA", orden, clave, nombre, raw == null ? "" : raw);
         apuntarGasto(clave, orden);
         anotarMaterial(orden, raw != null ? raw : clave, nombre, clave);
