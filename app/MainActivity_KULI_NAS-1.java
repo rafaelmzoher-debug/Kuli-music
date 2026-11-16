@@ -53,6 +53,11 @@ public class MainActivity extends Activity {
     private TextView cancion, artista, estado;
     private Button favorito;
     private Uri uriActual;
+    private boolean modoDj = false;
+    private int contadorDj = 0;
+    private String estiloDjActual = "";
+    private Button btnDjRef;
+    private final java.util.HashSet<Integer> historialDj = new java.util.HashSet<>();
     private String tituloActual = "", artistaActual = "";
     private SharedPreferences favoritos;
     private final ArrayList<String> listaFavoritas = new ArrayList<>();
@@ -140,6 +145,32 @@ public class MainActivity extends Activity {
         navegacion.addView(siguiente, new LinearLayout.LayoutParams(0, dp(55), 1));
         navegacion.addView(mezcla, new LinearLayout.LayoutParams(0, dp(55), 1));
         navegacion.addView(bucle, new LinearLayout.LayoutParams(0, dp(55), 1));
+        Button btnDj = boton("🎧 DJ", true);
+        btnDjRef = btnDj;
+        btnDj.setOnClickListener(v -> {
+            modoDj = !modoDj;
+            contadorDj = 0;
+            estiloDjActual = "";
+            historialDj.clear();
+            actualizarBotonDj();
+            if (modoDj) {
+                estado.setText("🎧 MODO DJ ACTIVO · CAMBIO DE ESTILO CADA 3 CANCIONES");
+                prepararSiguiente();
+            } else {
+                estado.setText("🎧 MODO DJ DESACTIVADO");
+                prepararSiguiente();
+            }
+        });
+        btnDj.setOnLongClickListener(v -> {
+            if (!modoDj) { modoDj = true; }
+            contadorDj = 3;
+            actualizarBotonDj();
+            estado.setText("🎧 SALTANDO A NUEVO ESTILO...");
+            prepararSiguiente();
+            alTerminar();
+            return true;
+        });
+        navegacion.addView(btnDj, new LinearLayout.LayoutParams(0, dp(55), 1));
         pantalla.addView(navegacion, new LinearLayout.LayoutParams(-1, -2));
         anterior.setOnClickListener(v -> saltar(-1));
         siguiente.setOnClickListener(v -> saltar(1));
@@ -280,8 +311,84 @@ public class MainActivity extends Activity {
         indicePreparado = -1;
     }
 
+    
+    private String detectarEstiloCancion(String uriStr) {
+        String u = java.net.URLDecoder.decode(uriStr).toLowerCase();
+        if (u.contains("flamenc") || u.contains("rumba") || u.contains("barrio") || u.contains("chunguitos") || u.contains("jerez") || u.contains("pela")) return "Flamenquito & Rumba";
+        if (u.contains("flow") || u.contains("reggaeton") || u.contains("urbano") || u.contains("trap") || u.contains("latino")) return "Flow & Urbano";
+        if (u.contains("spotify") || u.contains("hits") || u.contains("pop") || u.contains("tendencias") || u.contains("tiktok") || u.contains("road trip")) return "Éxitos & Pop";
+        if (u.contains("prism")) return "Sesión Prism";
+        if (u.contains("álbum") || u.contains("album")) return "Álbumes Seleccionados";
+        if (u.contains("sueltas")) return "Colección Sueltas";
+        return "Selección Kuli";
+    }
+
+    private int elegirSiguienteModoDj() {
+        java.util.HashMap<String, java.util.ArrayList<Integer>> grupos = new java.util.HashMap<>();
+        for (int i = 0; i < listaFavoritas.size(); i++) {
+            String est = detectarEstiloCancion(listaFavoritas.get(i));
+            grupos.computeIfAbsent(est, k -> new java.util.ArrayList<>()).add(i);
+        }
+        if (historialDj.size() >= listaFavoritas.size() - 1) historialDj.clear();
+        historialDj.add(posicionFavorita);
+
+        if (estiloDjActual.isEmpty()) estiloDjActual = detectarEstiloCancion(listaFavoritas.get(posicionFavorita));
+        contadorDj++;
+        if (contadorDj > 3) {
+            contadorDj = 1;
+            java.util.ArrayList<String> estilos = new java.util.ArrayList<>(grupos.keySet());
+            estilos.remove(estiloDjActual);
+            if (!estilos.isEmpty()) {
+                estiloDjActual = estilos.get(new java.util.Random().nextInt(estilos.size()));
+            }
+        }
+        java.util.ArrayList<Integer> candidatas = new java.util.ArrayList<>();
+        java.util.ArrayList<Integer> delEstilo = grupos.getOrDefault(estiloDjActual, new java.util.ArrayList<>());
+        for (int idx : delEstilo) if (!historialDj.contains(idx)) candidatas.add(idx);
+        if (candidatas.isEmpty()) {
+            for (int i = 0; i < listaFavoritas.size(); i++) if (!historialDj.contains(i)) candidatas.add(i);
+        }
+        if (candidatas.isEmpty()) return (posicionFavorita + 1) % listaFavoritas.size();
+        int elegida = candidatas.get(new java.util.Random().nextInt(candidatas.size()));
+        final String estShow = estiloDjActual;
+        final int numShow = contadorDj;
+        runOnUiThread(() -> estado.setText("🎧 DJ (" + numShow + "/3) · " + estShow));
+        return elegida;
+    }
+
+    private void actualizarBotonDj() {
+        if (btnDjRef == null) return;
+        if (modoDj) {
+            int n = Math.max(1, Math.min(3, contadorDj == 0 ? 1 : contadorDj));
+            btnDjRef.setText("🎧 " + n + "/3");
+            btnDjRef.setTextColor(DORADO);
+        } else {
+            btnDjRef.setText("🎧 DJ");
+            btnDjRef.setTextColor(Color.LTGRAY);
+        }
+    }
+
+    private void aplicarCrossfadeSuave(MediaPlayer saliente, MediaPlayer entrante) {
+        if (entrante == null) return;
+        new Thread(() -> {
+            try {
+                for (int paso = 1; paso <= 10; paso++) {
+                    float v = paso / 10f;
+                    try { entrante.setVolume(v, v); } catch (Throwable ignored) {}
+                    if (saliente != null) {
+                        try { saliente.setVolume(1f - v, 1f - v); } catch (Throwable ignored) {}
+                    }
+                    Thread.sleep(200);
+                }
+            } catch (Throwable ignored) {}
+        }).start();
+    }
+
     private int indiceSiguiente() {
         if (!modoLista || listaFavoritas.isEmpty()) return -1;
+        if (modoDj && listaFavoritas.size() > 1) {
+            return elegirSiguienteModoDj();
+        }
         if (aleatorio && listaFavoritas.size() > 1) {
             int n = new java.util.Random().nextInt(listaFavoritas.size() - 1);
             return n >= posicionFavorita ? n + 1 : n;
@@ -313,6 +420,10 @@ public class MainActivity extends Activity {
             MediaPlayer anterior = reproductor;
             reproductor = siguienteReproductor;
             posicionFavorita = indicePreparado;
+            if (modoDj) {
+                actualizarBotonDj();
+                aplicarCrossfadeSuave(anterior, reproductor);
+            }
             siguienteReproductor = null;
             indicePreparado = -1;
             try { anterior.release(); } catch (Exception ignored) { }
