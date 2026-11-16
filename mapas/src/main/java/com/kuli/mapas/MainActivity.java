@@ -491,6 +491,11 @@ public class MainActivity extends Activity implements LocationListener {
                 requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 10); return;
             }
             locOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(this), map);
+            Bitmap bmpCoche = crearIconoCoche();
+            locOverlay.setPersonIcon(bmpCoche);
+            locOverlay.setDirectionIcon(bmpCoche);
+            locOverlay.setPersonHotspot(32f, 32f);
+            locOverlay.setDirectionAnchor(0.5f, 0.5f);
             locOverlay.enableMyLocation(); locOverlay.enableFollowLocation(); map.getOverlays().add(locOverlay);
             LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
             if (lm != null && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 1, this);
@@ -574,5 +579,35 @@ public class MainActivity extends Activity implements LocationListener {
     }
     private GradientDrawable circulo(int f, int b, int g) { GradientDrawable gd = new GradientDrawable(); gd.setShape(GradientDrawable.OVAL); gd.setColor(f); gd.setStroke(dp(g), b); return gd; }
     private Button miniBtn(String t) { Button b = new Button(this); b.setText(t); b.setTextSize(17); b.setBackgroundColor(Color.TRANSPARENT); b.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(42))); return b; }
+    
+    private Bitmap crearIconoCoche() {
+        Bitmap b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        // Ruedas negras
+        pt.setColor(Color.rgb(25, 28, 34));
+        c.drawRoundRect(new RectF(14, 12, 20, 22), 2, 2, pt);
+        c.drawRoundRect(new RectF(44, 12, 50, 22), 2, 2, pt);
+        c.drawRoundRect(new RectF(14, 42, 20, 52), 2, 2, pt);
+        c.drawRoundRect(new RectF(44, 42, 50, 52), 2, 2, pt);
+        // Carroceria azul marino Kuli Edition
+        pt.setColor(Color.rgb(16, 58, 122));
+        c.drawRoundRect(new RectF(18, 6, 46, 58), 10, 10, pt);
+        // Borde dorado
+        pt.setColor(Color.rgb(212, 175, 55));
+        pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(2.5f);
+        c.drawRoundRect(new RectF(18, 6, 46, 58), 10, 10, pt);
+        pt.setStyle(Paint.Style.FILL);
+        // Parabrisas delantero y trasero
+        pt.setColor(Color.rgb(165, 220, 255));
+        c.drawRoundRect(new RectF(21, 16, 43, 25), 4, 4, pt);
+        c.drawRoundRect(new RectF(22, 42, 42, 49), 3, 3, pt);
+        // Faros delanteros encendidos
+        pt.setColor(Color.rgb(255, 245, 160));
+        c.drawCircle(22, 8, 2.5f, pt);
+        c.drawCircle(42, 8, 2.5f, pt);
+        return b;
+    }
+
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 }
