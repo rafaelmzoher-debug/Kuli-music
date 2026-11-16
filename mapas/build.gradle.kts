@@ -14,8 +14,8 @@ android {
         applicationId = "com.kuli.mapas"
         minSdk = 26
         targetSdk = 28
-        versionCode = 2
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.2"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

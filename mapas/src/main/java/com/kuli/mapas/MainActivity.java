@@ -37,7 +37,9 @@ public class MainActivity extends Activity implements LocationListener {
     private final List<double[]> radares = new ArrayList<>();
     private final List<Marker> marcadoresPoi = new ArrayList<>();
     private Marker marcadorDestino;
-    private Polyline lineaRuta;
+    // RUTA-KULI
+    private Polyline lineaRuta, bordeRuta;
+    private long ultimoRecalculo = 0;
     private Button btnIniciarRuta;
     private boolean navegando = false;
     private final List<String> pasosVoz = new ArrayList<>();
@@ -82,7 +84,7 @@ public class MainActivity extends Activity implements LocationListener {
                     } else if (idx == 2) {
                         Intent wa = new Intent(Intent.ACTION_SEND);
                         wa.setType("text/plain");
-                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://maps.google.com/?q=" + gp.getLatitude() + "," + gp.getLongitude());
                         startActivity(Intent.createChooser(wa, "Compartir ubicación"));
                     }
                 }).show();
@@ -338,7 +340,7 @@ public class MainActivity extends Activity implements LocationListener {
 
             // Motor 2: Respaldo Nominatim directo
             try {
-                String u = "https://openstreetmap.org" + URLEncoder.encode(clean, "UTF-8");
+                String u = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + URLEncoder.encode(clean, "UTF-8");
                 HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
                 c.setRequestProperty("User-Agent", "KuliMapasApp/3.0 (contacto@kulimapas.local)");
                 c.setConnectTimeout(6000);
@@ -370,6 +372,7 @@ public class MainActivity extends Activity implements LocationListener {
     private void mostrarDestino(GeoPoint dest, String nombre) {
         if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
         if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
+        if (bordeRuta != null) { map.getOverlays().remove(bordeRuta); bordeRuta = null; }
         marcadorDestino = new Marker(map);
         marcadorDestino.setPosition(dest);
         marcadorDestino.setTitle(nombre);
@@ -385,8 +388,7 @@ public class MainActivity extends Activity implements LocationListener {
         map.getOverlays().add(0, lineaRuta);
         map.invalidate();
 
-        map.getController().animateTo(dest);
-        map.getController().setZoom(16.5);
+        if (!navegando) { map.getController().animateTo(dest); map.getController().setZoom(16.5); }
         txtBanner.setText("📍 " + nombre);
         if (topWrapRef != null) topWrapRef.setVisibility(View.GONE);
         if (btnIniciarRuta != null) { btnIniciarRuta.setVisibility(View.VISIBLE); btnIniciarRuta.bringToFront(); }
@@ -397,11 +399,11 @@ public class MainActivity extends Activity implements LocationListener {
 
         new Thread(() -> {
             String[] bases = modoCoche ? new String[]{
-                "https://openstreetmap.de",
-                "https://project-osrm.org"
+                "https://routing.openstreetmap.de/routed-car/route/v1/driving/",
+                "https://router.project-osrm.org/route/v1/driving/"
             } : new String[]{
-                "https://openstreetmap.de",
-                "https://project-osrm.org"
+                "https://routing.openstreetmap.de/routed-foot/route/v1/driving/",
+                "https://router.project-osrm.org/route/v1/driving/"
             };
             for (String baseUrl : bases) {
                 try {
@@ -429,7 +431,17 @@ public class MainActivity extends Activity implements LocationListener {
                             lineaRuta.setPoints(lista);
                             lineaRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(26, 115, 232) : Color.rgb(15, 157, 88));
                             lineaRuta.getOutlinePaint().setStrokeWidth(18f);
-                            map.getOverlays().add(0, lineaRuta);
+                            lineaRuta.getOutlinePaint().setStrokeCap(Paint.Cap.ROUND);
+                            lineaRuta.getOutlinePaint().setStrokeJoin(Paint.Join.ROUND);
+                            if (bordeRuta != null) map.getOverlays().remove(bordeRuta);
+                            bordeRuta = new Polyline(); bordeRuta.setPoints(lista);
+                            bordeRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(11, 60, 140) : Color.rgb(8, 100, 55));
+                            bordeRuta.getOutlinePaint().setStrokeWidth(27f);
+                            bordeRuta.getOutlinePaint().setStrokeCap(Paint.Cap.ROUND);
+                            bordeRuta.getOutlinePaint().setStrokeJoin(Paint.Join.ROUND);
+                            map.getOverlays().add(0, bordeRuta);
+                            map.getOverlays().add(1, lineaRuta);
+                            if (!navegando && lista.size() > 1) map.zoomToBoundingBox(org.osmdroid.util.BoundingBox.fromGeoPoints(lista), true, dp(90));
                             map.invalidate();
 
                             java.util.Calendar cal = java.util.Calendar.getInstance();
@@ -453,6 +465,7 @@ public class MainActivity extends Activity implements LocationListener {
                     return;
                 } catch (Throwable ignored) {}
             }
+            runOnUiThread(() -> txtBanner.setText("\u26a0\ufe0f No se pudo calcular la ruta por calles. Revisa internet."));
         }).start();
     }
 
@@ -495,6 +508,7 @@ public class MainActivity extends Activity implements LocationListener {
             map.setMapOrientation(0f);
             if (topWrapRef != null) { barraRef.setVisibility(View.VISIBLE); hsvRef.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
             if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
+            if (bordeRuta != null) { map.getOverlays().remove(bordeRuta); bordeRuta = null; }
             if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
             map.invalidate();
             txtBanner.setText("🧭 Ruta finalizada");
@@ -553,8 +567,8 @@ public class MainActivity extends Activity implements LocationListener {
         cargarRadares(); pintarRadaresEnMapa(); map.invalidate(); txtBanner.setText("✅ " + radares.size() + " radares de Málaga y Andalucía activos");
         new Thread(() -> {
             String[] urls = {
-                "https://kumi.systems",
-                "https://overpass-api.de"
+                "https://overpass.kumi.systems/api/interpreter",
+                "https://overpass-api.de/api/interpreter"
             };
             // Caja geografica de Andalucia y Malaga (rapida, sin timeout) + principales corredores
             String q = "[out:json][timeout:20];(node[\"highway\"=\"speed_camera\"](35.95,-7.55,38.75,-1.60);node[\"highway\"=\"speed_camera\"](38.75,-6.50,41.20,-2.50););out body;";
@@ -607,7 +621,7 @@ public class MainActivity extends Activity implements LocationListener {
                     } else if (idx == 2) {
                         Intent wa = new Intent(Intent.ACTION_SEND);
                         wa.setType("text/plain");
-                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://maps.google.com/?q=" + gp.getLatitude() + "," + gp.getLongitude());
                         startActivity(Intent.createChooser(wa, "Compartir ubicación"));
                     }
                 }).show();
@@ -683,7 +697,7 @@ public class MainActivity extends Activity implements LocationListener {
                     } else if (idx == 2) {
                         Intent wa = new Intent(Intent.ACTION_SEND);
                         wa.setType("text/plain");
-                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://google.com" + gp.getLatitude() + "," + gp.getLongitude());
+                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://maps.google.com/?q=" + gp.getLatitude() + "," + gp.getLongitude());
                         startActivity(Intent.createChooser(wa, "Compartir ubicación"));
                     }
                 }).show();
@@ -762,11 +776,11 @@ public class MainActivity extends Activity implements LocationListener {
                     double d = yo.distanceToAsDouble(pts.get(i));
                     if (d < minD) { minD = d; idx = i; }
                 }
-                if (minD > 85 && marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
+                if (minD > 85 && marcadorDestino != null) { if (System.currentTimeMillis() - ultimoRecalculo > 15000) { ultimoRecalculo = System.currentTimeMillis(); mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle()); } }
                 else if (idx > 0) {
                     java.util.List<GeoPoint> rest = new java.util.ArrayList<>();
                     rest.add(yo); rest.addAll(pts.subList(idx, pts.size()));
-                    lineaRuta.setPoints(rest); map.invalidate();
+                    lineaRuta.setPoints(rest); if (bordeRuta != null) bordeRuta.setPoints(rest); map.invalidate();
                 }
             }
         }
