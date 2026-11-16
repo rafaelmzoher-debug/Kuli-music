@@ -33,6 +33,12 @@ public class MainActivity extends Activity implements LocationListener {
     private boolean modoOffline = false, modoCoche = true, modoNoche = false, pantallaDespejada = false;
     private LinearLayout topWrapRef, navBotRef, barraRef; private HorizontalScrollView hsvRef;
     private int limiteActual = 120, ultimoRadarAvisado = -1;
+    // RADAR-KULI
+    private final Set<String> avisados = new HashSet<>();
+    private float ultimoRumbo = -1f;
+    private final List<Marker> marcadoresRadarFijos = new ArrayList<>();
+    private static class Movil { double lat, lon; float rumbo; long ts; Marker mk; }
+    private final List<Movil> moviles = new ArrayList<>();
     private TextToSpeech tts;
     private final List<double[]> radares = new ArrayList<>();
     private final List<Marker> marcadoresPoi = new ArrayList<>();
@@ -277,6 +283,16 @@ public class MainActivity extends Activity implements LocationListener {
         lpIni.setMargins(0, 0, 0, dp(82));
         root.addView(btnIniciarRuta, lpIni);
 
+        TextView btnRadarMovil = new TextView(this);
+        btnRadarMovil.setText("\ud83d\udea8\nM\u00d3VIL");
+        btnRadarMovil.setTextColor(Color.WHITE); btnRadarMovil.setTextSize(13); btnRadarMovil.setTypeface(Typeface.DEFAULT_BOLD); btnRadarMovil.setGravity(Gravity.CENTER);
+        btnRadarMovil.setBackground(circulo(Color.rgb(217, 48, 37), Color.WHITE, 3)); btnRadarMovil.setElevation(dp(8));
+        btnRadarMovil.setOnClickListener(v -> guardarRadarMovil());
+        FrameLayout.LayoutParams lpRm = new FrameLayout.LayoutParams(dp(76), dp(76), Gravity.BOTTOM | Gravity.START);
+        lpRm.setMargins(dp(14), 0, 0, dp(160));
+        root.addView(btnRadarMovil, lpRm);
+        cargarMoviles();
+        actualizarRadaresSiToca();
         setContentView(root);
         iniciarGps();
     }
@@ -515,6 +531,98 @@ public class MainActivity extends Activity implements LocationListener {
         }
     }
 
+    // RADAR-KULI
+    private void hablar(String t) { if (tts != null) tts.speak(t, TextToSpeech.QUEUE_FLUSH, null, null); }
+
+    private double rumboA(GeoPoint a, GeoPoint b) {
+        double f1 = Math.toRadians(a.getLatitude()), f2 = Math.toRadians(b.getLatitude()), dl = Math.toRadians(b.getLongitude() - a.getLongitude());
+        double y = Math.sin(dl) * Math.cos(f2), x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    private double difRumbo(double a, double b) { double d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
+
+    private void avisarRadares(Location loc, GeoPoint yo) {
+        boolean conRumbo = loc.hasBearing() && loc.getSpeed() > 3f;
+        if (conRumbo) ultimoRumbo = loc.getBearing();
+        double alcance = Math.max(300, Math.min(900, loc.getSpeed() * 15.0));
+        for (int i = 0; i < radares.size(); i++) {
+            double[] r = radares.get(i);
+            GeoPoint gp = new GeoPoint(r[0], r[1]);
+            double dist = yo.distanceToAsDouble(gp);
+            String key = "f" + i;
+            if (dist > alcance) { if (dist > 1500) avisados.remove(key); continue; }
+            if (conRumbo && dist > 60 && difRumbo(rumboA(yo, gp), loc.getBearing()) > 55) continue;
+            limiteActual = (int) r[2]; txtLimite.setText(String.valueOf(limiteActual));
+            if (avisados.add(key)) hablar("Atenci\u00f3n, radar a " + (Math.round(dist / 10.0) * 10) + " metros, l\u00edmite " + limiteActual);
+        }
+        long ahora = System.currentTimeMillis();
+        for (int i = moviles.size() - 1; i >= 0; i--) {
+            Movil m = moviles.get(i);
+            if (ahora - m.ts > 8L * 3600 * 1000) { if (m.mk != null) map.getOverlays().remove(m.mk); moviles.remove(i); guardarMoviles(); continue; }
+            GeoPoint gp = new GeoPoint(m.lat, m.lon);
+            double dist = yo.distanceToAsDouble(gp);
+            String key = "m" + m.ts;
+            if (dist > alcance) { if (dist > 1500) avisados.remove(key); continue; }
+            if (conRumbo && m.rumbo >= 0 && difRumbo(m.rumbo, loc.getBearing()) > 70) continue;
+            if (conRumbo && dist > 60 && difRumbo(rumboA(yo, gp), loc.getBearing()) > 55) continue;
+            if (avisados.add(key)) hablar("Atenci\u00f3n, radar m\u00f3vil a " + (Math.round(dist / 10.0) * 10) + " metros");
+        }
+    }
+
+    private Marker marcadorMovil(Movil m) {
+        Marker mk = new Marker(map);
+        mk.setPosition(new GeoPoint(m.lat, m.lon));
+        mk.setTitle("\ud83d\udea8 RADAR M\u00d3VIL (avisado hace " + Math.max(1, (System.currentTimeMillis() - m.ts) / 60000) + " min)");
+        mk.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+        Bitmap bmp = Bitmap.createBitmap(52, 52, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(bmp); Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pt.setColor(Color.WHITE); cv.drawCircle(26, 26, 24, pt);
+        pt.setColor(Color.rgb(255, 140, 0)); pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(6); cv.drawCircle(26, 26, 21, pt);
+        pt.setStyle(Paint.Style.FILL); pt.setColor(Color.BLACK); pt.setTextSize(22); pt.setFakeBoldText(true); pt.setTextAlign(Paint.Align.CENTER);
+        cv.drawText("M", 26, 34, pt);
+        mk.setIcon(new BitmapDrawable(getResources(), bmp));
+        return mk;
+    }
+
+    private void guardarMoviles() {
+        StringBuilder sb = new StringBuilder();
+        for (Movil m : moviles) sb.append(m.lat).append(',').append(m.lon).append(',').append(m.ts).append(',').append(m.rumbo).append(';');
+        getSharedPreferences("kuli_radares_moviles", MODE_PRIVATE).edit().putString("lista", sb.toString()).apply();
+    }
+
+    private void cargarMoviles() {
+        long limite = System.currentTimeMillis() - 8L * 3600 * 1000;
+        try {
+            for (String item : getSharedPreferences("kuli_radares_moviles", MODE_PRIVATE).getString("lista", "").split(";")) {
+                String[] q = item.split(",");
+                if (q.length < 4) continue;
+                Movil m = new Movil();
+                m.lat = Double.parseDouble(q[0]); m.lon = Double.parseDouble(q[1]); m.ts = Long.parseLong(q[2]); m.rumbo = Float.parseFloat(q[3]);
+                if (m.ts < limite) continue;
+                m.mk = marcadorMovil(m); map.getOverlays().add(m.mk); moviles.add(m);
+            }
+        } catch (Throwable ignored) {}
+        guardarMoviles();
+    }
+
+    private void guardarRadarMovil() {
+        GeoPoint p = (locOverlay != null) ? locOverlay.getMyLocation() : null;
+        if (p == null) { Toast.makeText(this, "Sin GPS todav\u00eda", Toast.LENGTH_SHORT).show(); return; }
+        Movil m = new Movil();
+        m.lat = p.getLatitude(); m.lon = p.getLongitude(); m.rumbo = ultimoRumbo; m.ts = System.currentTimeMillis();
+        m.mk = marcadorMovil(m); map.getOverlays().add(m.mk); moviles.add(m); guardarMoviles();
+        avisados.add("m" + m.ts);
+        map.invalidate();
+        hablar("Radar m\u00f3vil guardado");
+        Toast.makeText(this, "\ud83d\udea8 Radar m\u00f3vil guardado (se borra a las 8 horas)", Toast.LENGTH_LONG).show();
+    }
+
+    private void actualizarRadaresSiToca() {
+        long ult = getSharedPreferences("kuli_mapas_cfg", MODE_PRIVATE).getLong("radares_ts", 0);
+        if (System.currentTimeMillis() - ult > 7L * 24 * 3600 * 1000) descargarTodosRadaresEspana();
+    }
+
     private void cargarRadares() {
         radares.clear();
         double[][] baseMalaga = {
@@ -601,42 +709,11 @@ public class MainActivity extends Activity implements LocationListener {
                             count++;
                         }
                         fw.close();
+                        getSharedPreferences("kuli_mapas_cfg", MODE_PRIVATE).edit().putLong("radares_ts", System.currentTimeMillis()).apply();
                         final int total = count;
                         runOnUiThread(() -> {
                             cargarRadares();
                             pintarRadaresEnMapa();
-
-        org.osmdroid.views.overlay.MapEventsOverlay evOverlay = new org.osmdroid.views.overlay.MapEventsOverlay(new org.osmdroid.events.MapEventsReceiver() {
-            @Override public boolean singleTapConfirmedHelper(GeoPoint gp) {
-                String coord = String.format(Locale.US, "%.5f, %.5f", gp.getLatitude(), gp.getLongitude());
-                String[] ops = {"🧭 RUTA HACIA aquí", "⭐ GUARDAR en Mis lugares", "📲 COMPARTIR por WhatsApp"};
-                new AlertDialog.Builder(MainActivity.this).setTitle("📍 Punto (" + coord + ")").setItems(ops, (d, idx) -> {
-                    if (idx == 0) {
-                        mostrarDestino(gp, "Punto seleccionado (" + coord + ")");
-                    } else if (idx == 1) {
-                        String nom = "Lugar " + coord;
-                        String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
-                        getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nom + "|" + gp.getLatitude() + "," + gp.getLongitude() + ";" + prev).apply();
-                        Toast.makeText(MainActivity.this, "⭐ Guardado en Mis lugares", Toast.LENGTH_SHORT).show();
-                    } else if (idx == 2) {
-                        Intent wa = new Intent(Intent.ACTION_SEND);
-                        wa.setType("text/plain");
-                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://maps.google.com/?q=" + gp.getLatitude() + "," + gp.getLongitude());
-                        startActivity(Intent.createChooser(wa, "Compartir ubicación"));
-                    }
-                }).show();
-                return true;
-            }
-            @Override public boolean longPressHelper(GeoPoint gp) {
-                pantallaDespejada = !pantallaDespejada;
-                int vis = pantallaDespejada ? View.GONE : View.VISIBLE;
-                if (topWrapRef != null) topWrapRef.setVisibility(vis);
-                if (navBotRef != null) navBotRef.setVisibility(vis);
-                Toast.makeText(MainActivity.this, pantallaDespejada ? "👁️ Pantalla despejada (mantén pulsado para volver)" : "👁️ Controles visibles", Toast.LENGTH_SHORT).show();
-                return true;
-            }
-        });
-        map.getOverlays().add(0, evOverlay);
 
                             map.invalidate();
                             txtBanner.setText("✅ " + total + " radares de Andalucía y España guardados offline");
@@ -651,6 +728,8 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void pintarRadaresEnMapa() {
+        for (Marker mk0 : marcadoresRadarFijos) map.getOverlays().remove(mk0);
+        marcadoresRadarFijos.clear();
         GeoPoint centro = (GeoPoint) map.getMapCenter();
         int pintados = 0;
         for (double[] r : radares) {
@@ -668,6 +747,7 @@ public class MainActivity extends Activity implements LocationListener {
             cv.drawText(String.valueOf((int)r[2]), 22, 27, pt);
             m.setIcon(new BitmapDrawable(getResources(), bmp));
             map.getOverlays().add(m);
+            marcadoresRadarFijos.add(m);
             pintados++;
             if (pintados >= 350) break;
         }
@@ -681,38 +761,6 @@ public class MainActivity extends Activity implements LocationListener {
             String prev = getSharedPreferences("kuli_radares", MODE_PRIVATE).getString("lista", "");
             getSharedPreferences("kuli_radares", MODE_PRIVATE).edit().putString("lista", prev + p.getLatitude() + "," + p.getLongitude() + "," + lim + ";").apply();
             pintarRadaresEnMapa();
-
-        org.osmdroid.views.overlay.MapEventsOverlay evOverlay = new org.osmdroid.views.overlay.MapEventsOverlay(new org.osmdroid.events.MapEventsReceiver() {
-            @Override public boolean singleTapConfirmedHelper(GeoPoint gp) {
-                String coord = String.format(Locale.US, "%.5f, %.5f", gp.getLatitude(), gp.getLongitude());
-                String[] ops = {"🧭 RUTA HACIA aquí", "⭐ GUARDAR en Mis lugares", "📲 COMPARTIR por WhatsApp"};
-                new AlertDialog.Builder(MainActivity.this).setTitle("📍 Punto (" + coord + ")").setItems(ops, (d, idx) -> {
-                    if (idx == 0) {
-                        mostrarDestino(gp, "Punto seleccionado (" + coord + ")");
-                    } else if (idx == 1) {
-                        String nom = "Lugar " + coord;
-                        String prev = getSharedPreferences("kuli_guardados", MODE_PRIVATE).getString("sitios", "");
-                        getSharedPreferences("kuli_guardados", MODE_PRIVATE).edit().putString("sitios", nom + "|" + gp.getLatitude() + "," + gp.getLongitude() + ";" + prev).apply();
-                        Toast.makeText(MainActivity.this, "⭐ Guardado en Mis lugares", Toast.LENGTH_SHORT).show();
-                    } else if (idx == 2) {
-                        Intent wa = new Intent(Intent.ACTION_SEND);
-                        wa.setType("text/plain");
-                        wa.putExtra(Intent.EXTRA_TEXT, "📍 Ubicación Kuli Mapas: https://maps.google.com/?q=" + gp.getLatitude() + "," + gp.getLongitude());
-                        startActivity(Intent.createChooser(wa, "Compartir ubicación"));
-                    }
-                }).show();
-                return true;
-            }
-            @Override public boolean longPressHelper(GeoPoint gp) {
-                pantallaDespejada = !pantallaDespejada;
-                int vis = pantallaDespejada ? View.GONE : View.VISIBLE;
-                if (topWrapRef != null) topWrapRef.setVisibility(vis);
-                if (navBotRef != null) navBotRef.setVisibility(vis);
-                Toast.makeText(MainActivity.this, pantallaDespejada ? "👁️ Pantalla despejada (mantén pulsado para volver)" : "👁️ Controles visibles", Toast.LENGTH_SHORT).show();
-                return true;
-            }
-        });
-        map.getOverlays().add(0, evOverlay);
  map.invalidate();
         }).show();
     }
@@ -784,14 +832,7 @@ public class MainActivity extends Activity implements LocationListener {
                 }
             }
         }
-        for (int i = 0; i < radares.size(); i++) {
-            double[] r = radares.get(i);
-            double dist = yo.distanceToAsDouble(new GeoPoint(r[0], r[1]));
-            if (dist < 600) {
-                limiteActual = (int) r[2]; txtLimite.setText(String.valueOf(limiteActual));
-                if (ultimoRadarAvisado != i && tts != null) { ultimoRadarAvisado = i; tts.speak("Atención, radar a " + Math.round(dist) + " metros, límite " + limiteActual, TextToSpeech.QUEUE_FLUSH, null, null); }
-            }
-        }
+        avisarRadares(loc, yo);
         txtVel.setTextColor(kmh > limiteActual ? Color.rgb(255, 75, 85) : Color.WHITE);
         if (navegando && pasoActual < pasosPts.size()) {
             double dPaso = yo.distanceToAsDouble(pasosPts.get(pasoActual));
