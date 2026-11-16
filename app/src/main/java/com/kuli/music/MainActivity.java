@@ -783,6 +783,7 @@ public class MainActivity extends Activity {
             }
 
             int movidos = 0;
+            final java.util.ArrayList<Uri> urisParaNas = new java.util.ArrayList<>();
             java.util.HashSet<String> albumesCreados = new java.util.HashSet<>();
             for (InfoPista ip : infos) {
                 String ext = ip.f.getName().contains(".") ? ip.f.getName().substring(ip.f.getName().lastIndexOf(".")) : ".m4a";
@@ -830,14 +831,18 @@ public class MainActivity extends Activity {
                         ip.f.delete();
                     }
                     movidos++;
+                    urisParaNas.add(Uri.fromFile(destFile));
                 }
             }
-            if (movidos > 0) {
+            if (movidos > 0 && !urisParaNas.isEmpty()) {
                 final int tot = movidos;
                 final int nAlb = albumesCreados.size();
-                runOnUiThread(() -> aviso(nAlb > 0
-                    ? ("💿 " + nAlb + " álbum(es) organizados con portada (" + tot + " temas)")
-                    : ("🎵 " + tot + " canciones organizadas con nombre real")));
+                runOnUiThread(() -> {
+                    aviso(nAlb > 0
+                        ? ("💿 " + nAlb + " álbum(es) con portada (" + tot + " temas) · Subiendo al NAS...")
+                        : ("🎵 " + tot + " canciones organizadas · Subiendo al NAS..."));
+                    try { subirAutomatico(urisParaNas, null); } catch (Throwable ignored) {}
+                });
             }
         } catch (Throwable ignored) {}
     }
