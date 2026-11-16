@@ -728,7 +728,122 @@ public class MainActivity extends Activity {
         aj.edit().putStringSet("descargas_hechas", hechas).apply();
     }
 
+    
+    private void autoOrganizarAlbumesDescargados(boolean avisarSiNada) {
+        try {
+            java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
+            java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
+            java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
+            dirAlbumes.mkdirs(); dirSueltas.mkdirs();
+
+            java.util.ArrayList<java.io.File> cand = new java.util.ArrayList<>();
+            for (java.io.File dir : new java.io.File[]{dl, prism}) {
+                if (dir != null && dir.exists() && dir.listFiles() != null) {
+                    for (java.io.File f : dir.listFiles()) {
+                        String nm = f.getName().toLowerCase();
+                        if (f.isFile() && f.length() > 30000 && (nm.endsWith(".mp3") || nm.endsWith(".m4a"))) {
+                            cand.add(f);
+                        }
+                    }
+                }
+            }
+            if (cand.isEmpty()) return;
+
+            class InfoPista {
+                java.io.File f; String tit, art, alb, pista; byte[] artBytes;
+            }
+            java.util.ArrayList<InfoPista> infos = new java.util.ArrayList<>();
+            java.util.HashMap<String, Integer> conteoAlb = new java.util.HashMap<>();
+
+            for (java.io.File f : cand) {
+                InfoPista ip = new InfoPista();
+                ip.f = f;
+                android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
+                try {
+                    mmr.setDataSource(f.getAbsolutePath());
+                    ip.tit = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE);
+                    ip.art = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST);
+                    ip.alb = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM);
+                    ip.pista = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER);
+                    ip.artBytes = mmr.getEmbeddedPicture();
+                } catch (Throwable ignored) {}
+                try { mmr.release(); } catch (Throwable ignored) {}
+
+                if (ip.tit == null || ip.tit.trim().isEmpty()) ip.tit = f.getName().replaceFirst("\\.[^.]+$", "");
+                if (ip.art == null) ip.art = "";
+                if (ip.alb == null) ip.alb = "";
+                infos.add(ip);
+
+                String kAlb = ip.alb.trim().toLowerCase();
+                if (!kAlb.isEmpty() && !kAlb.contains("download") && !kAlb.contains("prism") && !kAlb.contains("unknown")) {
+                    conteoAlb.put(kAlb, conteoAlb.getOrDefault(kAlb, 0) + 1);
+                }
+            }
+
+            int movidos = 0;
+            java.util.HashSet<String> albumesCreados = new java.util.HashSet<>();
+            for (InfoPista ip : infos) {
+                String ext = ip.f.getName().contains(".") ? ip.f.getName().substring(ip.f.getName().lastIndexOf(".")) : ".m4a";
+                String kAlb = ip.alb.trim().toLowerCase();
+                boolean esAlbum = !kAlb.isEmpty() && conteoAlb.getOrDefault(kAlb, 0) >= 2;
+                String titLimpio = ip.tit.replaceAll("[\\\\/:*?\"<>|]", "").trim();
+                String artLimpio = ip.art.replaceAll("[\\\\/:*?\"<>|]", "").trim();
+
+                java.io.File destinoDir;
+                String nombreFinal;
+                if (esAlbum) {
+                    String albLimpio = ip.alb.replaceAll("[\\\\/:*?\"<>|]", "").trim();
+                    String carpetaAlb = (!artLimpio.isEmpty() && !albLimpio.toLowerCase().contains(artLimpio.toLowerCase()))
+                        ? (artLimpio + " - " + albLimpio) : albLimpio;
+                    destinoDir = new java.io.File(dirAlbumes, carpetaAlb);
+                    destinoDir.mkdirs();
+                    albumesCreados.add(carpetaAlb);
+
+                    String num = "";
+                    if (ip.pista != null && !ip.pista.trim().isEmpty()) {
+                        String nOnly = ip.pista.split("/")[0].replaceAll("[^0-9]", "");
+                        if (!nOnly.isEmpty()) num = String.format(java.util.Locale.US, "%02d - ", Integer.parseInt(nOnly));
+                    }
+                    nombreFinal = num + titLimpio + ext;
+
+                    if (ip.artBytes != null && ip.artBytes.length > 0) {
+                        java.io.File cov = new java.io.File(destinoDir, "cover.jpg");
+                        if (!cov.exists()) {
+                            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(cov)) { fos.write(ip.artBytes); }
+                        }
+                    }
+                } else {
+                    destinoDir = dirSueltas;
+                    nombreFinal = (!artLimpio.isEmpty() ? (artLimpio + " - " + titLimpio) : titLimpio) + ext;
+                }
+
+                java.io.File destFile = new java.io.File(destinoDir, nombreFinal);
+                if (!destFile.exists()) {
+                    if (!ip.f.renameTo(destFile)) {
+                        try (java.io.InputStream in = new java.io.FileInputStream(ip.f);
+                             java.io.OutputStream out = new java.io.FileOutputStream(destFile)) {
+                            byte[] buf = new byte[8192]; int r;
+                            while ((r = in.read(buf)) > 0) out.write(buf, 0, r);
+                        }
+                        ip.f.delete();
+                    }
+                    movidos++;
+                }
+            }
+            if (movidos > 0) {
+                final int tot = movidos;
+                final int nAlb = albumesCreados.size();
+                runOnUiThread(() -> aviso(nAlb > 0
+                    ? ("💿 " + nAlb + " álbum(es) organizados con portada (" + tot + " temas)")
+                    : ("🎵 " + tot + " canciones organizadas con nombre real")));
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private void clasificarDescargas() {
+        new Thread(() -> autoOrganizarAlbumesDescargados(true)).start();
         if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para subir al NAS"); return; }
         final SharedPreferences aj = getSharedPreferences("kuli_ajustes", MODE_PRIVATE);
         String guardada = aj.getString("carpeta_descargas", null);
