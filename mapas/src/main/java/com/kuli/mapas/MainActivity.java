@@ -156,6 +156,25 @@ public class MainActivity extends Activity implements LocationListener {
             if (marcadorDestino != null) mostrarDestino(marcadorDestino.getPosition(), marcadorDestino.getTitle());
         });
         fabCol.addView(fabRuta);
+
+        final Button fabNoche = fabBtn("🌙", Color.rgb(16, 44, 86), Color.rgb(212, 175, 55));
+        fabNoche.setOnClickListener(v -> {
+            modoNoche = !modoNoche;
+            fabNoche.setText(modoNoche ? "☀️" : "🌙");
+            if (modoNoche) {
+                float[] neg = {
+                    -1f, 0f, 0f, 0f, 255f,
+                    0f, -1f, 0f, 0f, 255f,
+                    0f, 0f, -1f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f
+                };
+                map.getOverlayManager().getTilesOverlay().setColorFilter(new ColorMatrixColorFilter(neg));
+            } else {
+                map.getOverlayManager().getTilesOverlay().setColorFilter(null);
+            }
+            map.invalidate();
+        });
+        fabCol.addView(fabNoche);
         root.addView(fabCol, lpFab);
 
         // Barra inferior blanca estilo Google Maps (Explorar, Guardados, Sin Red / Bajar)
@@ -276,7 +295,10 @@ public class MainActivity extends Activity implements LocationListener {
                         lineaRuta = new Polyline(); lineaRuta.setPoints(lista);
                         lineaRuta.getOutlinePaint().setColor(modoCoche ? Color.rgb(26, 115, 232) : Color.rgb(15, 157, 88));
                         lineaRuta.getOutlinePaint().setStrokeWidth(11f); map.getOverlays().add(lineaRuta); map.invalidate();
-                        txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min · %s", modoCoche ? "🚗" : "🚶", km, min, nombre));
+                        java.util.Calendar cal = java.util.Calendar.getInstance();
+                        cal.add(java.util.Calendar.MINUTE, min);
+                        String eta = String.format(Locale.US, "%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE));
+                        txtBanner.setText(String.format(Locale.US, "%s %.1f km · %d min (Llegas %s) · %s", modoCoche ? "🚗" : "🚶", km, min, eta, nombre));
                     });
                 } catch (Throwable ignored) {}
             }).start();
@@ -294,7 +316,26 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void cargarRadares() {
-        double[][] base = {{36.7165,-4.4321,80},{36.6852,-4.4690,100},{36.5101,-4.8824,80},{40.4168,-3.7038,50},{41.3851,2.1734,80}};
+        double[][] base = {
+            // Malaga y Costa del Sol (MA-20, A-7, A-45, AP-7)
+            {36.6852, -4.4690, 100}, // MA-20 Aeropuerto / Guadalhorce
+            {36.7165, -4.4321, 80},  // Av. Andalucia / Centro
+            {36.7248, -4.3895, 80},  // A-7 Cerrado de Calderon
+            {36.7192, -4.3510, 80},  // A-7 El Palo / Candado
+            {36.7155, -4.2810, 100}, // A-7 Rincon de la Victoria
+            {36.7485, -4.0920, 120}, // A-7 Velez-Malaga
+            {36.6012, -4.5280, 80},  // A-7 Benalmadena / Torremolinos
+            {36.5380, -4.6345, 100}, // A-7 Fuengirola / Mijas
+            {36.5101, -4.8824, 80},  // A-7 Marbella Arco
+            {36.4250, -5.1450, 100}, // A-7 Estepona
+            {36.8120, -4.4210, 100}, // A-45 Casabermeja / Las Pedrizas
+            {37.0185, -4.5580, 120}, // A-45 Antequera
+            // Principales autovias de Andalucia (Sevilla, Granada, Cordoba, Cadiz)
+            {37.3891, -5.9845, 80},  // SE-30 Sevilla
+            {37.1773, -3.5986, 90},  // GR-30 Granada
+            {37.8882, -4.7794, 100}, // A-4 Cordoba
+            {36.5271, -6.2886, 80}   // CA-33 Cadiz
+        };
         for (double[] r : base) radares.add(r);
         for (String item : getSharedPreferences("kuli_radares", MODE_PRIVATE).getString("lista", "").split(";")) {
             String[] p = item.split(",");
@@ -344,10 +385,26 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void descargarZonaActual() {
-        if (modoOffline) return;
-        int z = (int) Math.max(6, map.getZoomLevelDouble());
-        new CacheManager(map).downloadAreaAsync(this, map.getBoundingBox(), z, Math.min(15, z + 3));
-        txtBanner.setText("📥 Descargando mapas sin conexión...");
+        if (modoOffline) {
+            Toast.makeText(this, "Activa Online primero para descargar mapas", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] zonas = {
+            "📍 Málaga Capital y Costa del Sol (Rápido)",
+            "🗺️ Provincia de Málaga completa",
+            "☀️ Andalucía completa (Autovías y capitales)",
+            "🔍 Vista actual de pantalla"
+        };
+        new AlertDialog.Builder(this).setTitle("📥 Descargar mapas sin internet").setItems(zonas, (d, idx) -> {
+            org.osmdroid.util.BoundingBox box;
+            int zMin = 8, zMax = 14;
+            if (idx == 0) { box = new org.osmdroid.util.BoundingBox(36.78, -4.30, 36.50, -4.95); zMin = 10; zMax = 15; }
+            else if (idx == 1) { box = new org.osmdroid.util.BoundingBox(37.28, -3.75, 36.30, -5.60); zMin = 9; zMax = 14; }
+            else if (idx == 2) { box = new org.osmdroid.util.BoundingBox(38.75, -1.60, 36.00, -7.55); zMin = 7; zMax = 12; }
+            else { box = map.getBoundingBox(); zMin = (int) Math.max(6, map.getZoomLevelDouble()); zMax = Math.min(15, zMin + 3); }
+            new CacheManager(map).downloadAreaAsync(this, box, zMin, zMax);
+            txtBanner.setText("📥 Descargando: " + zonas[idx]);
+        }).show();
     }
 
     @Override public void onLocationChanged(Location loc) {
