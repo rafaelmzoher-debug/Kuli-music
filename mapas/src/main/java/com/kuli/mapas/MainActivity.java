@@ -359,17 +359,29 @@ public class MainActivity extends Activity implements LocationListener {
     private void alternarNavegacion() {
         navegando = !navegando;
         if (navegando) {
-            btnIniciarRuta.setText("⏹️ SALIR RUTA");
+            btnIniciarRuta.setText("⏹️ SALIR");
             btnIniciarRuta.getBackground().setTint(Color.rgb(217, 48, 37));
-            if (locOverlay != null) locOverlay.enableFollowLocation();
-            map.getController().setZoom(17.5);
-            String msg = pasosVoz.isEmpty() ? "Iniciando ruta hacia destino" : pasosVoz.get(0);
-            txtBanner.setText("🧭 " + msg);
+            txtBanner.setTextSize(17);
+            txtBanner.setTextColor(Color.WHITE);
+            txtBanner.getBackground().setTint(Color.rgb(12, 42, 88));
+            txtBanner.setPadding(dp(14), dp(12), dp(14), dp(12));
+            if (lineaRuta != null) lineaRuta.getOutlinePaint().setStrokeWidth(18f);
+            if (locOverlay != null) {
+                locOverlay.enableFollowLocation();
+                if (locOverlay.getMyLocation() != null) map.getController().animateTo(locOverlay.getMyLocation());
+            }
+            map.getController().setZoom(18.8);
+            String msg = pasosVoz.isEmpty() ? "Siga la ruta azul hacia su destino" : pasosVoz.get(0);
+            txtBanner.setText("⬆️ " + msg);
             if (tts != null) tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, null);
         } else {
             btnIniciarRuta.setText("▶️ INICIAR RUTA");
             btnIniciarRuta.getBackground().setTint(Color.rgb(26, 115, 232));
             btnIniciarRuta.setVisibility(View.GONE);
+            txtBanner.setTextSize(12);
+            txtBanner.setTextColor(Color.rgb(25, 45, 85));
+            txtBanner.getBackground().setTint(Color.argb(235, 255, 255, 255));
+            map.setMapOrientation(0f);
             if (lineaRuta != null) map.getOverlays().remove(lineaRuta);
             if (marcadorDestino != null) map.getOverlays().remove(marcadorDestino);
             map.invalidate();
@@ -494,7 +506,7 @@ public class MainActivity extends Activity implements LocationListener {
             Bitmap bmpCoche = crearIconoCoche();
             locOverlay.setPersonIcon(bmpCoche);
             locOverlay.setDirectionIcon(bmpCoche);
-            locOverlay.setPersonHotspot(32f, 32f);
+            locOverlay.setPersonHotspot(48f, 48f);
             locOverlay.setDirectionAnchor(0.5f, 0.5f);
             locOverlay.enableMyLocation(); locOverlay.enableFollowLocation(); map.getOverlays().add(locOverlay);
             LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
@@ -581,27 +593,27 @@ public class MainActivity extends Activity implements LocationListener {
     private Button miniBtn(String t) { Button b = new Button(this); b.setText(t); b.setTextSize(17); b.setBackgroundColor(Color.TRANSPARENT); b.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(42))); return b; }
     
     private Bitmap crearIconoCoche() {
-        Bitmap b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        Bitmap b = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         Paint pt = new Paint(Paint.ANTI_ALIAS_FLAG);
         // Ruedas negras
         pt.setColor(Color.rgb(25, 28, 34));
-        c.drawRoundRect(new RectF(14, 12, 20, 22), 2, 2, pt);
-        c.drawRoundRect(new RectF(44, 12, 50, 22), 2, 2, pt);
-        c.drawRoundRect(new RectF(14, 42, 20, 52), 2, 2, pt);
-        c.drawRoundRect(new RectF(44, 42, 50, 52), 2, 2, pt);
+        c.drawRoundRect(new RectF(21, 18, 30, 33), 2, 2, pt);
+        c.drawRoundRect(new RectF(66, 18, 75, 33), 2, 2, pt);
+        c.drawRoundRect(new RectF(21, 63, 30, 78), 2, 2, pt);
+        c.drawRoundRect(new RectF(66, 63, 75, 78), 2, 2, pt);
         // Carroceria azul marino Kuli Edition
         pt.setColor(Color.rgb(16, 58, 122));
-        c.drawRoundRect(new RectF(18, 6, 46, 58), 10, 10, pt);
+        c.drawRoundRect(new RectF(27, 9, 69, 87), 10, 10, pt);
         // Borde dorado
         pt.setColor(Color.rgb(212, 175, 55));
         pt.setStyle(Paint.Style.STROKE); pt.setStrokeWidth(2.5f);
-        c.drawRoundRect(new RectF(18, 6, 46, 58), 10, 10, pt);
+        c.drawRoundRect(new RectF(27, 9, 69, 87), 10, 10, pt);
         pt.setStyle(Paint.Style.FILL);
         // Parabrisas delantero y trasero
         pt.setColor(Color.rgb(165, 220, 255));
-        c.drawRoundRect(new RectF(21, 16, 43, 25), 4, 4, pt);
-        c.drawRoundRect(new RectF(22, 42, 42, 49), 3, 3, pt);
+        c.drawRoundRect(new RectF(32, 24, 64, 38), 4, 4, pt);
+        c.drawRoundRect(new RectF(33, 63, 63, 74), 3, 3, pt);
         // Faros delanteros encendidos
         pt.setColor(Color.rgb(255, 245, 160));
         c.drawCircle(22, 8, 2.5f, pt);
