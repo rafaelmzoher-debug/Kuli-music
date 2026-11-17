@@ -811,17 +811,17 @@ public class MainActivity extends Activity {
     
     private void autoOrganizarAlbumesDescargados(boolean avisarSiNada) {
         try {
-            java.io.java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-            java.io.java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
-            java.io.java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
-            java.io.java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
-            java.io.java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
+            java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
+            java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
+            java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
             dirAlbumes.mkdirs(); dirSueltas.mkdirs();
 
             java.util.ArrayList<java.io.File> cand = new java.util.ArrayList<>();
-            for (java.io.java.io.File dir : new java.io.java.io.File[]{dl, prism}) {
+            for (java.io.File dir : new java.io.File[]{dl, prism}) {
                 if (dir != null && dir.exists() && dir.listFiles() != null) {
-                    for (java.io.java.io.File f : dir.listFiles()) {
+                    for (java.io.File f : dir.listFiles()) {
                         String nm = f.getName().toLowerCase();
                         if (f.isFile() && f.length() > 30000 && (nm.endsWith(".mp3") || nm.endsWith(".m4a"))) {
                             cand.add(f);
@@ -832,12 +832,12 @@ public class MainActivity extends Activity {
             if (cand.isEmpty()) return;
 
             class InfoPista {
-                java.io.java.io.File f; String tit, art, alb, pista; byte[] artBytes;
+                java.io.File f; String tit, art, alb, pista; byte[] artBytes;
             }
             java.util.ArrayList<InfoPista> infos = new java.util.ArrayList<>();
             java.util.HashMap<String, Integer> conteoAlb = new java.util.HashMap<>();
 
-            for (java.io.java.io.File f : cand) {
+            for (java.io.File f : cand) {
                 InfoPista ip = new InfoPista();
                 ip.f = f;
                 android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
@@ -872,7 +872,7 @@ public class MainActivity extends Activity {
                 String titLimpio = ip.tit.replaceAll("[\\\\/:*?\"<>|]", "").trim();
                 String artLimpio = ip.art.replaceAll("[\\\\/:*?\"<>|]", "").trim();
 
-                java.io.java.io.File destinoDir;
+                java.io.File destinoDir;
                 String nombreFinal;
                 if (esAlbum) {
                     String albLimpio = ip.alb.replaceAll("[\\\\/:*?\"<>|]", "").trim();
@@ -890,7 +890,7 @@ public class MainActivity extends Activity {
                     nombreFinal = num + titLimpio + ext;
 
                     if (ip.artBytes != null && ip.artBytes.length > 0) {
-                        java.io.java.io.File cov = new java.io.File(destinoDir, "cover.jpg");
+                        java.io.File cov = new java.io.File(destinoDir, "cover.jpg");
                         if (!cov.exists()) {
                             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(cov)) { fos.write(ip.artBytes); }
                         }
@@ -900,7 +900,7 @@ public class MainActivity extends Activity {
                     nombreFinal = (!artLimpio.isEmpty() ? (artLimpio + " - " + titLimpio) : titLimpio) + ext;
                 }
 
-                java.io.java.io.File destjava.io.File = new java.io.File(destinoDir, nombreFinal);
+                java.io.File destFile = new java.io.File(destinoDir, nombreFinal);
                 if (!destFile.exists()) {
                     if (!ip.f.renameTo(destFile)) {
                         try (java.io.InputStream in = new java.io.FileInputStream(ip.f);
