@@ -2597,6 +2597,32 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Hacer o elegir foto ----------
+    
+    private String obtenerDireccionGpsActual() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                return "";
+            }
+            android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+            if (lm == null) return "";
+            android.location.Location loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (loc == null) loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+            if (loc == null) return "";
+            android.location.Geocoder geo = new android.location.Geocoder(this, java.util.Locale.getDefault());
+            java.util.List<android.location.Address> dirs = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
+            if (dirs != null && !dirs.isEmpty()) {
+                android.location.Address a = dirs.get(0);
+                String calle = a.getThoroughfare() != null ? a.getThoroughfare() : "";
+                String num = a.getSubThoroughfare() != null ? " " + a.getSubThoroughfare() : "";
+                String locName = a.getLocality() != null ? ", " + a.getLocality() : "";
+                String res = (calle + num + locName).trim();
+                if (!res.isEmpty()) return "📍 " + res;
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
     private boolean datosValidos(String orden) {
         if (orden == null || orden.trim().isEmpty()) { aviso("Escribe primero el nº de orden"); return false; }
         if (!tienePermiso()) {
@@ -2611,6 +2637,9 @@ public class MainActivity extends Activity {
         if (!datosValidos(orden)) return;
         ordenPendiente = orden.trim();
         notaPendiente = nota == null ? "" : nota.trim();
+        if (notaPendiente.isEmpty()) {
+            notaPendiente = obtenerDireccionGpsActual();
+        }
         String nombre = "cam_" + System.currentTimeMillis() + ".jpg";
         File dir = new File(getCacheDir(), "tmp");
         dir.mkdirs();
@@ -2633,6 +2662,9 @@ public class MainActivity extends Activity {
         if (!datosValidos(orden)) return;
         ordenPendiente = orden.trim();
         notaPendiente = nota == null ? "" : nota.trim();
+        if (notaPendiente.isEmpty()) {
+            notaPendiente = obtenerDireccionGpsActual();
+        }
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("image/*");
         startActivityForResult(Intent.createChooser(i, "Elige la foto"), PIDE_GALERIA);
