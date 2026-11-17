@@ -718,13 +718,13 @@ public class MainActivity extends Activity {
     // ---------- Clasificar las descargas de Prism / NoTube en las carpetas del NAS ----------
     private void elegirCarpetaDescargas() {
         java.io.File musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
-        java.io.File base = new File(musicDir, "KULI MUSIC");
-        java.io.File dlPrism = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Prism_MP3");
+        java.io.File base = new java.io.File(musicDir, "KULI MUSIC");
+        java.io.File dlPrism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Prism_MP3");
 
         final java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
         final java.util.ArrayList<java.util.ArrayList<Uri>> grupos = new java.util.ArrayList<>();
 
-        java.io.File albRoot = new File(base, "Álbumes");
+        java.io.File albRoot = new java.io.File(base, "Álbumes");
         if (albRoot.exists() && albRoot.listFiles() != null) {
             java.io.File[] dirs = albRoot.listFiles();
             java.util.Arrays.sort(dirs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
@@ -738,7 +738,7 @@ public class MainActivity extends Activity {
                 }
             }
         }
-        java.io.File sueltas = new File(base, "Sueltas");
+        java.io.File sueltas = new java.io.File(base, "Sueltas");
         if (sueltas.exists()) {
             java.util.ArrayList<Uri> u = recogerAudiosCarpeta(sueltas);
             if (!u.isEmpty()) {
