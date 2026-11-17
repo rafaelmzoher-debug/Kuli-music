@@ -1704,8 +1704,16 @@ public class MainActivity extends Activity {
     private void revisarOrden(String t, TextView hint) {
         t = t.trim().toUpperCase(Locale.ROOT);
         if (t.isEmpty()) { hint.setText(""); return; }
-        if (t.matches("WK\\d{12}")) { hint.setText("✓ Formato correcto"); hint.setTextColor(Color.rgb(120, 200, 140)); }
-        else { hint.setText("⚠ Las órdenes son WK + 12 cifras. Revisa que esté bien escrito."); hint.setTextColor(Color.rgb(255, 130, 110)); }
+        if (t.matches("WK\\d{12}")) {
+            hint.setText("✓ Formato correcto (Orden WK)");
+            hint.setTextColor(Color.rgb(120, 200, 140));
+        } else if (t.matches("\\d{5,12}")) {
+            hint.setText("✓ Formato correcto (Orden empresa)");
+            hint.setTextColor(Color.rgb(120, 200, 140));
+        } else {
+            hint.setText("⚠ Introduce WK + 12 cifras o nº de orden de empresa (5-12 cifras).");
+            hint.setTextColor(Color.rgb(255, 130, 110));
+        }
     }
 
     // ---------- Órdenes a medias ----------
