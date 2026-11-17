@@ -32,7 +32,7 @@ public class MainActivity extends Activity implements LocationListener {
     private TextView txtVel, txtLimite, txtBanner;
     private boolean modoOffline = false, modoCoche = true, modoNoche = false, pantallaDespejada = false;
     private LinearLayout topWrapRef, navBotRef, barraRef; private HorizontalScrollView hsvRef;
-    private int limiteActual = 120, ultimoRadarAvisado = -1;
+    private int limiteActual = 999, ultimoRadarAvisado = -1;
     // RADAR-KULI
     private final Set<String> avisados = new HashSet<>();
     private float ultimoRumbo = -1f;
@@ -118,8 +118,8 @@ public class MainActivity extends Activity implements LocationListener {
         barra.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable gdBus = new GradientDrawable();
         gdBus.setColor(Color.WHITE);
-        gdBus.setCornerRadius(dp(26));
-        gdBus.setStroke(dp(1), Color.rgb(220, 224, 230));
+        gdBus.setCornerRadius(dp(24)); // DISENO-KULI
+        gdBus.setStroke(dp(1), Color.argb(150, 212, 175, 55));
         barra.setBackground(gdBus);
         barra.setElevation(dp(6));
         barra.setPadding(dp(14), dp(2), dp(8), dp(2));
@@ -174,19 +174,19 @@ public class MainActivity extends Activity implements LocationListener {
         velBox.setOrientation(LinearLayout.HORIZONTAL);
         velBox.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout.LayoutParams lpVel = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-        lpVel.setMargins(dp(14), 0, 0, dp(76));
+        lpVel.setMargins(dp(14), 0, 0, dp(92));
 
         txtVel = new TextView(this);
-        txtVel.setText("0\nkm/h"); txtVel.setTextColor(Color.WHITE); txtVel.setTextSize(17);
+        txtVel.setText("0\nkm/h"); txtVel.setTextColor(Color.WHITE); txtVel.setTextSize(15);
         txtVel.setTypeface(Typeface.DEFAULT_BOLD); txtVel.setGravity(Gravity.CENTER);
         txtVel.setBackground(circulo(Color.argb(242, 16, 44, 86), Color.rgb(212, 175, 55), 3));
-        velBox.addView(txtVel, new LinearLayout.LayoutParams(dp(72), dp(72)));
+        velBox.addView(txtVel, new LinearLayout.LayoutParams(dp(64), dp(64)));
 
         txtLimite = new TextView(this);
-        txtLimite.setText("120"); txtLimite.setTextColor(Color.BLACK); txtLimite.setTextSize(19);
+        txtLimite.setText("--"); txtLimite.setTextColor(Color.BLACK); txtLimite.setTextSize(16);
         txtLimite.setTypeface(Typeface.DEFAULT_BOLD); txtLimite.setGravity(Gravity.CENTER);
-        txtLimite.setBackground(circulo(Color.WHITE, Color.rgb(225, 35, 45), 6));
-        LinearLayout.LayoutParams lpLim = new LinearLayout.LayoutParams(dp(54), dp(54));
+        txtLimite.setBackground(circulo(Color.WHITE, Color.rgb(225, 35, 45), 5));
+        LinearLayout.LayoutParams lpLim = new LinearLayout.LayoutParams(dp(46), dp(46));
         lpLim.setMargins(dp(8), 0, 0, 0);
         velBox.addView(txtLimite, lpLim);
         root.addView(velBox, lpVel);
@@ -195,7 +195,7 @@ public class MainActivity extends Activity implements LocationListener {
         LinearLayout fabCol = new LinearLayout(this);
         fabCol.setOrientation(LinearLayout.VERTICAL);
         FrameLayout.LayoutParams lpFab = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
-        lpFab.setMargins(0, 0, dp(14), dp(76));
+        lpFab.setMargins(0, 0, dp(14), dp(92));
 
         Button fabPlus = fabBtn("+", Color.WHITE, Color.rgb(50, 54, 60));
         fabPlus.setOnClickListener(v -> map.getController().zoomIn());
@@ -205,7 +205,7 @@ public class MainActivity extends Activity implements LocationListener {
         fabMinus.setOnClickListener(v -> map.getController().zoomOut());
         fabCol.addView(fabMinus);
 
-        Button fabGps = fabBtn("🎯", Color.WHITE, Color.rgb(26, 115, 232));
+        Button fabGps = fabBtn("🎯", Color.WHITE, Color.rgb(14, 42, 90));
         fabGps.setOnClickListener(v -> centrarGps());
         fabCol.addView(fabGps);
 
@@ -241,11 +241,12 @@ public class MainActivity extends Activity implements LocationListener {
         // Barra inferior blanca estilo Google Maps (Explorar, Guardados, Sin Red / Bajar)
         LinearLayout navBot = new LinearLayout(this); navBotRef = navBot;
         navBot.setOrientation(LinearLayout.HORIZONTAL);
-        navBot.setBackgroundColor(Color.WHITE);
-        navBot.setElevation(dp(10));
-        navBot.setPadding(dp(8), dp(6), dp(8), dp(6));
+        GradientDrawable gdNav = new GradientDrawable(); gdNav.setColor(Color.argb(245, 14, 42, 90)); gdNav.setCornerRadius(dp(28));
+        navBot.setBackground(gdNav);
+        navBot.setElevation(dp(12));
+        navBot.setPadding(dp(8), dp(4), dp(8), dp(4));
 
-        Button tabBruj = tabBtn("🧭\nKuli");
+        Button tabBruj = tabBtn("🧭\nKuli"); tabBruj.setTextColor(Color.rgb(212, 175, 55));
         tabBruj.setOnClickListener(v -> {
             map.setMapOrientation(0f);
             if (topWrapRef != null) { barraRef.setVisibility(View.VISIBLE); hsvRef.setVisibility(View.VISIBLE); topWrapRef.setVisibility(View.GONE); }
@@ -265,31 +266,32 @@ public class MainActivity extends Activity implements LocationListener {
         navBot.addView(tabBus, new LinearLayout.LayoutParams(0, -2, 1f));
         navBot.addView(tabGua, new LinearLayout.LayoutParams(0, -2, 1f));
         navBot.addView(tabMen, new LinearLayout.LayoutParams(0, -2, 1f));
-        root.addView(navBot, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        FrameLayout.LayoutParams lpNav = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM); lpNav.setMargins(dp(14), 0, dp(14), dp(14));
+        root.addView(navBot, lpNav);
 
         btnIniciarRuta = new Button(this);
         btnIniciarRuta.setText("▶️ INICIAR RUTA");
-        btnIniciarRuta.setTextColor(Color.WHITE);
-        btnIniciarRuta.setTextSize(16);
+        btnIniciarRuta.setTextColor(Color.rgb(212, 175, 55));
+        btnIniciarRuta.setTextSize(15);
         btnIniciarRuta.setTypeface(Typeface.DEFAULT_BOLD);
         GradientDrawable gdIni = new GradientDrawable();
-        gdIni.setColor(Color.rgb(26, 115, 232));
+        gdIni.setColor(Color.rgb(14, 42, 90));
         gdIni.setCornerRadius(dp(26));
         btnIniciarRuta.setBackground(gdIni);
         btnIniciarRuta.setElevation(dp(12));
         btnIniciarRuta.setVisibility(View.GONE);
         btnIniciarRuta.setOnClickListener(v -> alternarNavegacion());
-        FrameLayout.LayoutParams lpIni = new FrameLayout.LayoutParams(dp(190), dp(50), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        lpIni.setMargins(0, 0, 0, dp(82));
+        FrameLayout.LayoutParams lpIni = new FrameLayout.LayoutParams(dp(170), dp(46), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lpIni.setMargins(0, 0, 0, dp(168));
         root.addView(btnIniciarRuta, lpIni);
 
         TextView btnRadarMovil = new TextView(this);
         btnRadarMovil.setText("\ud83d\udea8\nM\u00d3VIL");
-        btnRadarMovil.setTextColor(Color.WHITE); btnRadarMovil.setTextSize(13); btnRadarMovil.setTypeface(Typeface.DEFAULT_BOLD); btnRadarMovil.setGravity(Gravity.CENTER);
+        btnRadarMovil.setTextColor(Color.WHITE); btnRadarMovil.setTextSize(10); btnRadarMovil.setTypeface(Typeface.DEFAULT_BOLD); btnRadarMovil.setGravity(Gravity.CENTER);
         btnRadarMovil.setBackground(circulo(Color.rgb(217, 48, 37), Color.WHITE, 3)); btnRadarMovil.setElevation(dp(8));
         btnRadarMovil.setOnClickListener(v -> guardarRadarMovil());
-        FrameLayout.LayoutParams lpRm = new FrameLayout.LayoutParams(dp(76), dp(76), Gravity.BOTTOM | Gravity.START);
-        lpRm.setMargins(dp(14), 0, 0, dp(160));
+        FrameLayout.LayoutParams lpRm = new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM | Gravity.START);
+        lpRm.setMargins(dp(14), 0, 0, dp(164));
         root.addView(btnRadarMovil, lpRm);
         cargarMoviles();
         actualizarRadaresSiToca();
@@ -516,7 +518,7 @@ public class MainActivity extends Activity implements LocationListener {
             if (tts != null) tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, null);
         } else {
             btnIniciarRuta.setText("▶️ INICIAR RUTA");
-            btnIniciarRuta.getBackground().setTint(Color.rgb(26, 115, 232));
+            btnIniciarRuta.getBackground().setTint(Color.rgb(14, 42, 90));
             btnIniciarRuta.setVisibility(View.GONE);
             txtBanner.setTextSize(12);
             txtBanner.setTextColor(Color.rgb(25, 45, 85));
@@ -546,6 +548,7 @@ public class MainActivity extends Activity implements LocationListener {
         boolean conRumbo = loc.hasBearing() && loc.getSpeed() > 3f;
         if (conRumbo) ultimoRumbo = loc.getBearing();
         double alcance = Math.max(300, Math.min(900, loc.getSpeed() * 15.0));
+        boolean hay = false;
         for (int i = 0; i < radares.size(); i++) {
             double[] r = radares.get(i);
             GeoPoint gp = new GeoPoint(r[0], r[1]);
@@ -553,9 +556,10 @@ public class MainActivity extends Activity implements LocationListener {
             String key = "f" + i;
             if (dist > alcance) { if (dist > 1500) avisados.remove(key); continue; }
             if (conRumbo && dist > 60 && difRumbo(rumboA(yo, gp), loc.getBearing()) > 55) continue;
-            limiteActual = (int) r[2]; txtLimite.setText(String.valueOf(limiteActual));
+            limiteActual = (int) r[2]; txtLimite.setText(String.valueOf(limiteActual)); hay = true;
             if (avisados.add(key)) hablar("Atenci\u00f3n, radar a " + (Math.round(dist / 10.0) * 10) + " metros, l\u00edmite " + limiteActual);
         }
+        if (!hay) { limiteActual = 999; txtLimite.setText("--"); }
         long ahora = System.currentTimeMillis();
         for (int i = moviles.size() - 1; i >= 0; i--) {
             Movil m = moviles.get(i);
@@ -854,21 +858,21 @@ public class MainActivity extends Activity implements LocationListener {
     @Override protected void onPause() { super.onPause(); map.onPause(); }
 
     private Button chip(String txt, final String query) {
-        Button b = new Button(this); b.setText(txt); b.setAllCaps(false); b.setTextSize(13); b.setTextColor(Color.rgb(32, 33, 36));
-        GradientDrawable gd = new GradientDrawable(); gd.setColor(Color.WHITE); gd.setCornerRadius(dp(18)); gd.setStroke(dp(1), Color.rgb(218, 220, 224));
+        Button b = new Button(this); b.setText(txt); b.setAllCaps(false); b.setTextSize(12); b.setTextColor(Color.WHITE);
+        GradientDrawable gd = new GradientDrawable(); gd.setColor(Color.argb(235, 14, 42, 90)); gd.setCornerRadius(dp(18));
         b.setBackground(gd); b.setElevation(dp(3)); b.setPadding(dp(12), 0, dp(12), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(34)); lp.setMargins(0, 0, dp(8), 0); b.setLayoutParams(lp);
         if (!query.isEmpty()) b.setOnClickListener(v -> { txtBuscar.setText(query); buscarDireccion(query); });
         return b;
     }
     private Button fabBtn(String txt, int bg, int fg) {
-        Button b = new Button(this); b.setText(txt); b.setTextSize(19); b.setTextColor(fg);
+        Button b = new Button(this); b.setText(txt); b.setTextSize(16); b.setTextColor(fg); b.setPadding(0, 0, 0, 0);
         GradientDrawable gd = new GradientDrawable(); gd.setShape(GradientDrawable.OVAL); gd.setColor(bg); gd.setStroke(dp(1), Color.rgb(218, 220, 224));
         b.setBackground(gd); b.setElevation(dp(6));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(50), dp(50)); lp.setMargins(0, dp(6), 0, dp(6)); b.setLayoutParams(lp); return b;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(42), dp(42)); lp.setMargins(0, dp(5), 0, dp(5)); b.setLayoutParams(lp); return b;
     }
     private Button tabBtn(String txt) {
-        Button b = new Button(this); b.setText(txt); b.setAllCaps(false); b.setTextSize(11); b.setTextColor(Color.rgb(60, 64, 67)); b.setBackgroundColor(Color.TRANSPARENT); return b;
+        Button b = new Button(this); b.setText(txt); b.setAllCaps(false); b.setTextSize(10); b.setTextColor(Color.rgb(207, 214, 228)); b.setBackgroundColor(Color.TRANSPARENT); return b;
     }
     private GradientDrawable circulo(int f, int b, int g) { GradientDrawable gd = new GradientDrawable(); gd.setShape(GradientDrawable.OVAL); gd.setColor(f); gd.setStroke(dp(g), b); return gd; }
     private Button miniBtn(String t) { Button b = new Button(this); b.setText(t); b.setTextSize(17); b.setBackgroundColor(Color.TRANSPARENT); b.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(42))); return b; }
