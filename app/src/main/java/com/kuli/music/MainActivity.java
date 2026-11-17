@@ -717,18 +717,18 @@ public class MainActivity extends Activity {
 
     // ---------- Clasificar las descargas de Prism / NoTube en las carpetas del NAS ----------
     private void elegirCarpetaDescargas() {
-        File musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
-        File base = new File(musicDir, "KULI MUSIC");
-        File dlPrism = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Prism_MP3");
+        java.io.File musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
+        java.io.File base = new File(musicDir, "KULI MUSIC");
+        java.io.File dlPrism = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Prism_MP3");
 
         final java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
         final java.util.ArrayList<java.util.ArrayList<Uri>> grupos = new java.util.ArrayList<>();
 
-        File albRoot = new File(base, "Álbumes");
+        java.io.File albRoot = new File(base, "Álbumes");
         if (albRoot.exists() && albRoot.listFiles() != null) {
-            File[] dirs = albRoot.listFiles();
+            java.io.File[] dirs = albRoot.listFiles();
             java.util.Arrays.sort(dirs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            for (File d : dirs) {
+            for (java.io.File d : dirs) {
                 if (d.isDirectory()) {
                     java.util.ArrayList<Uri> u = recogerAudiosCarpeta(d);
                     if (!u.isEmpty()) {
@@ -738,7 +738,7 @@ public class MainActivity extends Activity {
                 }
             }
         }
-        File sueltas = new File(base, "Sueltas");
+        java.io.File sueltas = new File(base, "Sueltas");
         if (sueltas.exists()) {
             java.util.ArrayList<Uri> u = recogerAudiosCarpeta(sueltas);
             if (!u.isEmpty()) {
@@ -785,12 +785,12 @@ public class MainActivity extends Activity {
             .show();
     }
 
-    private java.util.ArrayList<Uri> recogerAudiosCarpeta(File dir) {
+    private java.util.ArrayList<Uri> recogerAudiosCarpeta(java.io.File dir) {
         java.util.ArrayList<Uri> out = new java.util.ArrayList<>();
         if (dir == null || !dir.exists() || dir.listFiles() == null) return out;
-        File[] fs = dir.listFiles();
+        java.io.File[] fs = dir.listFiles();
         java.util.Arrays.sort(fs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-        for (File f : fs) {
+        for (java.io.File f : fs) {
             if (f.isFile()) {
                 String n = f.getName().toLowerCase(java.util.Locale.ROOT);
                 if (n.endsWith(".mp3") || n.endsWith(".m4a") || n.endsWith(".flac") || n.endsWith(".wav") || n.endsWith(".ogg")) {
@@ -811,17 +811,17 @@ public class MainActivity extends Activity {
     
     private void autoOrganizarAlbumesDescargados(boolean avisarSiNada) {
         try {
-            java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-            java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
-            java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
-            java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
-            java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
+            java.io.java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
+            java.io.java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.io.java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
+            java.io.java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
             dirAlbumes.mkdirs(); dirSueltas.mkdirs();
 
             java.util.ArrayList<java.io.File> cand = new java.util.ArrayList<>();
-            for (java.io.File dir : new java.io.File[]{dl, prism}) {
+            for (java.io.java.io.File dir : new java.io.java.io.File[]{dl, prism}) {
                 if (dir != null && dir.exists() && dir.listFiles() != null) {
-                    for (java.io.File f : dir.listFiles()) {
+                    for (java.io.java.io.File f : dir.listFiles()) {
                         String nm = f.getName().toLowerCase();
                         if (f.isFile() && f.length() > 30000 && (nm.endsWith(".mp3") || nm.endsWith(".m4a"))) {
                             cand.add(f);
@@ -832,12 +832,12 @@ public class MainActivity extends Activity {
             if (cand.isEmpty()) return;
 
             class InfoPista {
-                java.io.File f; String tit, art, alb, pista; byte[] artBytes;
+                java.io.java.io.File f; String tit, art, alb, pista; byte[] artBytes;
             }
             java.util.ArrayList<InfoPista> infos = new java.util.ArrayList<>();
             java.util.HashMap<String, Integer> conteoAlb = new java.util.HashMap<>();
 
-            for (java.io.File f : cand) {
+            for (java.io.java.io.File f : cand) {
                 InfoPista ip = new InfoPista();
                 ip.f = f;
                 android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
@@ -872,7 +872,7 @@ public class MainActivity extends Activity {
                 String titLimpio = ip.tit.replaceAll("[\\\\/:*?\"<>|]", "").trim();
                 String artLimpio = ip.art.replaceAll("[\\\\/:*?\"<>|]", "").trim();
 
-                java.io.File destinoDir;
+                java.io.java.io.File destinoDir;
                 String nombreFinal;
                 if (esAlbum) {
                     String albLimpio = ip.alb.replaceAll("[\\\\/:*?\"<>|]", "").trim();
@@ -890,7 +890,7 @@ public class MainActivity extends Activity {
                     nombreFinal = num + titLimpio + ext;
 
                     if (ip.artBytes != null && ip.artBytes.length > 0) {
-                        java.io.File cov = new java.io.File(destinoDir, "cover.jpg");
+                        java.io.java.io.File cov = new java.io.File(destinoDir, "cover.jpg");
                         if (!cov.exists()) {
                             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(cov)) { fos.write(ip.artBytes); }
                         }
@@ -900,7 +900,7 @@ public class MainActivity extends Activity {
                     nombreFinal = (!artLimpio.isEmpty() ? (artLimpio + " - " + titLimpio) : titLimpio) + ext;
                 }
 
-                java.io.File destFile = new java.io.File(destinoDir, nombreFinal);
+                java.io.java.io.File destjava.io.File = new java.io.File(destinoDir, nombreFinal);
                 if (!destFile.exists()) {
                     if (!ip.f.renameTo(destFile)) {
                         try (java.io.InputStream in = new java.io.FileInputStream(ip.f);
