@@ -65,8 +65,31 @@ public class MainActivity extends Activity implements LocationListener {
 
         FrameLayout root = new FrameLayout(this);
         map = new MapView(this);
-        // Mapa claro estilo Google Maps (Carto Voyager)
-        map.setTileSource(TileSourceFactory.MAPNIK);
+        // Estilo limpio y nitido tipo Organic Maps (Carto Voyager @2x alta definicion)
+        org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase organicStyle =
+            new org.osmdroid.tileprovider.tilesource.XYTileSource(
+                "OrganicVoyager", 0, 20, 512, "@2x.png",
+                new String[]{
+                    "https://cartocdn.com",
+                    "https://cartocdn.com",
+                    "https://cartocdn.com"
+                }) {
+                @Override
+                public String getTileURLString(long pMapTileIndex) {
+                    return getBaseUrl()
+                        + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex) + "/"
+                        + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) + "/"
+                        + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex)
+                        + mImageFilenameEnding;
+                }
+            };
+        map.setTileSource(organicStyle);
+        map.setTilesScaleFactor(1.45f);
+        // Modo noche automatico para conducir sin deslumbrar (20:30 a 07:30)
+        int horaActual = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        if (horaActual >= 21 || horaActual < 7) {
+            map.getOverlayManager().getTilesOverlay().setColorFilter(org.osmdroid.views.overlay.TilesOverlay.INVERT_COLORS);
+        }
         map.setMultiTouchControls(true);
         map.setTilesScaleFactor(2.3f);
         map.getController().setZoom(18.8);
