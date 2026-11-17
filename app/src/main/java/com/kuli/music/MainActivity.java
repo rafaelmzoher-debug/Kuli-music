@@ -717,9 +717,88 @@ public class MainActivity extends Activity {
 
     // ---------- Clasificar las descargas de Prism / NoTube en las carpetas del NAS ----------
     private void elegirCarpetaDescargas() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, PICK_DESCARGAS);
+        File musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
+        File base = new File(musicDir, "KULI MUSIC");
+        File dlPrism = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Prism_MP3");
+
+        final java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
+        final java.util.ArrayList<java.util.ArrayList<Uri>> grupos = new java.util.ArrayList<>();
+
+        File albRoot = new File(base, "Álbumes");
+        if (albRoot.exists() && albRoot.listFiles() != null) {
+            File[] dirs = albRoot.listFiles();
+            java.util.Arrays.sort(dirs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            for (File d : dirs) {
+                if (d.isDirectory()) {
+                    java.util.ArrayList<Uri> u = recogerAudiosCarpeta(d);
+                    if (!u.isEmpty()) {
+                        nombres.add("💿 " + d.getName() + " (" + u.size() + " temas)");
+                        grupos.add(u);
+                    }
+                }
+            }
+        }
+        File sueltas = new File(base, "Sueltas");
+        if (sueltas.exists()) {
+            java.util.ArrayList<Uri> u = recogerAudiosCarpeta(sueltas);
+            if (!u.isEmpty()) {
+                nombres.add("🎵 Sueltas (" + u.size() + " temas)");
+                grupos.add(u);
+            }
+        }
+        if (dlPrism.exists()) {
+            java.util.ArrayList<Uri> u = recogerAudiosCarpeta(dlPrism);
+            if (!u.isEmpty()) {
+                nombres.add("📥 Descargas Prism sin mover (" + u.size() + " temas)");
+                grupos.add(u);
+            }
+        }
+
+        if (nombres.isEmpty()) {
+            aviso("No hay carpetas de música en KULI MUSIC para subir.");
+            return;
+        }
+
+        final String[] items = nombres.toArray(new String[0]);
+        final boolean[] marcados = new boolean[items.length];
+
+        new AlertDialog.Builder(this)
+            .setTitle("☁️ Elige qué carpetas subir al NAS")
+            .setMultiChoiceItems(items, marcados, (d, which, isChecked) -> marcados[which] = isChecked)
+            .setPositiveButton("⬆️ Subir marcadas", (d, w) -> {
+                java.util.ArrayList<Uri> elegidas = new java.util.ArrayList<>();
+                for (int i = 0; i < marcados.length; i++) {
+                    if (marcados[i]) elegidas.addAll(grupos.get(i));
+                }
+                if (elegidas.isEmpty()) {
+                    aviso("Marca al menos una carpeta para subir.");
+                    return;
+                }
+                subirAutomatico(elegidas, null);
+            })
+            .setNeutralButton("Marcar todas", (d, w) -> {
+                java.util.ArrayList<Uri> todas = new java.util.ArrayList<>();
+                for (java.util.ArrayList<Uri> g : grupos) todas.addAll(g);
+                subirAutomatico(todas, null);
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
+    }
+
+    private java.util.ArrayList<Uri> recogerAudiosCarpeta(File dir) {
+        java.util.ArrayList<Uri> out = new java.util.ArrayList<>();
+        if (dir == null || !dir.exists() || dir.listFiles() == null) return out;
+        File[] fs = dir.listFiles();
+        java.util.Arrays.sort(fs, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        for (File f : fs) {
+            if (f.isFile()) {
+                String n = f.getName().toLowerCase(java.util.Locale.ROOT);
+                if (n.endsWith(".mp3") || n.endsWith(".m4a") || n.endsWith(".flac") || n.endsWith(".wav") || n.endsWith(".ogg")) {
+                    out.add(Uri.fromFile(f));
+                }
+            }
+        }
+        return out;
     }
 
     private synchronized void marcarDescargaHecha(Uri uri) {
