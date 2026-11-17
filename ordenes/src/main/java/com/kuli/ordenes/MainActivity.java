@@ -617,6 +617,9 @@ public class MainActivity extends Activity {
             gastarSeguido(o);
         });
         p.addView(esc0, margen(-1, dp(54), 10));
+        Button btnAv0 = boton("🔄 Avería: retirar equipo roto (para devolver)", false);
+        btnAv0.setOnClickListener(v -> registrarEquipoAveriado(orden.getText().toString().trim()));
+        p.addView(btnAv0, margen(-1, -2, 8));
 
         final EditText nota = campo("Material (se rellena solo al escanear)", InputType.TYPE_CLASS_TEXT);
         nota.setText(ultNota);
@@ -889,6 +892,9 @@ public class MainActivity extends Activity {
             public void afterTextChanged(Editable e) { ultNota = e.toString(); }
         });
         p.addView(nota, margen(-1, -2, 8));
+        Button btnAvOrd = boton("🔄 Retirar equipo averiado en esta orden", false);
+        btnAvOrd.setOnClickListener(v -> registrarEquipoAveriado(nombre));
+        p.addView(btnAvOrd, margen(-1, -2, 8));
 
         LinearLayout fila = new LinearLayout(this);
         Button mas = boton("📷  Añadir foto", true);
@@ -1264,6 +1270,102 @@ public class MainActivity extends Activity {
         for (File h : hijos) if (h.isDirectory()) escanearVacias(h, out, nivel + 1);
     }
 
+    
+    private void registrarEquipoAveriado(String ordenInicial) {
+        LinearLayout lay = new LinearLayout(this);
+        lay.setOrientation(LinearLayout.VERTICAL);
+        lay.setPadding(dp(18), dp(12), dp(18), dp(8));
+
+        final EditText edOrd = campo("Nº Orden (WK... o nº empresa)", InputType.TYPE_CLASS_TEXT);
+        if (ordenInicial != null && !ordenInicial.isEmpty()) edOrd.setText(ordenInicial);
+        lay.addView(edOrd);
+
+        final String[] tipos = {
+            "Router Smart WiFi 7 (RTF8316VW / 8317)",
+            "Router Smart WiFi 6 / HGU",
+            "Deco UHD Movistar+",
+            "Amplificador Smart WiFi",
+            "ONT / Equipo Fibra",
+            "Otro equipo averiado"
+        };
+        final android.widget.Spinner spTipo = new android.widget.Spinner(this);
+        spTipo.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, tipos));
+        lay.addView(spTipo, margen(-1, -2, 8));
+
+        final EditText edSerie = campo("Nº de Serie del equipo retirado", InputType.TYPE_CLASS_TEXT);
+        lay.addView(edSerie, margen(-1, -2, 8));
+
+        final EditText edMotivo = campo("Motivo avería (ej. No enciende, Sin óptica, WiFi)", InputType.TYPE_CLASS_TEXT);
+        lay.addView(edMotivo, margen(-1, -2, 8));
+
+        new AlertDialog.Builder(this)
+            .setTitle("🔄 Retirar equipo averiado")
+            .setMessage("Se guarda aparte para devolver al almacén sin sumarlo a tu stock bueno.")
+            .setView(lay)
+            .setPositiveButton("Guardar retirada", (d, w) -> {
+                String ord = edOrd.getText().toString().trim().toUpperCase(Locale.ROOT);
+                if (ord.isEmpty()) ord = "SIN_ORDEN";
+                String tipo = tipos[spTipo.getSelectedItemPosition()];
+                String serie = edSerie.getText().toString().trim().toUpperCase(Locale.ROOT);
+                if (serie.isEmpty()) serie = "SIN_SERIE";
+                String mot = edMotivo.getText().toString().trim();
+                if (mot.isEmpty()) mot = "Avería general";
+                String fecha = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new java.util.Date());
+                String linea = fecha + " | Orden: " + ord + " | " + tipo + " | Serie: " + serie + " | Motivo: " + mot + "\n";
+                try {
+                    File base = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa");
+                    base.mkdirs();
+                    File fAv = new File(base, "averiados_devolver.txt");
+                    java.io.FileWriter fw = new java.io.FileWriter(fAv, true);
+                    fw.write(linea);
+                    fw.close();
+                    File dirOrd = new File(base, ord);
+                    if (dirOrd.exists()) {
+                        java.io.FileWriter fw2 = new java.io.FileWriter(new File(dirOrd, "averia_retirada.txt"), true);
+                        fw2.write(linea);
+                        fw2.close();
+                    }
+                    android.widget.Toast.makeText(this, "🛠️ Averiado guardado para devolver (" + ord + ")", android.widget.Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(this, "Error guardando avería: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                }
+            })
+            .setNegativeButton("Cancelar", null)
+            .show();
+    }
+
+    private void verEquiposAveriados() {
+        File fAv = new File(new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa"), "averiados_devolver.txt");
+        String contenido = "";
+        if (fAv.exists()) {
+            try {
+                java.util.List<String> lineas = java.nio.file.Files.readAllLines(fAv.toPath());
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < lineas.size(); i++) {
+                    sb.append(i + 1).append(". ").append(lineas.get(i)).append("\n\n");
+                }
+                contenido = sb.toString().trim();
+            } catch (Exception ignored) {}
+        }
+        if (contenido.isEmpty()) {
+            new AlertDialog.Builder(this)
+                .setTitle("🛠️ Averiados retirados")
+                .setMessage("No tienes ningún equipo averiado pendiente de devolver al almacén.")
+                .setPositiveButton("Aceptar", null)
+                .show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("🛠️ Averiados para devolver a almacén")
+            .setMessage(contenido)
+            .setPositiveButton("✅ Ya entregados (vaciar)", (d, w) -> {
+                fAv.delete();
+                android.widget.Toast.makeText(this, "✅ Lista de averiados entregados puesta a cero", android.widget.Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("Cerrar", null)
+            .show();
+    }
+
     private void verPendienteReponer() {
         try {
             File f = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa/pendiente_reponer.txt");
@@ -1382,6 +1484,9 @@ public class MainActivity extends Activity {
         Button btnVerRep = boton("📋 Pendiente de reponer por almacén", false);
         btnVerRep.setOnClickListener(v -> verPendienteReponer());
         p.addView(btnVerRep, margen(-1, -2, 6));
+        Button btnVerAv = boton("🛠️ Averiados retirados (devolver a almacén)", false);
+        btnVerAv.setOnClickListener(v -> verEquiposAveriados());
+        p.addView(btnVerAv, margen(-1, -2, 6));
         Button btnLimpiar = boton("🧹 Limpiar móvil (APKs y carpetas vacías)", false);
         btnLimpiar.setOnClickListener(v -> analizarYLimpiarMovil());
         p.addView(btnLimpiar, margen(-1, -2, 6));
