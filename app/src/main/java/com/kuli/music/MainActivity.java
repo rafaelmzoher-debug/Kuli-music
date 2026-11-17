@@ -942,7 +942,44 @@ public class MainActivity extends Activity {
             .setNegativeButton("📁 OTRA CARPETA", (dialog, which) -> elegirCarpetaMusica()).show();
     }
 
+    private void registrarCancionOida(String clave) {
+        if (clave == null || clave.isEmpty()) return;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE);
+            String prev = sp.getString("recientes", "");
+            java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+            for (String item : prev.split("\n")) if (!item.isEmpty()) set.add(item);
+            set.remove(clave);
+            set.add(clave);
+            while (set.size() > 80) {
+                java.util.Iterator<String> it = set.iterator();
+                it.next();
+                it.remove();
+            }
+            sp.edit().putString("recientes", String.join("\n", set)).apply();
+        } catch (Throwable ignored) {}
+    }
+
+    private int elegirInicioSinRepetir(java.util.List<String> lista, int inicioPorDefecto) {
+        if (lista == null || lista.size() <= 1 || inicioPorDefecto > 0) return inicioPorDefecto;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE);
+            java.util.HashSet<String> oidas = new java.util.HashSet<>(java.util.Arrays.asList(sp.getString("recientes", "").split("\n")));
+            java.util.ArrayList<Integer> frescas = new java.util.ArrayList<>();
+            for (int i = 0; i < lista.size(); i++) {
+                if (!oidas.contains(lista.get(i))) frescas.add(i);
+            }
+            if (!frescas.isEmpty()) {
+                return frescas.get(new java.util.Random().nextInt(frescas.size()));
+            }
+            return new java.util.Random().nextInt(lista.size());
+        } catch (Throwable ignored) {
+            return inicioPorDefecto;
+        }
+    }
+
     private void reproducir(Uri uri) {
+        if (uri != null) registrarCancionOida(uri.toString());
         if ("nas".equals(uri.getScheme())) { reproducirDelNas(uri); return; }
         reproducirArchivo(uri, uri);
     }
@@ -1115,12 +1152,7 @@ public class MainActivity extends Activity {
         for (Map.Entry<String, ArrayList<Uri>> e : porEstilo.entrySet())
             sb.append("📁 ").append(e.getKey()).append(":  ").append(e.getValue().size()).append("\n");
         sb.append("\nLas «Sin clasificar» no se han podido reconocer; puedes moverlas luego con una pulsación larga en la lista del NAS.");
-        new AlertDialog.Builder(this).setTitle("Así las voy a guardar")
-            .setMessage(sb.toString())
-            .setPositiveButton("SUBIR ASÍ", (d, w) -> subirGrupos(new ArrayList<>(porEstilo.entrySet()), 0, alSubir))
-            .setNeutralButton("ELEGIR YO", (d, w) -> elegirEstilo("Estilo para todas",
-                    estilo -> subirVariasAlNas(uris, estilo, alSubir)))
-            .setNegativeButton("CANCELAR", null).show();
+        subirGrupos(new ArrayList<>(porEstilo.entrySet()), 0, alSubir);
     }
 
     private void subirGrupos(final ArrayList<Map.Entry<String, ArrayList<Uri>>> cola, final int i,
@@ -2308,6 +2340,7 @@ public class MainActivity extends Activity {
     private void reproducirListaNas(List<String> rutas, int inicio) {
         cargarListaNas(rutas);
         modoLista = true;
+        inicio = elegirInicioSinRepetir(listaFavoritas, inicio);
         posicionFavorita = inicio;
         reproducir(Uri.parse(listaFavoritas.get(inicio)));
     }
