@@ -96,7 +96,7 @@ final class Respaldo {
         if (fs == null) return;
         for (File f : fs) {
             String nombre = f.getName();
-            if (nombre.startsWith(".")) continue;
+            if (nombre.startsWith(".") || nombre.equals("Papelera")) continue;
             String r = ruta + "\\" + nombre.replaceAll("[\\\\/:*?\"<>|]", "_");
             if (f.isDirectory()) {
                 if (!d.folderExists(r)) d.mkdir(r);

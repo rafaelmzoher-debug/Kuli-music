@@ -139,7 +139,17 @@ public class MainActivity extends Activity {
     }
 
     // Una vez al día (si ha pasado más de 20 h) copia sola al NAS al abrir la app, si hay wifi.
+    private void purgarPapelera() {
+        try {
+            File[] fs = new File(raiz, "Papelera").listFiles();
+            if (fs == null) return;
+            long limite = System.currentTimeMillis() - 7L * 24 * 3600000L;
+            for (File f : fs) if (f.isFile() && f.lastModified() < limite) f.delete();
+        } catch (Throwable ignorar) { }
+    }
+
     private void copiaDiaria() {
+        purgarPapelera();
         final android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
         if (System.currentTimeMillis() - sp.getLong("nas_ok", 0) < 20L * 3600000L) return;
         hilos.execute(() -> {
@@ -596,6 +606,13 @@ public class MainActivity extends Activity {
         TextView hoy = texto(resumenHoy(), 13, ORO, true);
         hoy.setGravity(Gravity.CENTER);
         p.addView(hoy);
+        long nasOk = getSharedPreferences("ordenes", MODE_PRIVATE).getLong("nas_ok", 0);
+        long horas = nasOk == 0 ? -1 : (System.currentTimeMillis() - nasOk) / 3600000L;
+        String txtNas = nasOk == 0 ? "\u26a0\ufe0f Copia en el NAS: todav\u00eda ninguna"
+            : "\u2601\ufe0f \u00daltima copia en el NAS: " + new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.ROOT).format(new java.util.Date(nasOk));
+        TextView nasV = texto(txtNas, 12, (nasOk == 0 || horas > 48) ? android.graphics.Color.rgb(217, 48, 37) : GRIS, false);
+        nasV.setGravity(Gravity.CENTER);
+        p.addView(nasV);
 
         final EditText orden = campo("Nº de orden", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         final TextView hintOrden = texto("", 12, GRIS, false);
@@ -1208,7 +1225,7 @@ public class MainActivity extends Activity {
             File root = android.os.Environment.getExternalStorageDirectory();
             File dl = new File(root, "Download");
             java.util.HashSet<String> keepApk = new java.util.HashSet<>(java.util.Arrays.asList(
-                "app-debug.apk", "ordenes-debug.apk", "mapas-debug.apk"
+                "app-debug.apk", "ordenes-debug.apk", "mapas-debug.apk", "fotos-debug.apk", "familia-debug.apk", "arcade-debug.apk"
             ));
             if (dl.exists() && dl.listFiles() != null) {
                 for (File f : dl.listFiles()) {
@@ -1228,9 +1245,9 @@ public class MainActivity extends Activity {
             final long mb = bytesTotales / (1024 * 1024);
             final StringBuilder resumen = new StringBuilder();
             resumen.append("📦 APKs viejas / temporales: ").append(basura.size()).append(" archivos (").append(mb).append(" MB)\n");
-            for (int i = 0; i < Math.min(8, basura.size()); i++) resumen.append("  • ").append(basura.get(i).getName()).append("\n");
+            for (int i = 0; i < basura.size(); i++) resumen.append("  • ").append(basura.get(i).getName()).append("\n");
             resumen.append("\n📂 Carpetas vacías obsoletas: ").append(vacias.size()).append("\n");
-            for (int i = 0; i < Math.min(8, vacias.size()); i++) resumen.append("  • ").append(vacias.get(i).getName()).append("\n");
+            for (int i = 0; i < vacias.size(); i++) resumen.append("  • ").append(vacias.get(i).getName()).append("\n");
 
             runOnUiThread(() -> {
                 if (basura.isEmpty() && vacias.isEmpty()) {
@@ -1243,12 +1260,15 @@ public class MainActivity extends Activity {
                 new AlertDialog.Builder(this)
                     .setTitle("🧹 Limpieza segura disponible")
                     .setMessage(resumen.toString() + "\n(Protegidas: Almacen de Rafa, Music, DCIM y Documents)")
-                    .setPositiveButton("🗑️ Borrar ahora", (d, w) -> {
+                    .setPositiveButton("🗑️ Mover a papelera", (d, w) -> {
                         int borrados = 0;
-                        for (File f : basura) if (f.delete()) borrados++;
+                        // PAPELERA-KULI
+                        File pap = new File(raiz, "Papelera");
+                        pap.mkdirs();
+                        for (File f : basura) if (f.renameTo(new File(pap, System.currentTimeMillis() + "_" + f.getName()))) borrados++;
                         java.util.Collections.sort(vacias, (a, b) -> Integer.compare(b.getAbsolutePath().length(), a.getAbsolutePath().length()));
                         for (File v : vacias) if (v.delete()) borrados++;
-                        android.widget.Toast.makeText(this, "✅ Limpieza completada: " + borrados + " elementos borrados", android.widget.Toast.LENGTH_LONG).show();
+                        android.widget.Toast.makeText(this, "✅ Limpieza hecha: " + borrados + " elementos (los archivos est\u00e1n 7 d\u00edas en la Papelera)", android.widget.Toast.LENGTH_LONG).show();
                     })
                     .setNegativeButton("Cancelar", null)
                     .show();
