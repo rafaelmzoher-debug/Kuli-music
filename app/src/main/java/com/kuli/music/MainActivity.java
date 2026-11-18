@@ -1255,12 +1255,12 @@ public class MainActivity extends Activity {
                                 new AlertDialog.Builder(this).setTitle("Nueva carpeta en KULI MUSIC").setView(et)
                                         .setPositiveButton("Subir ahí", (d2, w2) -> {
                                             String nueva = et.getText().toString().trim();
-                                            if (!nueva.isEmpty()) { ArrayList<Map.Entry<String, ArrayList<Uri>>> cola = new ArrayList<>(); cola.add(new java.util.AbstractMap.SimpleEntry<>(nueva, uris)); subirGrupos(cola, 0, alSubir); }
+                                            if (!nueva.isEmpty()) { ArrayList<Map.Entry<String, ArrayList<Uri>>> cola = new ArrayList<>(); cola.add(new java.util.AbstractMap.SimpleEntry<>(nueva, uris)); subirGrupos(cola, 0, alSubir, alIgnorar); }
                                         }).setNegativeButton("Cancelar", null).show();
                             } else {
                                 ArrayList<Map.Entry<String, ArrayList<Uri>>> cola = new ArrayList<>();
                                 cola.add(new java.util.AbstractMap.SimpleEntry<>(nombres.get(which - 1), uris));
-                                subirGrupos(cola, 0, alSubir);
+                                subirGrupos(cola, 0, alSubir, alIgnorar);
                             }
                         }).setNegativeButton("Cancelar", null).show();
             });
