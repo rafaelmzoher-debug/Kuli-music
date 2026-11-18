@@ -3525,7 +3525,7 @@ public class MainActivity extends Activity {
     private void buscarCaratulaOnline(final Uri uriObjetivo, final String titulo, final String artista) {
         new Thread(() -> {
             try {
-                String q = ((artista != null && !artista.contains("desconocido") ? artista + " " : "") + (titulo != null ? titulo : "")).replaceAll("\.[^.]+$", "").trim();
+                String q = ((artista != null && !artista.contains("desconocido") ? artista + " " : "") + (titulo != null ? titulo : "")).replaceAll("\\.[^.]+$", "").trim();
                 if (q.isEmpty() || q.equalsIgnoreCase("Mi canción")) return;
                 java.io.File dirCache = new java.io.File(getCacheDir(), "caratulas");
                 dirCache.mkdirs();
@@ -3538,7 +3538,7 @@ public class MainActivity extends Activity {
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
                     c.setConnectTimeout(4500); c.setReadTimeout(4500);
                     java.io.InputStream is = c.getInputStream();
-                    java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\A");
+                    java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
                     String json = s.hasNext() ? s.next() : "";
                     is.close();
                     org.json.JSONObject jo = new org.json.JSONObject(json);
