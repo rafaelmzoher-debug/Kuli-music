@@ -622,6 +622,12 @@ public class MainActivity extends Activity {
         try {
             int duracion = reproductor.getDuration();
             int pos = reproductor.getCurrentPosition();
+            if (modoDjActivo && colaDj != null && !colaDj.isEmpty() && duracion > 12000 && (duracion - pos) <= 6000 && !djCambiando) {
+                djCambiando = true;
+                indiceDj = (indiceDj + 1) % colaDj.size();
+                reproducirConFundidoDj(colaDj.get(indiceDj));
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> djCambiando = false, 7500);
+            }
             if (!arrastrando) {
                 barra.setMax(Math.max(duracion, 1));
                 barra.setProgress(pos);
@@ -1179,6 +1185,20 @@ public class MainActivity extends Activity {
     private MediaPlayer abrirReproductor(Uri uri) throws Exception {
         MediaPlayer mp = new MediaPlayer();
         try {
+            try {
+                android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
+                mp.setAudioAttributes(aa);
+                android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+                if (am != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        am.requestAudioFocus(new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(aa).build());
+                    } else {
+                        am.requestAudioFocus(null, android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.AUDIOFOCUS_GAIN);
+                    }
+                }
+            } catch (Exception ignored) { }
             try { mp.setAudioSessionId(sesionAudio()); } catch (Exception ignored) { }
             mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
             mp.setDataSource(this, uri);
@@ -1734,7 +1754,14 @@ public class MainActivity extends Activity {
                         portada.setPadding(0, 0, 0, 0);
                         portada.setScaleType(ImageView.ScaleType.CENTER_CROP);
                         portada.setImageBitmap(bitmap);
+                        KuliPlaybackService.portadaActual = bitmap;
+                        KuliPlaybackService.artistaActual = artistaActual;
+                        actualizarNotificacionSegundoPlano(reproductor != null && reproductor.isPlaying());
                     }
+                } else {
+                    KuliPlaybackService.portadaActual = null;
+                    KuliPlaybackService.artistaActual = artistaActual;
+                    buscarCaratulaOnline(uri, tituloActual, artistaActual);
                 }
             } catch (Exception ignored) { } finally { try { meta.release(); } catch (Exception ignored) { } }
             if (tituloActual.equals("Mi canción")) {
@@ -2517,11 +2544,53 @@ public class MainActivity extends Activity {
     // ---------- Subir canciones del móvil (p. ej. las de YMusic) al NAS ----------
     private void elegirCancionesParaSubir() {
         if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para subir al NAS"); return; }
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        i.setType("audio/*");
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        startActivityForResult(i, PICK_SUBIR);
+        aviso("Escaneando carpetas de música...");
+        new Thread(() -> {
+            final java.util.TreeMap<String, ArrayList<Uri>> carpetas = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            String[] proj = { android.provider.MediaStore.Audio.Media._ID, android.provider.MediaStore.Audio.Media.DATA, android.provider.MediaStore.Audio.Media.DISPLAY_NAME };
+            try (Cursor c = getContentResolver().query(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, proj, android.provider.MediaStore.Audio.Media.IS_MUSIC + "!=0", null, null)) {
+                if (c != null) {
+                    int idxId = c.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media._ID);
+                    int idxData = c.getColumnIndex(android.provider.MediaStore.Audio.Media.DATA);
+                    while (c.moveToNext()) {
+                        long id = c.getLong(idxId);
+                        String ruta = idxData >= 0 ? c.getString(idxData) : null;
+                        String nomCarpeta = "Música General";
+                        if (ruta != null) {
+                            java.io.File pf = new java.io.File(ruta).getParentFile();
+                            if (pf != null && pf.getName() != null && !pf.getName().isEmpty()) nomCarpeta = pf.getName();
+                        }
+                        Uri u = android.content.ContentUris.withAppendedId(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
+                        carpetas.computeIfAbsent(nomCarpeta, k -> new ArrayList<>()).add(u);
+                    }
+                }
+            } catch (Exception ignored) { }
+            runOnUiThread(() -> {
+                if (carpetas.isEmpty()) {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("audio/*"); i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true); startActivityForResult(i, PICK_SUBIR);
+                    return;
+                }
+                final ArrayList<String> nombres = new ArrayList<>(carpetas.keySet());
+                final String[] etiquetas = new String[nombres.size() + 1];
+                int totalGlobal = 0;
+                for (int k = 0; k < nombres.size(); k++) {
+                    int n = carpetas.get(nombres.get(k)).size();
+                    totalGlobal += n;
+                    etiquetas[k] = "📁 " + nombres.get(k) + "  (" + n + " canciones)";
+                }
+                etiquetas[nombres.size()] = "🚀 SUBIR TODAS LAS CARPETAS (" + totalGlobal + " canciones)";
+                new AlertDialog.Builder(this).setTitle("Elige carpeta para subir al NAS").setItems(etiquetas, (d, which) -> {
+                    if (which == nombres.size()) {
+                        ArrayList<Uri> todas = new ArrayList<>();
+                        for (String key : nombres) todas.addAll(carpetas.get(key));
+                        ofrecerSubida(todas, null, null);
+                    } else {
+                        String carp = nombres.get(which);
+                        ofrecerSubida(carpetas.get(carp), null, null);
+                    }
+                }).setNegativeButton("Cancelar", null).show();
+            });
+        }).start();
     }
 
     private String nombreDeUri(Uri uri) {
@@ -3271,7 +3340,7 @@ public class MainActivity extends Activity {
     }
 
     private String tituloActualNotif = "Kuli Music";
-    private boolean modoDjActivo = false;
+    private boolean modoDjActivo = false; private boolean djCambiando = false;
     private Button btnDjRef = null;
     private boolean modoDjBloques3 = false;
     private java.util.List<java.io.File> colaDj = new java.util.ArrayList<>();
@@ -3431,6 +3500,77 @@ public class MainActivity extends Activity {
         for (String f : fl) if (todo.contains(simple(f))) return "Flamenkito";
         String est = estiloDeGenero(gen);
         return est != null ? est : "Pop";
+    }
+
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String act = intent != null ? intent.getAction() : null;
+        if (KuliPlaybackService.ACTION_NEXT.equals(act)) {
+            if (modoDjActivo && colaDj != null && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
+            else if (!listaFavoritas.isEmpty()) { posicionFavorita = (posicionFavorita + 1) % listaFavoritas.size(); reproducir(Uri.parse(listaFavoritas.get(posicionFavorita))); }
+        } else if (KuliPlaybackService.ACTION_PREV.equals(act)) {
+            if (modoDjActivo && colaDj != null && !colaDj.isEmpty()) { indiceDj = (indiceDj - 1 + colaDj.size()) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
+            else if (!listaFavoritas.isEmpty()) { posicionFavorita = (posicionFavorita - 1 + listaFavoritas.size()) % listaFavoritas.size(); reproducir(Uri.parse(listaFavoritas.get(posicionFavorita))); }
+        } else if (KuliPlaybackService.ACTION_TOGGLE.equals(act)) {
+            if (reproductor != null) {
+                if (reproductor.isPlaying()) { reproductor.pause(); actualizarNotificacionSegundoPlano(false); }
+                else { reproductor.start(); actualizarNotificacionSegundoPlano(true); }
+                actualizarProgreso();
+            }
+        }
+    }
+
+    private void buscarCaratulaOnline(final Uri uriObjetivo, final String titulo, final String artista) {
+        new Thread(() -> {
+            try {
+                String q = ((artista != null && !artista.contains("desconocido") ? artista + " " : "") + (titulo != null ? titulo : "")).replaceAll("\.[^.]+$", "").trim();
+                if (q.isEmpty() || q.equalsIgnoreCase("Mi canción")) return;
+                java.io.File dirCache = new java.io.File(getCacheDir(), "caratulas");
+                dirCache.mkdirs();
+                java.io.File fImg = new java.io.File(dirCache, Math.abs(q.toLowerCase().hashCode()) + ".jpg");
+                Bitmap bmp = null;
+                if (fImg.exists() && fImg.length() > 500) {
+                    bmp = BitmapFactory.decodeFile(fImg.getAbsolutePath());
+                } else {
+                    String urlStr = "https://apple.com" + java.net.URLEncoder.encode(q, "UTF-8") + "&media=music&limit=1";
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
+                    c.setConnectTimeout(4500); c.setReadTimeout(4500);
+                    java.io.InputStream is = c.getInputStream();
+                    java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\A");
+                    String json = s.hasNext() ? s.next() : "";
+                    is.close();
+                    org.json.JSONObject jo = new org.json.JSONObject(json);
+                    org.json.JSONArray arr = jo.optJSONArray("results");
+                    if (arr != null && arr.length() > 0) {
+                        String artUrl = arr.getJSONObject(0).optString("artworkUrl100", "").replace("100x100bb", "500x500bb");
+                        if (!artUrl.isEmpty()) {
+                            java.net.HttpURLConnection ci = (java.net.HttpURLConnection) new java.net.URL(artUrl).openConnection();
+                            ci.setConnectTimeout(4500); ci.setReadTimeout(4500);
+                            java.io.InputStream isi = ci.getInputStream();
+                            bmp = BitmapFactory.decodeStream(isi);
+                            isi.close();
+                            if (bmp != null) {
+                                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(fImg)) { bmp.compress(Bitmap.CompressFormat.JPEG, 88, fos); }
+                            }
+                        }
+                    }
+                }
+                final Bitmap finalBmp = bmp;
+                if (finalBmp != null && uriObjetivo != null && uriObjetivo.equals(uriActual)) {
+                    runOnUiThread(() -> {
+                        portada.clearColorFilter();
+                        portada.setPadding(0, 0, 0, 0);
+                        portada.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                        portada.setImageBitmap(finalBmp);
+                        KuliPlaybackService.portadaActual = finalBmp;
+                        KuliPlaybackService.artistaActual = artistaActual;
+                        actualizarNotificacionSegundoPlano(reproductor != null && reproductor.isPlaying());
+                    });
+                }
+            } catch (Exception ignored) { }
+        }).start();
     }
 
 }
