@@ -9,3 +9,4 @@ include(":ordenes")
 include(":arcade")
 
 include(":mapas")
+include(":boveda")

@@ -35,6 +35,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             fotos/build/outputs/apk/debug/fotos-debug.apk
             ordenes/build/outputs/apk/debug/ordenes-debug.apk
+            boveda/build/outputs/apk/debug/boveda-debug.apk
             familia/build/outputs/apk/debug/familia-debug.apk
             arcade/build/outputs/apk/debug/arcade-debug.apk
             mapas/build/outputs/apk/debug/mapas-debug.apk
@@ -48,6 +49,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             fotos/build/outputs/apk/debug/fotos-debug.apk
             ordenes/build/outputs/apk/debug/ordenes-debug.apk
+            boveda/build/outputs/apk/debug/boveda-debug.apk
             familia/build/outputs/apk/debug/familia-debug.apk
             arcade/build/outputs/apk/debug/arcade-debug.apk
             mapas/build/outputs/apk/debug/mapas-debug.apk
