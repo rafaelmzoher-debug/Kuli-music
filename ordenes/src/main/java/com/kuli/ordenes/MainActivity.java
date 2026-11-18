@@ -963,10 +963,10 @@ public class MainActivity extends Activity {
         }
         final ArrayList<String> usado = leerMaterial(nombre);
         if (!usado.isEmpty()) {
-            TextView mt = texto("📦 Material usado en esta orden: " + usado.size() + "  (toca para ver)", 13, GRIS, false);
+            TextView mt = texto("📦 Material usado en esta orden: " + usado.size() + "  (toca para ver o quitar)", 13, GRIS, false);
             mt.setPadding(dp(4), dp(8), dp(4), dp(4));
             mt.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Material usado · orden " + nombre)
-                .setMessage(android.text.TextUtils.join("\n\n", usado)).setPositiveButton("CERRAR", null).show());
+                .setItems(usado.toArray(new String[0]), (d2, i2) -> quitarLineaMaterial(nombre, usado.get(i2))).setPositiveButton("CERRAR", null).show());
             p.addView(mt);
         }
 
@@ -2580,6 +2580,29 @@ public class MainActivity extends Activity {
             .setMessage("Equipos con serie de los albaranes: " + total + "\nLocalizados (en el almacén o usados en una orden): " + bien
                 + (falta.length() == 0 ? "" : "\n\nNo aparecen en el almacén ni en ninguna orden:\n" + falta))
             .setPositiveButton("CERRAR", null).show();
+    }
+
+    // QUITAR-KULI
+    private void quitarLineaMaterial(final String orden, final String linea) {
+        boolean contada = !linea.contains("(no estaba");
+        new AlertDialog.Builder(this).setTitle("\u00bfQuitar esta l\u00ednea?")
+            .setMessage(linea + (contada ? "\n\nOjo: esta pieza se rest\u00f3 del almac\u00e9n y quitar la l\u00ednea NO la devuelve. Si hace falta, s\u00famala en Almac\u00e9n." : ""))
+            .setPositiveButton("QUITAR", (d, w) -> {
+                try {
+                    File f = new File(new File(raiz, limpiar(orden)), "material.txt");
+                    boolean quitada = false;
+                    StringBuilder sb = new StringBuilder();
+                    for (String l : leerMaterial(orden)) {
+                        if (!quitada && l.equals(linea)) { quitada = true; continue; }
+                        sb.append(l).append("\n");
+                    }
+                    try (FileOutputStream o = new FileOutputStream(f, false)) { o.write(sb.toString().getBytes("UTF-8")); }
+                    ultNota = notaAuto(orden);
+                    aviso("\u2713 L\u00ednea quitada");
+                } catch (Exception e) { aviso("No se pudo quitar la l\u00ednea"); }
+                mostrarOrden(orden);
+            })
+            .setNegativeButton("NO", null).show();
     }
 
     // ---------- Material usado en una orden ----------
