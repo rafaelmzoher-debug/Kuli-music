@@ -1212,29 +1212,6 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Subida automática por estilo ----------
-    private void ofrecerSubida(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir, final Runnable alIgnorar) {
-        if (uris == null || uris.isEmpty()) return;
-        aviso("Leyendo carpetas de tu NAS...");
-        new Thread(() -> {
-            final LinkedHashMap<String, Integer> carpetasNas = new LinkedHashMap<>();
-            try {
-                conNas(disco -> {
-                    if (disco.folderExists("KULI MUSIC")) {
-                        for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation f : disco.list("KULI MUSIC")) {
-                            String n = f.getFileName();
-                            if (n.equals(".") || n.equals("..")) continue;
-                            if ((f.getFileAttributes() & 0x10L) != 0) {
-                                int cnt = 0;
-                                for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\\" + n)) {
-                                    if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(g.getFileName())) cnt++;
-                                }
-                                carpetasNas.put(n, cnt);
-                            }
-                        }
-                    }
-                    return null;
-                });
-            } catch (Exception ignored) { }
             getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("carpeta_musica", arbol.toString()).apply();
             abrirCarpetaMusica();
             return;
