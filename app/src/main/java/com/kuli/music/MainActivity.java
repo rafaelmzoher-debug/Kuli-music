@@ -1209,7 +1209,6 @@ public class MainActivity extends Activity {
             mp.release();
             throw e;
         }
-    }
 
     // ---------- Subida automática por estilo ----------
             getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit().putString("carpeta_musica", arbol.toString()).apply();
