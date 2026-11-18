@@ -1228,7 +1228,7 @@ public class MainActivity extends Activity {
                             if (n.equals(".") || n.equals("..")) continue;
                             if ((f.getFileAttributes() & 0x10L) != 0) {
                                 int cnt = 0;
-                                for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\" + n)) {
+for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\\" + n)) {
                                     if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(g.getFileName())) cnt++;
                                 }
                                 carpetasNas.put(n, cnt);
