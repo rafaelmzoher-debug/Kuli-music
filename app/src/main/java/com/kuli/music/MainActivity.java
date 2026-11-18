@@ -2151,7 +2151,7 @@ public class MainActivity extends Activity {
                         if (n.equals(".") || n.equals("..")) continue;
                         if ((f.getFileAttributes() & 0x10L) != 0) {
                             ArrayList<String> dentro = new ArrayList<>();
-                            for (var g : disco.list("KULI MUSIC\\" + n)) {
+                            for (var g : disco.list("KULI MUSIC\\\\" + n)) {
                                 String m = g.getFileName();
                                 if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(m)) dentro.add(n + "/" + m);
                             }
@@ -2539,7 +2539,7 @@ public class MainActivity extends Activity {
     private void descargarDelNas(final String nombre, final java.io.File destino) throws Throwable {
         conNas(disco -> {
             java.io.File tmp = new java.io.File(destino.getPath() + "." + System.nanoTime() + ".part");
-            try (File origen = disco.openFile("KULI MUSIC\\" + nombre.replace('/', '\\'),
+            try (File origen = disco.openFile("KULI MUSIC\\\\" + nombre.replace('/', '\\'),
                         EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL,
                         SMB2CreateDisposition.FILE_OPEN,
                         EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
@@ -2713,7 +2713,7 @@ public class MainActivity extends Activity {
                         String n = f.getFileName();
                         if (n.equals(".") || n.equals("..")) continue;
                         if ((f.getFileAttributes() & 0x10L) != 0) {
-                            for (var g : disco.list("KULI MUSIC\\" + n))
+                            for (var g : disco.list("KULI MUSIC\\\\" + n))
                                 if ((g.getFileAttributes() & 0x10L) == 0) existentes.add(claveNombre(g.getFileName()));
                         } else {
                             existentes.add(claveNombre(n));
