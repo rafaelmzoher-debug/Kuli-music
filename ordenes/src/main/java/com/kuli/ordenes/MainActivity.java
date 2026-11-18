@@ -2601,10 +2601,33 @@ public class MainActivity extends Activity {
             .setNegativeButton("CANCELAR", null).show();
     }
 
+    // SEGUIDO-KULI
+    private boolean yaApuntado(String orden, String codigo) {
+        for (String l : leerMaterial(orden)) {
+            String[] q = l.split(" \\| ");
+            if (q.length >= 3 && q[2].trim().equalsIgnoreCase(codigo.trim())) return true;
+        }
+        return false;
+    }
+
     private void gastarSeguido(final String orden) {
-        escanear(raw -> {
+        escanear(raw0 -> {
+            final String raw = raw0;
+            if (yaApuntado(orden, raw)) {
+                new AlertDialog.Builder(this).setTitle("Ya lo apuntaste")
+                    .setMessage("El c\u00f3digo " + raw + " ya est\u00e1 en esta orden.\n\n\u00bfLo apunto otra vez?")
+                    .setCancelable(false)
+                    .setPositiveButton("OTRA VEZ", (d, w) -> gastarLectura(orden, raw))
+                    .setNegativeButton("NO", (d, w) -> gastarSeguido(orden)).show();
+                return;
+            }
+            gastarLectura(orden, raw);
+        }, () -> mostrarOrden(orden));
+    }
+
+    private void gastarLectura(final String orden, final String raw) {
             if (Almacen.esEtiquetaLarga(raw)) {
-                gastarCodigo(orden, Almacen.clave(raw), raw, false);
+                gastarCodigo(orden, Almacen.clave(raw), raw, true);
             } else if (Almacen.esSerie(raw)) {
                 final String serie = raw.trim().toUpperCase(Locale.ROOT);
                 Almacen.Item it = almacen.buscarPorRaw(serie);
@@ -2627,7 +2650,7 @@ public class MainActivity extends Activity {
                             .setPositiveButton("USAR ESTE", (d, w) -> gastarCodigo(orden, itF.codigo, serie, true))
                             .setNegativeButton("ESCANEAR OTRO", (d, w) -> gastarSeguido(orden)).show();
                     } else {
-                        gastarCodigo(orden, it.codigo, serie, false);
+                        gastarCodigo(orden, it.codigo, serie, true);
                     }
                 } else {
                     new AlertDialog.Builder(this).setTitle("No estaba en el almacén")
@@ -2640,7 +2663,6 @@ public class MainActivity extends Activity {
                 aviso("No reconozco ese código. Prueba con el de rayas.");
                 gastarSeguido(orden);
             }
-        }, () -> mostrarOrden(orden));
     }
 
     private void gastarCodigo(final String orden, final String codigo) { gastarCodigo(orden, codigo, null, false); }

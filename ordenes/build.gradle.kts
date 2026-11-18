@@ -20,8 +20,8 @@ android {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
         targetSdk = 28
-        versionCode = 31
-        versionName = "2.20"
+        versionCode = 32
+        versionName = "2.21"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
