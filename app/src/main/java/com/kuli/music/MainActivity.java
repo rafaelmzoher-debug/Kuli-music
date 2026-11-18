@@ -1781,25 +1781,23 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             final LinkedHashMap<String, Integer> carpetasNas = new LinkedHashMap<>();
             try {
-                com.hierynomus.smbj.SMBClient cli = new com.hierynomus.smbj.SMBClient();
-                try (com.hierynomus.smbj.connection.Connection con = cli.connect(nasHost());
-                     com.hierynomus.smbj.session.Session ses = con.authenticate(nasAuth());
-                     com.hierynomus.smbj.share.DiskShare disco = (com.hierynomus.smbj.share.DiskShare) ses.connectShare("Public")) {
+                conNas(disco -> {
                     if (disco.folderExists("KULI MUSIC")) {
                         for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation f : disco.list("KULI MUSIC")) {
                             String n = f.getFileName();
                             if (n.equals(".") || n.equals("..")) continue;
                             if ((f.getFileAttributes() & 0x10L) != 0) {
                                 int cnt = 0;
-for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\\" + n)) {
+                                for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\\" + n)) {
                                     if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(g.getFileName())) cnt++;
                                 }
                                 carpetasNas.put(n, cnt);
                             }
                         }
                     }
-                }
-            } catch (Exception ignored) { }
+                    return null;
+                });
+            } catch (Throwable ignored) { }
             runOnUiThread(() -> {
                 if (carpetasNas.isEmpty()) { ofrecerSubidaAutoOriginal(uris, alSubir, alIgnorar); return; }
                 final ArrayList<String> nombres = new ArrayList<>(carpetasNas.keySet());
