@@ -1212,8 +1212,68 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Subida automática por estilo ----------
-    private void ofrecerSubida(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir,
-                               final Runnable alIgnorar) {
+    private void ofrecerSubida(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir, final Runnable alIgnorar) {
+        if (uris == null || uris.isEmpty()) return;
+        aviso("Leyendo carpetas de tu NAS...");
+        new Thread(() -> {
+            final LinkedHashMap<String, Integer> carpetasNas = new LinkedHashMap<>();
+            try {
+                com.hierynomus.smbj.SMBClient cli = new com.hierynomus.smbj.SMBClient();
+                try (com.hierynomus.smbj.connection.Connection con = cli.connect(nasHost());
+                     com.hierynomus.smbj.session.Session ses = con.authenticate(nasAuth());
+                     com.hierynomus.smbj.share.DiskShare disco = (com.hierynomus.smbj.share.DiskShare) ses.connectShare("Public")) {
+                    if (disco.folderExists("KULI MUSIC")) {
+                        for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation f : disco.list("KULI MUSIC")) {
+                            String n = f.getFileName();
+                            if (n.equals(".") || n.equals("..")) continue;
+                            if ((f.getFileAttributes() & 0x10L) != 0) {
+                                int cnt = 0;
+                                for (com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation g : disco.list("KULI MUSIC\" + n)) {
+                                    if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(g.getFileName())) cnt++;
+                                }
+                                carpetasNas.put(n, cnt);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) { }
+            runOnUiThread(() -> {
+                if (carpetasNas.isEmpty()) { ofrecerSubidaAutoOriginal(uris, alSubir, alIgnorar); return; }
+                final ArrayList<String> nombres = new ArrayList<>(carpetasNas.keySet());
+                Collections.sort(nombres, String.CASE_INSENSITIVE_ORDER);
+                String[] items = new String[nombres.size() + 2];
+                items[0] = "🤖 Clasificar automáticamente por estilo (" + uris.size() + " temas)";
+                for (int i = 0; i < nombres.size(); i++) {
+                    String nom = nombres.get(i);
+                    items[i + 1] = "📁 " + nom + "  (" + carpetasNas.get(nom) + " canciones en NAS)";
+                }
+                items[nombres.size() + 1] = "➕ Crear nueva carpeta en el NAS...";
+                new AlertDialog.Builder(this).setTitle("Subir " + uris.size() + " canciones · Elige carpeta del NAS")
+                        .setItems(items, (d, which) -> {
+                            if (which == 0) {
+                                ofrecerSubidaAutoOriginal(uris, alSubir, alIgnorar);
+                            } else if (which == nombres.size() + 1) {
+                                final EditText et = new EditText(this); et.setHint("Nombre de nueva carpeta en NAS...");
+                                new AlertDialog.Builder(this).setTitle("Nueva carpeta en KULI MUSIC").setView(et)
+                                        .setPositiveButton("Subir ahí", (d2, w2) -> {
+                                            String nueva = et.getText().toString().trim();
+                                            if (!nueva.isEmpty()) {
+                                                ArrayList<Map.Entry<String, ArrayList<Uri>>> cola = new ArrayList<>();
+                                                cola.add(new java.util.AbstractMap.SimpleEntry<>(nueva, uris));
+                                                subirGrupos(cola, 0, alSubir);
+                                            }
+                                        }).setNegativeButton("Cancelar", null).show();
+                            } else {
+                                String elegida = nombres.get(which - 1);
+                                ArrayList<Map.Entry<String, ArrayList<Uri>>> cola = new ArrayList<>();
+                                cola.add(new java.util.AbstractMap.SimpleEntry<>(elegida, uris));
+                                subirGrupos(cola, 0, alSubir);
+                            }
+                        }).setNegativeButton("Cancelar", null).show();
+            });
+        }).start();
+    }
+    private void ofrecerSubidaAutoOriginal(final ArrayList<Uri> uris, final java.util.function.Consumer<Uri> alSubir, final Runnable alIgnorar) {
         final String que = uris.size() == 1 ? "1 canción" : uris.size() + " canciones";
         final ArrayList<String> op = new ArrayList<>();
         op.add("⚡  Subir automático (cada una a su estilo)");
@@ -2102,7 +2162,7 @@ public class MainActivity extends Activity {
                                 if ((g.getFileAttributes() & 0x10L) == 0 && esAudio(m)) dentro.add(n + "/" + m);
                             }
                             Collections.sort(dentro, String.CASE_INSENSITIVE_ORDER);
-                            if (!dentro.isEmpty()) carpetas.put(n, dentro);
+                            carpetas.put(n, dentro);
                         } else if (esAudio(n)) {
                             sueltas.add(n);
                         }
