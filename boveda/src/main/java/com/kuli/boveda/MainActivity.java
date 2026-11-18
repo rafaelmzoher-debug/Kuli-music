@@ -13,6 +13,7 @@ import android.speech.RecognizerIntent;
 import android.view.*;
 import android.widget.*;
 import java.io.*;
+import java.nio.file.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import org.json.*;
@@ -39,7 +40,7 @@ public class MainActivity extends Activity {
     private void pedirDesbloqueoSamsung() {
         KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
         if (km != null && km.isKeyguardSecure()) {
-            Intent i = km.createConfirmDeviceCredentialIntent("🔐 Kuli Bóveda", "Confirma con tu huella o PIN para acceder");
+            Intent i = km.createConfirmDeviceCredentialIntent("Kuli Bóveda", "Confirma con tu huella o PIN para acceder");
             if (i != null) { startActivityForResult(i, REQ_AUTH); return; }
         }
         desbloqueado = true; refrescarLista();
@@ -118,6 +119,107 @@ public class MainActivity extends Activity {
         setContentView(root);
         actualizarEstiloTabs();
     }
+    private Button botonTab(String label, String tabId) {
+        Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextSize(13); b.setPadding(dp(4), dp(8), dp(4), dp(8));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); lp.setMargins(dp(2), 0, dp(2), 0); b.setLayoutParams(lp);
+        b.setOnClickListener(v -> { tabActual = tabId; actualizarEstiloTabs(); refrescarLista(); }); return b;
+    }
+    private void actualizarEstiloTabs() {
+        List<Button> all = Arrays.asList(btnTabClaves, btnTabRecordatorios, btnTabNotas, btnTabArchivos);
+        List<String> ids = Arrays.asList("CLAVES", "AVISOS", "NOTAS", "ARCHIVOS");
+        for (int i = 0; i < all.size(); i++) {
+            boolean act = ids.get(i).equals(tabActual);
+            all.get(i).setBackground(caja(act ? Color.parseColor("#D4AF37") : Color.parseColor("#131E36"), Color.parseColor("#263554"), 12));
+            all.get(i).setTextColor(act ? Color.parseColor("#0B1220") : Color.parseColor("#CBD5E1"));
+            all.get(i).setTypeface(null, act ? Typeface.BOLD : Typeface.NORMAL);
+        }
+    }
+    private void iniciarDictadoVoz() {
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES");
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Di tu contraseña, recordatorio o nota...");
+        try { startActivityForResult(i, REQ_VOZ); } catch (Exception e) { Toast.makeText(this, "Voz no disponible", Toast.LENGTH_SHORT).show(); }
+    }
+    private void procesarTextoVoz(String hablado) {
+        String low = hablado.toLowerCase(Locale.ROOT); String cat = "NOTAS";
+        if (low.contains("contraseña") || low.contains("clave") || low.contains("password") || low.contains("pin") || low.contains("usuario")) cat = "CLAVES";
+        else if (low.contains("recuérdame") || low.contains("recordar") || low.contains("recordatorio") || low.contains("avísame") || low.contains("avisar") || low.contains("cita") || low.contains("mañana")) cat = "AVISOS";
+        tabActual = cat; actualizarEstiloTabs();
+        if ("AVISOS".equals(cat)) preguntarHoraAlarma(hablado);
+        else { guardarItem(cat, hablado, ""); Toast.makeText(this, "Guardado en " + nombreCategoria(cat), Toast.LENGTH_SHORT).show(); refrescarLista(); }
+    }
+    private void preguntarHoraAlarma(String texto) {
+        Calendar ahora = Calendar.getInstance();
+        new TimePickerDialog(this, (v, h, m) -> {
+            Calendar cal = Calendar.getInstance(); cal.set(Calendar.HOUR_OF_DAY, h); cal.set(Calendar.MINUTE, m); cal.set(Calendar.SECOND, 0);
+            if (cal.before(ahora)) cal.add(Calendar.DAY_OF_YEAR, 1);
+            AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+            Intent i = new Intent(this, AlarmaReceiver.class); i.putExtra("texto", texto);
+            PendingIntent pi = PendingIntent.getBroadcast(this, (int) (cal.getTimeInMillis() % 100000), i, PendingIntent.FLAG_IMMUTABLE);
+            if (am != null) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(), pi);
+            String hs = String.format(Locale.getDefault(), "%02d:%02d", h, m);
+            guardarItem("AVISOS", "[" + hs + "] " + texto, "");
+            Toast.makeText(this, "Aviso programado a las " + hs, Toast.LENGTH_LONG).show(); refrescarLista();
+        }, ahora.get(Calendar.HOUR_OF_DAY), ahora.get(Calendar.MINUTE), true).show();
+    }
+    private void dialogoNuevoManual(String prefill) {
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(18), dp(12), dp(18), dp(8));
+        final Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Arrays.asList("Contraseña / Clave", "Recordatorio con aviso", "Nota rápida")));
+        if ("AVISOS".equals(tabActual)) sp.setSelection(1); else if ("NOTAS".equals(tabActual)) sp.setSelection(2);
+        box.addView(sp);
+        final EditText et = new EditText(this); et.setHint("Escribe aquí..."); et.setText(prefill); et.setMinLines(3); box.addView(et);
+        new AlertDialog.Builder(this).setTitle("Nuevo en Kuli Bóveda").setView(box).setPositiveButton("Guardar", (d, w) -> {
+            String txt = et.getText().toString().trim(); if (txt.isEmpty()) return;
+            int sel = sp.getSelectedItemPosition(); String cat = sel == 0 ? "CLAVES" : (sel == 1 ? "AVISOS" : "NOTAS");
+            tabActual = cat; actualizarEstiloTabs();
+            if ("AVISOS".equals(cat)) preguntarHoraAlarma(txt); else { guardarItem(cat, txt, ""); refrescarLista(); }
+        }).setNegativeButton("Cancelar", null).show();
+    }
+    private void abrirSelectorArchivo() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("*/*");
+        startActivityForResult(i, REQ_ARCHIVO);
+    }
+    private void importarArchivoInterno(Uri uri) {
+        try {
+            String nombre = "doc_" + System.currentTimeMillis();
+            try (Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+                if (c != null && c.moveToFirst()) { int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME); if (idx >= 0) nombre = c.getString(idx); }
+            }
+            File dir = new File(getFilesDir(), "boveda_docs"); if (!dir.exists()) dir.mkdirs();
+            File dest = new File(dir, System.currentTimeMillis() + "_" + nombre);
+            try (InputStream in = getContentResolver().openInputStream(uri)) { Files.copy(in, dest.toPath(), StandardCopyOption.REPLACE_EXISTING); }
+            tabActual = "ARCHIVOS"; actualizarEstiloTabs(); guardarItem("ARCHIVOS", nombre, dest.getAbsolutePath());
+            Toast.makeText(this, "Archivo guardado", Toast.LENGTH_SHORT).show(); refrescarLista();
+        } catch (Exception e) { Toast.makeText(this, "Error al guardar", Toast.LENGTH_SHORT).show(); }
+    }
+    private void guardarItem(String cat, String texto, String ruta) {
+        try {
+            JSONArray arr = new JSONArray(prefs.getString("items", "[]")); JSONObject obj = new JSONObject();
+            obj.put("id", System.currentTimeMillis()); obj.put("cat", cat); obj.put("texto", texto); obj.put("ruta", ruta);
+            obj.put("fecha", new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date()));
+            arr.put(obj); prefs.edit().putString("items", arr.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+    private void borrarItem(long id) {
+        try {
+            JSONArray arr = new JSONArray(prefs.getString("items", "[]")); JSONArray nuevo = new JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                if (o.getLong("id") != id) nuevo.put(o);
+                else { String ruta = o.optString("ruta", ""); if (!ruta.isEmpty()) new File(ruta).delete(); }
+            }
+            prefs.edit().putString("items", nuevo.toString()).apply(); refrescarLista();
+        } catch (Exception ignored) {}
+    }
+    private void refrescarLista() {
+        listaContenedor.removeAllViews();
+        if (!desbloqueado) {
+            TextView lm = new TextView(this); lm.setText("Bóveda bloqueada. Toca aquí para desbloquear.");
+            lm.setTextColor(Color.parseColor("#F5D061")); lm.setTextSize(16); lm.setPadding(dp(20), dp(40), dp(20), dp(40)); lm.setGravity(Gravity.CENTER);
+            lm.setOnClickListener(v -> pedirDesbloqueoSamsung()); listaContenedor.addView(lm); return;
+        }
         String filtro = inputBusqueda.getText().toString().trim().toLowerCase(Locale.ROOT); int count = 0;
         try {
             JSONArray arr = new JSONArray(prefs.getString("items", "[]"));
@@ -139,6 +241,8 @@ public class MainActivity extends Activity {
                     bC.setOnClickListener(v -> { ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Boveda", texto)); Toast.makeText(this, "Copiado", Toast.LENGTH_SHORT).show(); });
                     acc.addView(bC);
                 }
+
+cat << 'EOF' >> boveda/src/main/java/com/kuli/boveda/MainActivity.java
                 acc.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
                 Button bD = botonPill("Borrar", "#2A1520", "#FCA5A5", 13);
                 bD.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("¿Borrar?").setMessage(texto).setPositiveButton("Borrar", (d, w) -> borrarItem(id)).setNegativeButton("Cancelar", null).show());
@@ -153,9 +257,9 @@ public class MainActivity extends Activity {
     private void verArchivoGuardado(String nombre, String ruta) {
         File f = new File(ruta); if (!f.exists()) return;
         if (nombre.toLowerCase(Locale.ROOT).endsWith(".txt")) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"))) {
-                StringBuilder sb = new StringBuilder(); String l; while ((l = br.readLine()) != null) sb.append(l).append("\n");
-                ScrollView sv = new ScrollView(this); TextView tv = new TextView(this); tv.setText(sb.toString()); tv.setTextSize(15); tv.setPadding(dp(16), dp(12), dp(16), dp(12)); sv.addView(tv);
+            try {
+                String contenido = new String(Files.readAllBytes(f.toPath()), "UTF-8");
+                ScrollView sv = new ScrollView(this); TextView tv = new TextView(this); tv.setText(contenido); tv.setTextSize(15); tv.setPadding(dp(16), dp(12), dp(16), dp(12)); sv.addView(tv);
                 new AlertDialog.Builder(this).setTitle(nombre).setView(sv).setPositiveButton("Cerrar", null).show();
             } catch (Exception ignored) {}
         } else Toast.makeText(this, "Guardado: " + nombre + " (" + (f.length() / 1024) + " KB)", Toast.LENGTH_LONG).show();
