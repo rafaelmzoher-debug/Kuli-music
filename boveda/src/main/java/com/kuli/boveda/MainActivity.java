@@ -242,4 +242,40 @@ public class MainActivity extends Activity {
                     acc.addView(bC);
                 }
 
+                acc.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+                Button bD = botonPill("Borrar", "#2A1520", "#FCA5A5", 13);
+                bD.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Borrar?").setMessage(texto).setPositiveButton("Borrar", (d, w) -> borrarItem(id)).setNegativeButton("Cancelar", null).show());
+                acc.addView(bD); card.addView(acc); listaContenedor.addView(card);
+            }
+        } catch (Exception ignored) {}
+        if (count == 0) {
+            TextView v = new TextView(this); v.setText("Pulsa HABLAR PARA GUARDAR abajo y dicta tu clave, aviso o nota.");
+            v.setTextColor(Color.parseColor("#94A3B8")); v.setTextSize(15); v.setGravity(Gravity.CENTER); v.setPadding(dp(20), dp(40), dp(20), dp(40)); listaContenedor.addView(v);
+        }
+    }
+    private void verArchivoGuardado(String nombre, String ruta) {
+        File f = new File(ruta); if (!f.exists()) return;
+        if (nombre.toLowerCase(Locale.ROOT).endsWith(".txt")) {
+            try {
+                String txt = new String(Files.readAllBytes(f.toPath()), "UTF-8");
+                ScrollView sv = new ScrollView(this); TextView tv = new TextView(this); tv.setText(txt); tv.setTextSize(15); tv.setPadding(dp(16), dp(12), dp(16), dp(12)); sv.addView(tv);
+                new AlertDialog.Builder(this).setTitle(nombre).setView(sv).setPositiveButton("Cerrar", null).show();
+            } catch (Exception ignored) {}
+        } else Toast.makeText(this, "Guardado: " + nombre + " (" + (f.length() / 1024) + " KB)", Toast.LENGTH_LONG).show();
+    }
+    private String nombreCategoria(String c) { return "CLAVES".equals(c) ? "Clave" : ("AVISOS".equals(c) ? "Aviso" : ("ARCHIVOS".equals(c) ? "Archivo" : "Nota")); }
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_AUTH) { if (res == RESULT_OK) desbloqueado = true; refrescarLista(); }
+        else if (req == REQ_VOZ && res == RESULT_OK && data != null) { ArrayList<String> m = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS); if (m != null && !m.isEmpty()) procesarTextoVoz(m.get(0)); }
+        else if (req == REQ_ARCHIVO && res == RESULT_OK && data != null && data.getData() != null) importarArchivoInterno(data.getData());
+    }
+    private Button botonPill(String txt, String bg, String fg, int sp) {
+        Button b = new Button(this); b.setText(txt); b.setAllCaps(false); b.setTextSize(sp); b.setTextColor(Color.parseColor(fg));
+        b.setPadding(dp(12), dp(8), dp(12), dp(8)); b.setBackground(caja(Color.parseColor(bg), Color.parseColor("#334155"), 12)); return b;
+    }
+    private GradientDrawable caja(int fill, int stroke, int radiusDp) {
+        GradientDrawable gd = new GradientDrawable(); gd.setColor(fill); gd.setStroke(dp(1), stroke); gd.setCornerRadius(dp(radiusDp)); return gd;
+    }
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 }
