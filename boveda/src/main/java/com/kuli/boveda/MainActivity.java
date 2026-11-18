@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
         setContentView(root);
         actualizarEstiloTabs();
     }
-            lm.setOnClickListener(v -> pedirDesbloqueoSamsung()); listaContenedor.addView(lm); return;
+                java.nio.file.Files.copy(in, dest.toPath());
         }
         String filtro = inputBusqueda.getText().toString().trim().toLowerCase(Locale.ROOT); int count = 0;
         try {
