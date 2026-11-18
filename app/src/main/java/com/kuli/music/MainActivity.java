@@ -2942,22 +2942,28 @@ public class MainActivity extends Activity {
         return null;
     }
 
-    private void convertirMp3Termux(java.io.File src, java.io.File dst) {
+    // TERMUX-KULI
+    private int sinConvertir = 0;
+
+    private boolean convertirMp3Termux(java.io.File src, java.io.File dst) {
         try {
-            java.io.File sh = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "kuli_mp3.sh");
-            java.io.PrintWriter pw = new java.io.PrintWriter(sh);
-            pw.println("#!/data/data/com.termux/files/usr/bin/bash");
-            pw.println("ffmpeg -y -i '" + src.getAbsolutePath() + "' -vn -ar 44100 -ac 2 -b:a 320k '" + dst.getAbsolutePath() + "' >/dev/null 2>&1");
-            pw.println("rm -f '" + sh.getAbsolutePath() + "'");
-            pw.close();
+            new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "kuli_mp3.sh").delete();
+            if (dst.exists()) dst.delete();
             Intent ti = new Intent("com.termux.RUN_COMMAND");
             ti.setClassName("com.termux", "com.termux.app.RunCommandService");
-            ti.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash");
-            ti.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{sh.getAbsolutePath()});
+            ti.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/ffmpeg");
+            ti.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{"-y", "-i", src.getAbsolutePath(), "-vn", "-ar", "44100", "-ac", "2", "-b:a", "320k", dst.getAbsolutePath()});
             ti.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(ti); else startService(ti);
-            for (int w = 0; w < 25; w++) { Thread.sleep(500); if (!sh.exists() && dst.exists() && dst.length() > 10000) break; }
-        } catch (Exception ignored) {}
+            long antes = -1;
+            for (int w = 0; w < 240; w++) {
+                Thread.sleep(500);
+                long ahora = dst.exists() ? dst.length() : 0;
+                if (ahora > 10000 && ahora == antes) return true;
+                antes = ahora;
+            }
+        } catch (Exception e) { android.util.Log.e("KULI_MUSIC", "Convertir con Termux", e); }
+        return dst.exists() && dst.length() > 10000;
     }
 
     private void clasificarSueltasPorEstilos() {
@@ -3077,6 +3083,7 @@ public class MainActivity extends Activity {
                 java.util.Map<String, java.util.List<java.io.File>> byId = new java.util.HashMap<>();
                 recolectarAudiosKuli(workTmp, byId);
                 final java.util.ArrayList<Uri> nuevasUris = new java.util.ArrayList<>();
+                sinConvertir = 0;
                 for (java.util.Map.Entry<String, java.util.List<java.io.File>> entry : byId.entrySet()) {
                     String pid = entry.getKey();
                     String key = idToKey.containsKey(pid) ? idToKey.get(pid) : pid;
@@ -3103,7 +3110,7 @@ public class MainActivity extends Activity {
                     for (java.io.File pf : parts) { java.io.FileInputStream fis = new java.io.FileInputStream(pf); int r; while ((r = fis.read(buf)) > 0) fos.write(buf, 0, r); fis.close(); }
                     fos.close();
                     convertirMp3Termux(rawTmp, outMp3);
-                    if (!outMp3.exists() || outMp3.length() < 10000) rawTmp.renameTo(outMp3); else rawTmp.delete();
+                    if (!outMp3.exists() || outMp3.length() < 10000) { sinConvertir++; rawTmp.renameTo(outMp3); } else rawTmp.delete();
                     android.media.MediaScannerConnection.scanFile(this, new String[]{outMp3.getAbsolutePath()}, null, null);
                     nuevasUris.add(Uri.fromFile(outMp3));
                 }
@@ -3115,14 +3122,17 @@ public class MainActivity extends Activity {
                     } else {
                         new android.app.AlertDialog.Builder(this)
                             .setTitle("Prism: " + nuevasUris.size() + " canciones nuevas")
-                            .setMessage("Ya están en MP3 (320 kbps) dentro de KULI MUSIC. ¿Qué quieres hacer ahora?")
+                            .setMessage((sinConvertir == 0 ? "Ya están en MP3 (320 kbps) dentro de KULI MUSIC." : "⚠️ " + sinConvertir + " no se pudieron pasar a MP3 (abre Termux una vez, o falta ffmpeg). Se han guardado sin convertir.") + " ¿Qué quieres hacer ahora?")
                             .setPositiveButton("Subir al NAS (clasificar y quitar repetidas)", (d, w) -> subirAutomatico(nuevasUris, null))
                             .setNegativeButton("Ver en Mi música del móvil", (d, w) -> abrirCanciones())
                             .show();
                     }
                 });
-            } catch (Exception e) {
+            } catch (SecurityException se) {
                 runOnUiThread(() -> { aviso("Autoriza primero Prism."); autorizarCarpetaPrism(); });
+            } catch (Exception e) {
+                android.util.Log.e("KULI_MUSIC", "Prism", e);
+                runOnUiThread(() -> aviso("Error con Prism: " + e.getMessage()));
             }
         }).start();
     }
