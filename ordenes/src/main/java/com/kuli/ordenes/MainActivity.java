@@ -2567,11 +2567,20 @@ public class MainActivity extends Activity {
                     if (p[0].equals("U") && p.length > 1) usados.add(p[1].toUpperCase(Locale.ROOT));
                     else if (p[0].equals("S") && p.length > 3) series.add(p);
                 }
+                java.util.HashSet<String> vistos = new java.util.HashSet<>();
+                String todoLimpio = todo.replace("-", "").replace(" ", "");
                 for (String[] p : series) {
                     String serie = p[3].toUpperCase(Locale.ROOT);
-                    if (usados.contains(serie)) continue;
+                    String serieLimpia = serie.replace("-", "").replace(" ", "");
+                    if (!vistos.add(serieLimpia)) continue;
+                    if (usados.contains(serie) || usados.contains(serieLimpia)) continue;
                     total++;
-                    if (almacen.buscarPorRaw(serie) != null || todo.contains(serie.toLowerCase(Locale.ROOT))) bien++;
+                    String cod8 = (p.length > 1 && p[1].length() >= 8) ? p[1].substring(0, 8).toLowerCase(Locale.ROOT)
+                            : (serieLimpia.length() >= 8 ? serieLimpia.substring(0, 8).toLowerCase(Locale.ROOT) : "");
+                    boolean ok = almacen.buscarPorRaw(serie) != null
+                            || todoLimpio.contains(serieLimpia.toLowerCase(Locale.ROOT))
+                            || (!cod8.isEmpty() && todoLimpio.contains(cod8));
+                    if (ok) bien++;
                     else falta.append("• ").append(p[2]).append(" · ").append(serie).append("\n");
                 }
             } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Cuadre", t); }
