@@ -1064,6 +1064,8 @@ public class MainActivity extends Activity {
     }
 
     private void reproducir(Uri uri) {
+        if (modoDjActivo && !mantenerDj) modoDjActivo = false;   // si eliges otra cosa, el DJ se apaga
+        mantenerDj = false;
         if (uri != null) registrarCancionOida(uri.toString());
         if ("nas".equals(uri.getScheme())) { reproducirDelNas(uri); return; }
         reproducirArchivo(uri, uri);
@@ -1120,7 +1122,7 @@ public class MainActivity extends Activity {
         if (reproductor == null) { aviso("Selecciona una canción"); return; }
         try {
             if (reproductor.isPlaying()) {
-                reproductor.pause(); estado.setText("Ⅱ EN PAUSA");
+                reproductor.pause(); estado.setText("Ⅱ EN PAUSA"); actualizarNotificacionSegundoPlano(false);
             } else {
                 reproductor.start(); actualizarNotificacionSegundoPlano(true); estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             }
@@ -1837,12 +1839,40 @@ public class MainActivity extends Activity {
         indicePreparado = -1;
     }
 
+    // Aleatorio sin repetir: elige una que no hayas oido hace poco; si las has oido todas, la mas antigua.
+    private int azarCachePos = -1, azarCacheN = -1, azarCache = -1;
+    private String azarCacheDe = "";
+    private int azarFresco() {
+        int total = listaFavoritas.size();
+        if (total <= 1) return 0;
+        String actual = posicionFavorita >= 0 && posicionFavorita < total ? listaFavoritas.get(posicionFavorita) : "";
+        if (azarCache >= 0 && azarCache < total && azarCachePos == posicionFavorita && azarCacheN == total && azarCacheDe.equals(actual)) return azarCache;
+        int elegido = -1;
+        try {
+            String[] rec = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE).getString("recientes", "").split("\n");
+            java.util.HashMap<String, Integer> orden = new java.util.HashMap<>();
+            for (int i = 0; i < rec.length; i++) if (!rec[i].isEmpty()) orden.put(rec[i], i);
+            java.util.ArrayList<Integer> frescas = new java.util.ArrayList<>();
+            int masAntigua = -1, ordenAntigua = Integer.MAX_VALUE;
+            for (int i = 0; i < total; i++) {
+                if (i == posicionFavorita) continue;
+                Integer o = orden.get(listaFavoritas.get(i));
+                if (o == null) frescas.add(i);
+                else if (o < ordenAntigua) { ordenAntigua = o; masAntigua = i; }
+            }
+            elegido = !frescas.isEmpty() ? frescas.get(new java.util.Random().nextInt(frescas.size())) : masAntigua;
+        } catch (Throwable ignorar) { }
+        if (elegido < 0) {
+            elegido = new java.util.Random().nextInt(total - 1);
+            if (elegido >= posicionFavorita) elegido++;
+        }
+        azarCachePos = posicionFavorita; azarCacheN = total; azarCache = elegido; azarCacheDe = actual;
+        return elegido;
+    }
+
     private int indiceSiguiente() {
         if (!modoLista || listaFavoritas.isEmpty()) return -1;
-        if (aleatorio && listaFavoritas.size() > 1) {
-            int n = new java.util.Random().nextInt(listaFavoritas.size() - 1);
-            return n >= posicionFavorita ? n + 1 : n;
-        }
+        if (aleatorio && listaFavoritas.size() > 1) return azarFresco();
         int n = posicionFavorita + 1;
         return n < listaFavoritas.size() ? n : (repetir ? 0 : -1);
     }
@@ -2319,9 +2349,24 @@ public class MainActivity extends Activity {
                 .setPositiveButton("BORRAR", (d2, w2) -> {
                     int n = 0;
                     java.util.ArrayList<String> rutas = new java.util.ArrayList<>();
-                    for (java.io.File f : l) { rutas.add(f.getAbsolutePath()); if (f.delete()) n++; }
+                    java.util.ArrayList<String> fallidas = new java.util.ArrayList<>();
+                    for (java.io.File f : l) {
+                        rutas.add(f.getAbsolutePath());
+                        boolean ok = f.delete();
+                        if (!ok) {
+                            try {
+                                getContentResolver().delete(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                                    android.provider.MediaStore.MediaColumns.DATA + "=?", new String[]{f.getAbsolutePath()});
+                            } catch (Throwable ignorar) { }
+                            ok = !f.exists();
+                        }
+                        if (ok) n++; else fallidas.add(f.getName());
+                    }
                     android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null);
-                    aviso("Borradas " + n);
+                    if (fallidas.isEmpty()) aviso("Borradas " + n);
+                    else new AlertDialog.Builder(this).setTitle("No pude borrar " + fallidas.size())
+                        .setMessage("Borradas: " + n + "\n\nAndroid no me deja borrar estas porque las creó otra app. Bórralas tú desde Archivos › Música › KULI MUSIC › Duplicadas:\n\n" + android.text.TextUtils.join("\n", fallidas))
+                        .setPositiveButton("CERRAR", null).show();
                 })
                 .setNegativeButton("NO", null).show())
             .setNegativeButton("DEJARLAS", null).show();
@@ -2780,14 +2825,19 @@ public class MainActivity extends Activity {
             .setNeutralButton("🔍 BUSCAR", (dialog, which) -> buscarEnFavoritas())
             .setNegativeButton("CERRAR", null).show();
     }
+    // ESPEJO-KULI
     private void saltar(int direccion) {
+        if (modoDjActivo && colaDj != null && !colaDj.isEmpty()) {
+            indiceDj = (indiceDj + direccion + colaDj.size()) % colaDj.size();
+            reproducirConFundidoDj(colaDj.get(indiceDj));
+            return;
+        }
         if (!modoLista || listaFavoritas.isEmpty()) {
-            aviso("Primero abre FAVORITAS"); return;
+            aviso("Primero abre una lista (Favoritas, carpeta o DJ)"); return;
         }
         int siguienteIndice;
         if (aleatorio && direccion > 0 && listaFavoritas.size() > 1) {
-            siguienteIndice = new java.util.Random().nextInt(listaFavoritas.size() - 1);
-            if (siguienteIndice >= posicionFavorita) siguienteIndice++;
+            siguienteIndice = azarFresco();
         } else {
             siguienteIndice = posicionFavorita + direccion;
         }
@@ -3356,7 +3406,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("▶️ Reproducir álbum", (d, w) -> {
                     colaDj = new java.util.ArrayList<>(pistas);
                     indiceDj = 0;
-                    modoDjActivo = true;
+                    modoDjActivo = true; mantenerDj = true;
                     reproducir(Uri.fromFile(pistas.get(0)));
                 })
                 .setNegativeButton("Volver", null)
@@ -3364,7 +3414,7 @@ public class MainActivity extends Activity {
         lv.setOnItemClickListener((av, v, pos, id) -> {
             colaDj = new java.util.ArrayList<>(pistas);
             indiceDj = pos;
-            modoDjActivo = true;
+            modoDjActivo = true; mantenerDj = true;
             reproducir(Uri.fromFile(pistas.get(pos)));
             dlg.dismiss();
         });
@@ -3392,7 +3442,7 @@ public class MainActivity extends Activity {
     }
 
     private String tituloActualNotif = "Kuli Music";
-    private boolean modoDjActivo = false; private boolean djCambiando = false;
+    private boolean modoDjActivo = false; private boolean djCambiando = false; private boolean mantenerDj = false;
     private Button btnDjRef = null;
     private boolean modoDjBloques3 = false;
     private java.util.List<java.io.File> colaDj = new java.util.ArrayList<>();
@@ -3402,19 +3452,24 @@ public class MainActivity extends Activity {
         try {
             String t = cancion != null && cancion.getText() != null && cancion.getText().length() > 0 ? cancion.getText().toString() : tituloActualNotif;
             tituloActualNotif = t;
+            String sub = (btnDjRef != null && modoDjActivo) ? btnDjRef.getText().toString() : artistaActual;
+            KuliPlaybackService.artistaActual = (sub == null || sub.trim().isEmpty()) ? "Kuli Music" : sub;
             Intent i = new Intent(this, KuliPlaybackService.class);
             i.putExtra("titulo", t); i.putExtra("sonando", sonando);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
         } catch (Exception ignored) {}
     }
-    void alternarDesdeNotificacion() { alternarReproduccion(); }
-    void siguienteDesdeNotificacion() {
-        if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-        else { alternarReproduccion(); }
+    void alternarDesdeNotificacion() {
+        alternarReproduccion();
+        try { actualizarNotificacionSegundoPlano(reproductor != null && reproductor.isPlaying()); } catch (Exception ignorar) { }
     }
-    void anteriorDesdeNotificacion() {
-        if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj - 1 + colaDj.size()) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-        else { if (reproductor != null) reproductor.seekTo(0); }
+    void siguienteDesdeNotificacion() { saltarGeneral(1); }
+    void anteriorDesdeNotificacion() { saltarGeneral(-1); }
+    // Siguiente / anterior desde el coche, la notificacion o el movil: funciona en DJ, albumes y cualquier lista.
+    void saltarGeneral(int d) {
+        if ((modoDjActivo && colaDj != null && !colaDj.isEmpty()) || (modoLista && !listaFavoritas.isEmpty())) { saltar(d); return; }
+        if (d < 0 && reproductor != null) { try { reproductor.seekTo(0); } catch (Exception ignorar) { } return; }
+        aviso("Abre una lista (Favoritas, carpeta o DJ) para pasar de canción");
     }
     private void abrirModoCocheDj() {
         java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
@@ -3422,6 +3477,14 @@ public class MainActivity extends Activity {
         recolectarMp3Directo(base, todas);
         java.io.File flowDir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Flow");
         if (flowDir.exists()) recolectarMp3Directo(flowDir, todas);
+        // Sin repetidas (mismo titulo) y sin la carpeta «Duplicadas».
+        java.util.HashSet<String> vistosDj = new java.util.HashSet<>();
+        for (java.util.Iterator<java.io.File> it = todas.iterator(); it.hasNext();) {
+            java.io.File fd = it.next();
+            String kd = claveNombre(fd.getName());
+            if (kd.isEmpty()) kd = fd.getName();
+            if (fd.getAbsolutePath().contains("/Duplicadas/") || !vistosDj.add(kd)) it.remove();
+        }
         if (todas.isEmpty()) { aviso("No hay canciones en Music/KULI MUSIC"); return; }
         String[] modos = {
             "✨ DJ Elegante · 3 canciones por estilo (" + todas.size() + " temas)",
@@ -3480,6 +3543,7 @@ public class MainActivity extends Activity {
             int numBloque = (indiceDj % 3) + 1;
             btnDjRef.setText(modoDjBloques3 ? ("🎧 " + estNow + " (" + numBloque + "/3)") : ("🎧 DJ · " + estNow));
         }
+        mantenerDj = true;
         reproducir(Uri.fromFile(f));
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (reproductor != null) {
@@ -3560,11 +3624,9 @@ public class MainActivity extends Activity {
         setIntent(intent);
         String act = intent != null ? intent.getAction() : null;
         if (KuliPlaybackService.ACTION_NEXT.equals(act)) {
-            if (modoDjActivo && colaDj != null && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-            else if (!listaFavoritas.isEmpty()) { posicionFavorita = (posicionFavorita + 1) % listaFavoritas.size(); reproducir(Uri.parse(listaFavoritas.get(posicionFavorita))); }
+            saltarGeneral(1);
         } else if (KuliPlaybackService.ACTION_PREV.equals(act)) {
-            if (modoDjActivo && colaDj != null && !colaDj.isEmpty()) { indiceDj = (indiceDj - 1 + colaDj.size()) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); }
-            else if (!listaFavoritas.isEmpty()) { posicionFavorita = (posicionFavorita - 1 + listaFavoritas.size()) % listaFavoritas.size(); reproducir(Uri.parse(listaFavoritas.get(posicionFavorita))); }
+            saltarGeneral(-1);
         } else if (KuliPlaybackService.ACTION_TOGGLE.equals(act)) {
             if (reproductor != null) {
                 if (reproductor.isPlaying()) { reproductor.pause(); actualizarNotificacionSegundoPlano(false); }

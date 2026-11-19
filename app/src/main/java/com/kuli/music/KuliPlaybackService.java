@@ -74,6 +74,7 @@ public class KuliPlaybackService extends Service {
                 .setState(sonando ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
                 .build();
         mediaSession.setPlaybackState(pb);
+        AutoService.reflejarMovil(titulo, artista, sonando);
     }
 
     private Notification buildNotif(String titulo, boolean sonando) {
