@@ -170,6 +170,7 @@ public class ScanActivity extends ComponentActivity {
                 }
             }).addOnCompleteListener(t -> ip.close());
     }
+    private void enfocar(float x, float y){if(camara!=null)camara.getCameraControl().startFocusAndMetering(new FocusMeteringAction.Builder(vista.getMeteringPointFactory().createPoint(x,y)).build());}
     private void entregar(String v) {
         if (terminado) return;
         if (terminado) return;
@@ -181,7 +182,7 @@ public class ScanActivity extends ComponentActivity {
 
     @Override protected void onDestroy() {
         terminado = true;
-        try { if (lector != null) lector.reset(); } catch (Throwable ignorar) { }
+        try { if (lector != null) lector.close(); } catch (Throwable ignorar) { }
         hilo.shutdown();
         super.onDestroy();
     }
