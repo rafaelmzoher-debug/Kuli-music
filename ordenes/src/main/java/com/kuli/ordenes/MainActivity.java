@@ -2712,7 +2712,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("NO", (d, w) -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); }).show();
             return;
         }
-        String nombre = it.nombre;
+        String nombre = it.nombre; int minAviso = it.minimo;
         int quedan = almacen.gastar(clave, raw);
         registrarPendienteReponer(orden, it.codigo, nombre, raw);
         pila("USA", orden, clave, nombre, raw == null ? "" : raw);
@@ -2720,9 +2720,9 @@ public class MainActivity extends Activity {
         anotarMaterial(orden, raw != null ? raw : clave, nombre, clave);
         final Runnable seguirR = () -> { if (seguir) gastarSeguido(orden); else mostrarOrden(orden); };
         Almacen.Item despues = almacen.buscar(clave);
-        if (despues != null && despues.minimo > 0 && quedan <= despues.minimo) {
+        if (despues != null && minAviso > 0 && quedan <= minAviso) {
             new AlertDialog.Builder(this).setTitle(quedan == 0 ? "⚠ Se ha acabado" : "⚠ Queda poco")
-                .setMessage(nombre + ": " + (quedan == 0 ? "ya no queda ninguno." : "quedan solo " + quedan + " (aviso a partir de " + despues.minimo + ")."))
+                .setMessage(nombre + ": " + (quedan == 0 ? "ya no queda ninguno." : "quedan solo " + quedan + " (aviso a partir de " + minAviso + ")."))
                 .setCancelable(false)
                 .setPositiveButton("OK", (d, w) -> seguirR.run()).show();
         } else {
