@@ -2,7 +2,10 @@ package com.kuli.ordenes;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import com.google.zxing.*;
+import com.google.mlkit.vision.barcode.*;
+import com.google.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.common.InputImage;
+import android.media.Image;
 import com.google.zxing.common.HybridBinarizer;
 
 import android.content.Intent;
@@ -42,7 +45,7 @@ import java.util.concurrent.TimeUnit;
 public class ScanActivity extends ComponentActivity {
     private PreviewView vista;
     private Camera camara;
-    private MultiFormatReader lector;
+    private BarcodeScanner lector;
     private final AtomicBoolean bloqueado = new AtomicBoolean(false);
     private final ExecutorService hilo = Executors.newSingleThreadExecutor();
     private volatile boolean terminado = false;
@@ -138,86 +141,35 @@ public class ScanActivity extends ComponentActivity {
     }
 
     private void arrancar() {
-        lector = new MultiFormatReader();
-            Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
-            hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
-            hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(
-                BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX, BarcodeFormat.CODE_128,
-                BarcodeFormat.CODE_39, BarcodeFormat.CODE_93, BarcodeFormat.ITF,
-                BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A
-            ));
-            lector.setHints(hints);
+        lector = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build());
         final ListenableFuture<ProcessCameraProvider> futuro = ProcessCameraProvider.getInstance(this);
         futuro.addListener(() -> {
             try {
                 ProcessCameraProvider proveedor = futuro.get();
                 Preview previa = new Preview.Builder().build();
                 previa.setSurfaceProvider(vista.getSurfaceProvider());
-                ImageAnalysis analisis = new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1080, 1920))
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build();
+                ImageAnalysis analisis = new ImageAnalysis.Builder().setTargetResolution(new Size(1080, 1920)).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
                 analisis.setAnalyzer(hilo, this::analizar);
                 proveedor.unbindAll();
                 camara = proveedor.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previa, analisis);
-            } catch (Throwable e) {
-                android.util.Log.e("KULI_ORDENES", "Cámara", e);
-                Toast.makeText(this, "No se pudo abrir la cámara", Toast.LENGTH_LONG).show();
-                setResult(RESULT_FIRST_USER);
-                finish();
-            }
+            } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show()); }
         }, ContextCompat.getMainExecutor(this));
     }
-
-    private void enfocar(float x, float y) {
-        if (camara == null) return;
-        MeteringPoint punto = vista.getMeteringPointFactory().createPoint(x, y);
-        camara.getCameraControl().startFocusAndMetering(new FocusMeteringAction.Builder(punto,
-            FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE).setAutoCancelDuration(3, TimeUnit.SECONDS).build());
-    }
-
-    @ExperimentalGetImage
+    @androidx.annotation.OptIn(markerClass = androidx.camera.core.ExperimentalGetImage.class)
     private void analizar(ImageProxy ip) {
-        if (terminado || bloqueado.get() || ip.getImage() == null) { ip.close(); return; }
-        try {
-            ImageProxy.PlaneProxy plane = ip.getPlanes()[0];
-            ByteBuffer buf = plane.getBuffer();
-            int w = ip.getWidth(), h = ip.getHeight(), stride = plane.getRowStride();
-            byte[] yData = new byte[w * h];
-            for (int r = 0; r < h; r++) {
-                buf.position(r * stride);
-                buf.get(yData, r * w, w);
-            }
-            Result res = decodificar(yData, w, h);
-            if (res == null) {
-                byte[] rot = new byte[w * h];
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                        rot[x * h + (h - 1 - y)] = yData[y * w + x];
-                res = decodificar(rot, h, w);
-            }
-            if (res != null && res.getText() != null && !res.getText().trim().isEmpty()) {
-                if (bloqueado.compareAndSet(false, true)) {
-                    entregar(res.getText().trim());
+        if (terminado || bloqueado.get()) { ip.close(); return; }
+        Image img = ip.getImage();
+        if (img == null) { ip.close(); return; }
+        lector.process(InputImage.fromMediaImage(img, ip.getImageInfo().getRotationDegrees()))
+            .addOnSuccessListener(list -> {
+                for (Barcode c : list) {
+                    if (c.getRawValue() != null && !c.getRawValue().trim().isEmpty()) {
+                        if (bloqueado.compareAndSet(false, true)) entregar(c.getRawValue().trim());
+                        break;
+                    }
                 }
-            }
-        } catch (Throwable ignored) {
-        } finally {
-            ip.close();
-        }
+            }).addOnCompleteListener(t -> ip.close());
     }
-
-    private Result decodificar(byte[] data, int w, int h) {
-        try {
-            PlanarYUVLuminanceSource src = new PlanarYUVLuminanceSource(data, w, h, 0, 0, w, h, false);
-            return lector.decodeWithState(new BinaryBitmap(new HybridBinarizer(src)));
-        } catch (NotFoundException e) {
-            return null;
-        } finally {
-            lector.reset();
-        }
-    }
-
     private void entregar(String v) {
         if (terminado) return;
         if (terminado) return;
