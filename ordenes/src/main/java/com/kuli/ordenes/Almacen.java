@@ -267,7 +267,7 @@ final class Almacen {
 
     // Etiqueta larga de Movistar: 8 cifras del material + proveedor + pedido + lote (puede acabar en letras, ej. EL26).
     static boolean esEtiquetaLarga(String raw) {
-        return raw != null && raw.trim().matches("\\d{8}[0-9A-Za-z]{16,}");
+        return raw != null && raw.trim().matches("\\d{8}[0-9A-Za-z/\\-]{16,}");
     }
 
     // Número de serie corto de cada equipo (ej. 88FEB6268920): único de cada unidad.
@@ -284,7 +284,7 @@ final class Almacen {
     static String clave(String raw) {
         String r = raw.trim();
         if (!esEtiquetaLarga(r)) return r;
-        r = r.substring(0, 8);
+        r = (r.startsWith("0000") && r.contains("/") && r.length() >= 10) ? r.substring(2, 10) : r.substring(0, 8);
         if (r.equals("88414936")) return "00414936";
         if (r.equals("88412547")) return "00412537";
         return r;
