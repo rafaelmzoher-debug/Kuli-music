@@ -304,6 +304,9 @@ final class Almacen {
                 it.codigo = f[0];
                 it.nombre = f[1];
                 it.cantidad = 0;
+            String nl = it.nombre.toLowerCase(java.util.Locale.ROOT);
+            if (nl.contains("router") || nl.contains("ont")) it.minimo = 2;
+            else if (nl.contains("acometida") || nl.contains("cable exterior")) it.minimo = 1;
                 items.add(it);
             }
             for (int k = 2; k < f.length; k++) {
