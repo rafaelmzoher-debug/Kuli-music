@@ -3430,33 +3430,49 @@ public class MainActivity extends Activity {
             "🆕 Solo Sesión Novedades 2026",
             "🌴 Solo Sesión Latino / Dance"
         };
+        aviso("🎧 Mirando el estilo de " + todas.size() + " canciones… (la primera vez tarda un poco, luego es al instante)");
+        final java.util.ArrayList<java.io.File> todasF = todas;
+        new Thread(() -> {
+            android.content.SharedPreferences cache = getSharedPreferences("kuli_estilos", MODE_PRIVATE);
+            android.content.SharedPreferences.Editor ed = cache.edit();
+            java.util.HashMap<String, String> mapa = new java.util.HashMap<>();
+            for (java.io.File f : todasF) mapa.put(f.getAbsolutePath(), estiloDeArchivo(f, cache, ed));
+            ed.apply();
+            runOnUiThread(() -> { if (isDestroyed()) return; estilosDj = mapa; mostrarMenuDj(modos, todasF); });
+        }).start();
+    }
+
+    private void mostrarMenuDj(String[] modos, final java.util.ArrayList<java.io.File> todas) {
         new AlertDialog.Builder(this).setTitle("🎧 Modo DJ · Selección de Sesión").setItems(modos, (d, which) -> {
             java.util.ArrayList<java.io.File> sel = new java.util.ArrayList<>();
             modoDjBloques3 = (which == 0);
             if (which == 0) {
                 java.util.LinkedHashMap<String, java.util.ArrayList<java.io.File>> grupos = new java.util.LinkedHashMap<>();
                 for (java.io.File f : todas) {
-                    String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+                    String st = estiloDj(f);
                     if (st == null || st.trim().isEmpty()) st = "Variados";
                     grupos.computeIfAbsent(st, k -> new java.util.ArrayList<>()).add(f);
                 }
                 java.util.ArrayList<String> estilos = new java.util.ArrayList<>(grupos.keySet());
                 java.util.Collections.shuffle(estilos);
                 for (String est : estilos) java.util.Collections.shuffle(grupos.get(est));
+                etiquetasDj = new java.util.ArrayList<>();
                 boolean quedan = true;
                 while (quedan) {
                     quedan = false;
                     for (String est : estilos) {
                         java.util.ArrayList<java.io.File> listaEst = grupos.get(est);
-                        for (int k = 0; k < 3 && !listaEst.isEmpty(); k++) {
+                        int toma = Math.min(3, listaEst.size());
+                        for (int k = 0; k < toma; k++) {
                             sel.add(listaEst.remove(0));
+                            etiquetasDj.add(est + " (" + (k + 1) + "/" + toma + ")");
                             quedan = true;
                         }
                     }
                 }
             } else {
                 for (java.io.File f : todas) {
-                    String st = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+                    String st = estiloDj(f);
                     if (which == 1) sel.add(f);
                     else if (which == 2 && "Flamenkito".equals(st)) sel.add(f);
                     else if (which == 3 && "Novedades 2026".equals(st)) sel.add(f);
@@ -3476,9 +3492,9 @@ public class MainActivity extends Activity {
     private void reproducirConFundidoDj(java.io.File f) {
         tituloActualNotif = f.getName().replace(".mp3", "").replace(".m4a", "");
         if (btnDjRef != null && modoDjActivo) {
-            String estNow = detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
-            int numBloque = (indiceDj % 3) + 1;
-            btnDjRef.setText(modoDjBloques3 ? ("🎧 " + estNow + " (" + numBloque + "/3)") : ("🎧 DJ · " + estNow));
+            String estNow = estiloDj(f);
+            String etq = (modoDjBloques3 && etiquetasDj != null && indiceDj < etiquetasDj.size()) ? etiquetasDj.get(indiceDj) : null;
+            btnDjRef.setText(etq != null ? "🎧 " + etq : ("🎧 DJ · " + estNow));
         }
         reproducir(Uri.fromFile(f));
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -3551,7 +3567,44 @@ public class MainActivity extends Activity {
         String[] fl = {"flamenc", "bordon 4", "asi canta jerez", "paloma blanca", "los del rio", "el mani", "camela", "estopa", "melendi", "el barrio", "niña pastori", "nina pastori", "india martinez", "fondo flamenco", "decai", "rebujitos", "canelita", "galvan real", "daviles", "keen levy", "nyno vargas", "moncho chavea", "omar montes", "maka", "original elias", "demarco", "chambao", "ketama", "paco de lucia", "camaron", "jose merce", "diego el cigala", "estrella morente", "falete", "parrita", "bambino", "chiquetete", "manzanita", "peret", "kiko veneno", "juanito makande", "el canijo", "tomasito", "la hungara", "maria artes", "el tren de los sueños", "son de sol", "las chuches", "los caños", "andy", "lucas", "kiko y shara", "raya real", "siempre asi", "requiebros", "ecos del rocio", "cantores de hispalis", "los marismeños", "sevillanas", "rumba"};
         for (String f : fl) if (todo.contains(simple(f))) return "Flamenkito";
         String est = estiloDeGenero(gen);
-        return est != null ? est : "Pop";
+        if (est != null) return est;
+        if (anio >= 1980 && anio <= 2009) return anio < 1990 ? "Años 80" : anio < 2000 ? "Años 90" : "Años 2000";
+        if (gen != null) {
+            String g = gen.trim();
+            String gl = g.toLowerCase(java.util.Locale.ROOT);
+            if (g.length() >= 3 && g.length() <= 24 && !g.matches("\\(?\\d+\\)?")
+                && !gl.equals("other") && !gl.equals("unknown") && !gl.equals("desconocido") && !gl.equals("genre") && !gl.equals("varios"))
+                return Character.toUpperCase(g.charAt(0)) + g.substring(1);
+        }
+        return "Pop";
+    }
+
+    // GENERO-KULI: estilo de un archivo leyendo sus etiquetas; se guarda para no repetir el trabajo.
+    private java.util.HashMap<String, String> estilosDj = new java.util.HashMap<>();
+    private java.util.ArrayList<String> etiquetasDj = new java.util.ArrayList<>();
+
+    private String estiloDj(java.io.File f) {
+        String v = estilosDj.get(f.getAbsolutePath());
+        return v != null ? v : detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
+    }
+
+    private String estiloDeArchivo(java.io.File f, android.content.SharedPreferences cache, android.content.SharedPreferences.Editor ed) {
+        String k = "v2|" + f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified();
+        String v = cache.getString(k, null);
+        if (v != null) return v;
+        String genero = null, autor = null;
+        int anio = 0;
+        MediaMetadataRetriever m = new MediaMetadataRetriever();
+        try {
+            m.setDataSource(f.getAbsolutePath());
+            genero = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE);
+            autor = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+            String y = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR);
+            if (y != null && y.length() >= 4) anio = Integer.parseInt(y.substring(0, 4));
+        } catch (Exception ignored) { } finally { try { m.release(); } catch (Exception ignored) { } }
+        String st = detectarEstiloPersonalizado(simple(f.getName()), autor, genero, anio);
+        ed.putString(k, st);
+        return st;
     }
 
 
