@@ -198,7 +198,7 @@ final class OrdenarMusica {
         return destino;
     }
 
-    private static boolean mover(File origen, File destino) {
+    static boolean mover(File origen, File destino) {
         File d = libre(destino);
         d.getParentFile().mkdirs();
         if (origen.renameTo(d)) return true;
@@ -226,7 +226,7 @@ final class OrdenarMusica {
         return rutas;
     }
 
-    private static void quitarVacias(File dir, boolean esBase) {
+    static void quitarVacias(File dir, boolean esBase) {
         File[] fs = dir.listFiles();
         if (fs == null) return;
         for (File f : fs) if (f.isDirectory()) quitarVacias(f, false);
