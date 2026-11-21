@@ -59,11 +59,11 @@ public class AutoService extends MediaBrowserService {
 
         sesion = new MediaSession(this, "KULI");
         sesion.setCallback(new MediaSession.Callback() {
-            @Override public void onPlay() { reanudar(); }
-            @Override public void onPause() { pausar(); }
-            @Override public void onStop() { pausar(); }
-            @Override public void onSkipToNext() { saltar(1); }
-            @Override public void onSkipToPrevious() { saltar(-1); }
+            @Override public void onPlay() { if (delMovil(0)) return; reanudar(); }
+            @Override public void onPause() { if (delMovil(0)) return; pausar(); }
+            @Override public void onStop() { if (delMovil(0)) return; pausar(); }
+            @Override public void onSkipToNext() { if (delMovil(1)) return; saltar(1); }
+            @Override public void onSkipToPrevious() { if (delMovil(-1)) return; saltar(-1); }
             @Override public void onPlayFromMediaId(String id, Bundle extras) {
                 if (id.startsWith("http")) {
                     modoFav = false;
@@ -95,6 +95,7 @@ public class AutoService extends MediaBrowserService {
         poner(urlActual == null ? PlaybackState.STATE_NONE : PlaybackState.STATE_PAUSED);
         ponerDatos();
         sesion.setActive(true);
+        if (hayPend) espejarMovil(pendT, pendA, pendS);
     }
 
     @Override public void onDestroy() {
@@ -105,7 +106,9 @@ public class AutoService extends MediaBrowserService {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        try { startForeground(3, notificacion()); } catch (Throwable ignorar) { }
+        if (intent == null || !intent.getBooleanExtra("espejo", false)) {
+            try { startForeground(3, notificacion()); } catch (Throwable ignorar) { }
+        }
         return START_NOT_STICKY;
     }
 
@@ -252,6 +255,7 @@ public class AutoService extends MediaBrowserService {
 
     // ---------- Reproducción ----------
     private void reproducir(String nombre, String url) {
+        espejo = false;
         liberar();
         MainActivity m = MainActivity.instancia;
         if (m != null) m.pausarDesdeAuto();
@@ -334,6 +338,39 @@ public class AutoService extends MediaBrowserService {
         int i = urls.indexOf(urlActual);
         i = i < 0 ? 0 : (i + d + urls.size()) % urls.size();
         reproducir(nombres.get(i), urls.get(i));
+    }
+
+    // ESPEJO-KULI: en el coche se ve y se maneja lo que suena en el movil.
+    private boolean espejo = false;
+    private static String pendT, pendA;
+    private static boolean pendS, hayPend;
+
+    static void reflejarMovil(final String titulo, final String artista, final boolean suena) {
+        pendT = titulo; pendA = artista; pendS = suena; hayPend = true;
+        final AutoService a = instancia;
+        if (a == null) return;
+        a.h.post(() -> a.espejarMovil(titulo, artista, suena));
+    }
+
+    private void espejarMovil(String titulo, String artista, boolean suena) {
+        try {
+            if (mp != null) liberar();
+            espejo = true;
+            sesion.setMetadata(new MediaMetadata.Builder()
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, titulo == null ? "KULI MUSIC" : titulo)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artista == null ? "KULI MUSIC" : artista)
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "KULI MUSIC")
+                    .build());
+            poner(suena ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED);
+            sesion.setActive(true);
+        } catch (Throwable ignorar) { }
+    }
+
+    private boolean delMovil(int accion) {
+        MainActivity m = MainActivity.instancia;
+        if (!espejo || m == null) return false;
+        if (accion == 0) m.alternarDesdeNotificacion(); else m.saltarGeneral(accion);
+        return true;
     }
 
     // Si la app empieza a sonar en el móvil, la radio del coche se calla.

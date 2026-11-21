@@ -34,7 +34,19 @@ public class KuliPlaybackService extends Service {
         mediaSession.setActive(true);
     }
 
-    private void enviarAccion(String act) {
+    private void enviarAccion(final String act) {
+        // MEZCLA-KULI: si la app está viva se le ordena directamente (Android no deja abrir la pantalla desde segundo plano)
+        final MainActivity m = MainActivity.instancia;
+        if (m != null) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    if (ACTION_NEXT.equals(act)) m.siguienteDesdeNotificacion();
+                    else if (ACTION_PREV.equals(act)) m.anteriorDesdeNotificacion();
+                    else m.alternarDesdeNotificacion();
+                } catch (Throwable ignorar) { }
+            });
+            return;
+        }
         Intent i = new Intent(this, MainActivity.class);
         i.setAction(act);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -74,6 +86,10 @@ public class KuliPlaybackService extends Service {
                 .setState(sonando ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
                 .build();
         mediaSession.setPlaybackState(pb);
+        if (AutoService.instancia == null) {
+            try { startService(new Intent(this, AutoService.class).putExtra("espejo", true)); } catch (Throwable ignorar) { }
+        }
+        AutoService.reflejarMovil(titulo, artista, sonando);
     }
 
     private Notification buildNotif(String titulo, boolean sonando) {
