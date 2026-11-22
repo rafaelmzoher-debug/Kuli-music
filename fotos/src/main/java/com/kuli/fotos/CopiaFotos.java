@@ -157,7 +157,7 @@ final class CopiaFotos {
                 String destino = dirDia + java.io.File.separator + it.nombre;
                 try {
                 final boolean[] yaEstaba = new boolean[]{false};
-                conectar(ctx, d -> {
+                conNas(ctx, d -> {
                     asegurar(d, creadas, CARPETA);
                     asegurar(d, creadas, dirDia);
                     if (d.fileExists(destino)) {
