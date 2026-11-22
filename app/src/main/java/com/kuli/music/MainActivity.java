@@ -2298,9 +2298,10 @@ public class MainActivity extends Activity {
     // ESTILOS-KULI: menú de ordenar + carpetas por estilo con deshacer.
     private void ordenarMusica() {
         new AlertDialog.Builder(this).setTitle("🧹 Ordenar música")
-            .setItems(new String[]{"🧹 Ordenar y poner nombres", "🎨 Carpetas por estilo", "↩ Deshacer el último orden por estilo"}, (d, i) -> {
+            .setItems(new String[]{"🧹 Ordenar y poner nombres", "🎨 Carpetas por estilo", "📥 Juntar música de otras carpetas", "↩ Deshacer el último movimiento"}, (d, i) -> {
                 if (i == 0) ordenarClasico();
                 else if (i == 1) ordenarPorEstilos();
+                else if (i == 2) juntarMusica();
                 else deshacerEstilos();
             }).setNegativeButton("Cancelar", null).show();
     }
@@ -2417,6 +2418,117 @@ public class MainActivity extends Activity {
             android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null);
             final int h = hechas, f = fallos;
             runOnUiThread(() -> aviso("↩ Devueltas " + h + (f > 0 ? " · " + f + " no estaban" : "")));
+        }).start();
+    }
+
+    // JUNTAR-KULI: trae la música que está fuera de Música › KULI MUSIC a su carpeta de estilo.
+    private void juntarMusica() {
+        if (android.os.Build.VERSION.SDK_INT < 33
+                && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 202);
+            return;
+        }
+        final java.io.File base = carpetaMovil();
+        aviso("Buscando música fuera de KULI MUSIC…");
+        new Thread(() -> {
+            final java.util.LinkedHashMap<java.io.File, java.util.ArrayList<java.io.File>> grupos = new java.util.LinkedHashMap<>();
+            String basePath = base.getAbsolutePath() + "/";
+            android.database.Cursor c = null;
+            try {
+                c = getContentResolver().query(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    new String[]{android.provider.MediaStore.Audio.Media.DATA, android.provider.MediaStore.Audio.Media.DURATION},
+                    null, null, null);
+                while (c != null && c.moveToNext()) {
+                    String p = c.getString(0);
+                    long dur = c.getLong(1);
+                    if (p == null || dur < 60000 || p.startsWith(basePath) || !OrdenarMusica.esAudio(p)) continue;
+                    String pl = p.toLowerCase(java.util.Locale.ROOT);
+                    if (pl.contains("/android/") || pl.contains("song_cache") || pl.contains("/ringtones/") || pl.contains("/alarms/")
+                        || pl.contains("/notifications/") || pl.contains("/recordings/") || pl.contains("/whatsapp") || pl.contains("/call")) continue;
+                    java.io.File f = new java.io.File(p);
+                    if (!f.isFile() || f.getParentFile() == null) continue;
+                    java.util.ArrayList<java.io.File> l = grupos.get(f.getParentFile());
+                    if (l == null) { l = new java.util.ArrayList<>(); grupos.put(f.getParentFile(), l); }
+                    l.add(f);
+                }
+            } catch (Throwable e) {
+                android.util.Log.e("KULI_JUNTAR", "Buscar", e);
+            } finally {
+                if (c != null) { try { c.close(); } catch (Throwable ignorar) { } }
+            }
+            runOnUiThread(() -> mostrarCarpetasFuera(base, grupos));
+        }).start();
+    }
+
+    private void mostrarCarpetasFuera(final java.io.File base, final java.util.LinkedHashMap<java.io.File, java.util.ArrayList<java.io.File>> grupos) {
+        if (isDestroyed()) return;
+        if (grupos.isEmpty()) { aviso("No hay música fuera de KULI MUSIC"); return; }
+        final java.util.ArrayList<java.io.File> dirs = new java.util.ArrayList<>(grupos.keySet());
+        final String[] items = new String[dirs.size()];
+        final boolean[] marcadas = new boolean[dirs.size()];
+        int total = 0;
+        for (int i = 0; i < items.length; i++) {
+            int n = grupos.get(dirs.get(i)).size();
+            total += n;
+            items[i] = dirs.get(i).getName() + "  (" + n + ")";
+            marcadas[i] = true;
+        }
+        new AlertDialog.Builder(this).setTitle("📥 " + total + " canciones fuera de KULI MUSIC")
+            .setMultiChoiceItems(items, marcadas, (d, i, v) -> marcadas[i] = v)
+            .setPositiveButton("MOVER", (d, w) -> {
+                java.util.ArrayList<java.io.File> elegidas = new java.util.ArrayList<>();
+                for (int i = 0; i < marcadas.length; i++) if (marcadas[i]) elegidas.addAll(grupos.get(dirs.get(i)));
+                if (elegidas.isEmpty()) { aviso("No has marcado ninguna carpeta"); return; }
+                traerFuera(base, elegidas);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void traerFuera(final java.io.File base, final java.util.ArrayList<java.io.File> archivos) {
+        aviso("Moviendo " + archivos.size() + " canciones… no cierres la app");
+        new Thread(() -> {
+            java.util.HashSet<String> ya = new java.util.HashSet<>();
+            java.util.ArrayList<java.io.File> loc = new java.util.ArrayList<>();
+            recolectarMp3Directo(base, loc);
+            for (java.io.File x : loc) ya.add(claveNombre(x.getName()));
+            android.content.SharedPreferences cache = getSharedPreferences("kuli_estilos", MODE_PRIVATE);
+            android.content.SharedPreferences.Editor ed = cache.edit();
+            int hechas = 0, repetidas = 0, copiadas = 0, fallos = 0;
+            java.util.ArrayList<String> rutas = new java.util.ArrayList<>();
+            StringBuilder reg = new StringBuilder();
+            for (java.io.File f : archivos) {
+                String clave = claveNombre(f.getName());
+                if (ya.contains(clave)) { repetidas++; continue; }
+                String st = estiloDeArchivo(f, cache, ed);
+                if (st == null || st.trim().isEmpty()) st = "Variados";
+                java.io.File dest = OrdenarMusica.libre(new java.io.File(new java.io.File(base, OrdenarMusica.seguro(st)), f.getName()));
+                rutas.add(f.getAbsolutePath());
+                if (OrdenarMusica.mover(f, dest)) {
+                    hechas++; ya.add(clave);
+                    rutas.add(dest.getAbsolutePath());
+                    reg.append(dest.getAbsolutePath()).append('\t').append(f.getAbsolutePath()).append('\n');
+                } else if (dest.exists() && dest.length() == f.length()) {
+                    copiadas++; ya.add(clave);
+                    rutas.add(dest.getAbsolutePath());
+                } else fallos++;
+            }
+            ed.apply();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(registroEstilos())) {
+                out.write(reg.toString().getBytes("UTF-8"));
+            } catch (Exception ignorar) { }
+            android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null);
+            final int h = hechas, r = repetidas, c = copiadas, f2 = fallos;
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                StringBuilder sb = new StringBuilder("Movidas a su carpeta de estilo: " + h);
+                if (c > 0) sb.append("\nCopiadas (Android no dejó quitar la original): ").append(c);
+                if (r > 0) sb.append("\nYa estaban en KULI MUSIC, no se tocan: ").append(r);
+                if (f2 > 0) sb.append("\nNo se pudieron mover: ").append(f2);
+                new AlertDialog.Builder(this).setTitle("✓ Música juntada").setMessage(sb.toString())
+                    .setPositiveButton("OK", null)
+                    .setNeutralButton("↩ DESHACER", (d, w) -> deshacerEstilos()).show();
+            });
         }).start();
     }
 
