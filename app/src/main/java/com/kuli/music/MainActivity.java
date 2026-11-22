@@ -665,8 +665,8 @@ public class MainActivity extends Activity {
         return b;
     }
     private void portadaVacia() {
-        portada.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        portada.setPadding(dp(36), dp(56), dp(56), dp(56));
+        portada.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        portada.setPadding(dp(36), dp(36), dp(36), dp(36));
         portada.setImageResource(android.R.drawable.ic_media_play);
         portada.setColorFilter(DORADO);
     }
