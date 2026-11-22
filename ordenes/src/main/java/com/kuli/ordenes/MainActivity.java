@@ -581,7 +581,7 @@ public class MainActivity extends Activity {
     // ---------- Permisos ----------
     private boolean tienePermiso() {
         return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-            && checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+            && (android.os.Build.VERSION.SDK_INT >= 30 ? android.os.Environment.isExternalStorageManager() : checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
     }
 
     @Override public void onRequestPermissionsResult(int cod, String[] p, int[] r) {
