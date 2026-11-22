@@ -1287,9 +1287,9 @@ public class MainActivity extends Activity {
         MediaPlayer mp = new MediaPlayer();
         try {
             try {
-                android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
+                android.media.AudioAttributes aa = new android.media.android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
                 mp.setAudioAttributes(aa);
                 android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
                 if (am != null) {
@@ -3947,9 +3947,9 @@ public class MainActivity extends Activity {
         registrarEscuchada(Uri.fromFile(sigFile).toString());
         try {
             djSiguientePlayer = new MediaPlayer();
-            djSiguientePlayer.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            djSiguientePlayer.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
             djSiguientePlayer.setDataSource(this, Uri.fromFile(sigFile));
             djSiguientePlayer.prepare();
             djSiguientePlayer.setVolume(0.0f, 0.0f);
@@ -3981,7 +3981,7 @@ public class MainActivity extends Activity {
                         posicionFavorita = indiceDj;
                         uriActual = Uri.fromFile(sigFile);
                         tituloActualNotif = sigFile.getName().replace(".mp3", "");
-                        if (titulo != null) titulo.setText("🎧 " + tituloActualNotif);
+                        
                         String estNow = estiloDj(sigFile);
                         if (btnDjRef != null) btnDjRef.setText("🎧 DJ · " + estNow);
                         actualizarNotificacionSegundoPlano(true);
