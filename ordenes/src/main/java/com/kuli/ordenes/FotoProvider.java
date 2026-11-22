@@ -1,5 +1,8 @@
 package com.kuli.ordenes;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+
 import android.content.ContentProvider;
 import android.content.ContentValues;
 import android.database.Cursor;
@@ -34,7 +37,7 @@ public class FotoProvider extends ContentProvider {
                 f.createNewFile();
             } catch (IOException e) {
                 Log.e("FotoProvider", "No se pudo crear archivo temporal", e);
-                throw new FileNotFoundException("No pudo crearse el archivo temporal", e);
+                throw new FileNotFoundException("No pudo crearse el archivo temporal");
             }
         }
         int m = ParcelFileDescriptor.parseMode(mode);
