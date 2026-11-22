@@ -2801,33 +2801,6 @@ public class MainActivity extends Activity {
 
     // ---------- Hacer o elegir foto ----------
     
-    // V224: pide una ubicación nueva (espera hasta 8 s). Se llama desde un hilo, nunca desde la pantalla.
-    @android.annotation.SuppressLint("MissingPermission")
-    private android.location.Location ubicacionNueva(final android.location.LocationManager lm) {
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null;
-        final android.location.Location[] res = {null};
-        final java.util.concurrent.CountDownLatch cierre = new java.util.concurrent.CountDownLatch(1);
-        final android.location.LocationListener oyente = new android.location.LocationListener() {
-            public void onLocationChanged(android.location.Location l) { res[0] = l; cierre.countDown(); }
-            public void onStatusChanged(String p, int s, Bundle e) { }
-            public void onProviderEnabled(String p) { }
-            public void onProviderDisabled(String p) { }
-        };
-        try {
-            runOnUiThread(() -> {
-                try {
-                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER))
-                        lm.requestSingleUpdate(android.location.LocationManager.NETWORK_PROVIDER, oyente, android.os.Looper.getMainLooper());
-                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER))
-                        lm.requestSingleUpdate(android.location.LocationManager.GPS_PROVIDER, oyente, android.os.Looper.getMainLooper());
-                } catch (Throwable t) { cierre.countDown(); }
-            });
-            cierre.await(8, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (Throwable ignorar) { }
-        try { runOnUiThread(() -> { try { lm.removeUpdates(oyente); } catch (Throwable ignorar) { } }); } catch (Throwable ignorar) { }
-        return res[0];
-    }
-
     private String obtenerDireccionGpsActual() {
         try {
             if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
@@ -2838,7 +2811,6 @@ public class MainActivity extends Activity {
             if (lm == null) return "";
             android.location.Location loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
             if (loc == null) loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-            if (loc == null) loc = ubicacionNueva(lm); // V224: si el móvil no tiene ninguna guardada, se pide una ahora
             if (loc == null) return "";
             android.location.Geocoder geo = new android.location.Geocoder(this, java.util.Locale.getDefault());
             java.util.List<android.location.Address> dirs = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
