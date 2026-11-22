@@ -1142,7 +1142,27 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void registrarEscuchada(String u) {
+        if (u == null || u.isEmpty()) return;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE);
+            String prev = sp.getString("recientes", "");
+            java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+            for (String s : prev.split("\n")) if (!s.isEmpty() && !s.equals(u)) set.add(s);
+            set.add(u);
+            while (set.size() > 500) {
+                java.util.Iterator<String> it = set.iterator();
+                if (it.hasNext()) { it.next(); it.remove(); }
+            }
+            StringBuilder sb = new StringBuilder();
+            for (String s : set) sb.append(s).append("\n");
+            sp.edit().putString("recientes", sb.toString()).apply();
+            azarCache = -1;
+        } catch (Throwable ignored) {}
+    }
+
     private void reproducir(Uri uri) {
+        if (uri != null) registrarEscuchada(uri.toString());
         if (modoDjActivo && !mantenerDj) modoDjActivo = false;   // si eliges otra cosa, el DJ se apaga
         mantenerDj = false;
         if (uri != null) registrarCancionOida(uri.toString());
@@ -1950,6 +1970,7 @@ public class MainActivity extends Activity {
     }
 
     private int indiceSiguiente() {
+        if (aleatorio && listaFavoritas.size() > 1) return azarFresco();
         if (!modoLista || listaFavoritas.isEmpty()) return -1;
         if (djLista()) return (indiceDj + 1) % colaDj.size();
         if (aleatorio && listaFavoritas.size() > 1) return azarFresco();
@@ -3903,8 +3924,103 @@ public class MainActivity extends Activity {
         }).setNegativeButton("Cancelar", null).show();
     }
 
+    private MediaPlayer djSiguientePlayer = null;
+    private boolean djMezclando = false;
+    private final Handler djMixHandler = new Handler(Looper.getMainLooper());
+    private Runnable djMixWatcher = null;
+
+    private void detenerMezclaDj() {
+        djMezclando = false;
+        if (djMixWatcher != null) { djMixHandler.removeCallbacks(djMixWatcher); djMixWatcher = null; }
+        if (djSiguientePlayer != null) {
+            try { djSiguientePlayer.stop(); } catch (Throwable ignored) {}
+            try { djSiguientePlayer.release(); } catch (Throwable ignored) {}
+            djSiguientePlayer = null;
+        }
+    }
+
+    private void iniciarMezclaCruzadaDj() {
+        if (djMezclando || !modoDjActivo || colaDj == null || colaDj.size() < 2) return;
+        djMezclando = true;
+        final int sigIdx = (indiceDj + 1) % colaDj.size();
+        final java.io.File sigFile = colaDj.get(sigIdx);
+        registrarEscuchada(Uri.fromFile(sigFile).toString());
+        try {
+            djSiguientePlayer = new MediaPlayer();
+            djSiguientePlayer.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            djSiguientePlayer.setDataSource(this, Uri.fromFile(sigFile));
+            djSiguientePlayer.prepare();
+            djSiguientePlayer.setVolume(0.0f, 0.0f);
+            djSiguientePlayer.start();
+
+            final int pasos = 28; // 28 pasos * 250ms = 7 segundos de mezcla real
+            final int[] paso = new int[]{0};
+            final MediaPlayer viejo = reproductor;
+            final MediaPlayer nuevo = djSiguientePlayer;
+
+            Runnable fadeStep = new Runnable() {
+                @Override public void run() {
+                    if (!modoDjActivo || !djMezclando) return;
+                    paso[0]++;
+                    float p = Math.min(1.0f, paso[0] / (float) pasos);
+                    float volViejo = (float) Math.cos(p * Math.PI * 0.5);
+                    float volNuevo = (float) Math.sin(p * Math.PI * 0.5);
+                    try { if (viejo != null) viejo.setVolume(volViejo, volViejo); } catch (Throwable ignored) {}
+                    try { if (nuevo != null) nuevo.setVolume(volNuevo, volNuevo); } catch (Throwable ignored) {}
+
+                    if (paso[0] < pasos) {
+                        djMixHandler.postDelayed(this, 250);
+                    } else {
+                        try { if (viejo != null) { viejo.stop(); viejo.release(); } } catch (Throwable ignored) {}
+                        reproductor = nuevo;
+                        djSiguientePlayer = null;
+                        djMezclando = false;
+                        indiceDj = sigIdx;
+                        posicionFavorita = indiceDj;
+                        uriActual = Uri.fromFile(sigFile);
+                        tituloActualNotif = sigFile.getName().replace(".mp3", "");
+                        if (titulo != null) titulo.setText("🎧 " + tituloActualNotif);
+                        String estNow = estiloDj(sigFile);
+                        if (btnDjRef != null) btnDjRef.setText("🎧 DJ · " + estNow);
+                        actualizarNotificacionSegundoPlano(true);
+                        programarVigilanteDj();
+                    }
+                }
+            };
+            djMixHandler.postDelayed(fadeStep, 250);
+        } catch (Throwable e) {
+            detenerMezclaDj();
+            indiceDj = sigIdx;
+            reproducirConFundidoDj(sigFile);
+        }
+    }
+
+    private void programarVigilanteDj() {
+        if (djMixWatcher != null) djMixHandler.removeCallbacks(djMixWatcher);
+        djMixWatcher = new Runnable() {
+            @Override public void run() {
+                if (!modoDjActivo || reproductor == null) return;
+                try {
+                    if (reproductor.isPlaying() && !djMezclando) {
+                        int dur = reproductor.getDuration();
+                        int pos = reproductor.getCurrentPosition();
+                        if (dur > 15000 && (dur - pos) <= 7500) {
+                            iniciarMezclaCruzadaDj();
+                            return;
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                djMixHandler.postDelayed(this, 350);
+            }
+        };
+        djMixHandler.postDelayed(djMixWatcher, 500);
+    }
+
     private void reproducirConFundidoDj(java.io.File f) {
-        tituloActualNotif = f.getName().replace(".mp3", "").replace(".m4a", "");
+        detenerMezclaDj();
+        registrarEscuchada(Uri.fromFile(f).toString());
         if (btnDjRef != null && modoDjActivo) {
             String estNow = estiloDj(f);
             String etq = (modoDjBloques3 && etiquetasDj != null && indiceDj < etiquetasDj.size()) ? etiquetasDj.get(indiceDj) : null;
@@ -3916,17 +4032,14 @@ public class MainActivity extends Activity {
             for (java.io.File x : colaDj) listaFavoritas.add(Uri.fromFile(x).toString());
             colaDjListada = colaDj;
         }
-        modoLista = true; posicionFavorita = indiceDj;
+        modoLista = true;
+        posicionFavorita = indiceDj;
         reproducir(Uri.fromFile(f));
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (reproductor != null) {
-                try { reproductor.setVolume(0.25f, 0.25f); } catch (Exception ignored) {}
-                new Handler(Looper.getMainLooper()).postDelayed(() -> { try { if (reproductor != null) reproductor.setVolume(0.65f, 0.65f); } catch (Exception ignored) {} }, 600);
-                new Handler(Looper.getMainLooper()).postDelayed(() -> { try { if (reproductor != null) reproductor.setVolume(1.0f, 1.0f); } catch (Exception ignored) {} }, 1300);
-                reproductor.setOnCompletionListener(mp -> { if (modoDjActivo && !colaDj.isEmpty()) { indiceDj = (indiceDj + 1) % colaDj.size(); reproducirConFundidoDj(colaDj.get(indiceDj)); } });
-            }
-        }, 250);
+            if (modoDjActivo) programarVigilanteDj();
+        }, 800);
     }
+
     private void abrirBuscadorGlobal() {
         final android.widget.EditText caja = new android.widget.EditText(this);
         caja.setHint("Ej: Bordón 4, Quevedo, Paloma Blanca..."); caja.setPadding(40, 30, 40, 30);
