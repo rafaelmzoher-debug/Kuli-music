@@ -2802,7 +2802,9 @@ public class MainActivity extends Activity {
     // ---------- Hacer o elegir foto ----------
     
     // V224: pide una ubicación nueva (espera hasta 8 s). Se llama desde un hilo, nunca desde la pantalla.
+    @android.annotation.SuppressLint("MissingPermission")
     private android.location.Location ubicacionNueva(final android.location.LocationManager lm) {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null;
         final android.location.Location[] res = {null};
         final java.util.concurrent.CountDownLatch cierre = new java.util.concurrent.CountDownLatch(1);
         final android.location.LocationListener oyente = new android.location.LocationListener() {
