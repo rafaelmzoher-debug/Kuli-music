@@ -139,9 +139,11 @@ public class MainActivity extends Activity {
         try {
             android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
             long ahora = System.currentTimeMillis();
+            // Solo hacer respaldo cada 20 minutos como máximo, y solo en hilo dedicado
             if (ahora - sp.getLong("ult_resp", 0) > 180000) {
                 sp.edit().putLong("ult_resp", ahora).apply();
-                respaldoNas(false);
+                // Ejecutar en hilo de copia diaria (ya usa hilos.execute)
+                copiaDiaria(); // esta ya tiene su propio manejador de hilos
             }
         } catch (Exception ignorar) { }
     }

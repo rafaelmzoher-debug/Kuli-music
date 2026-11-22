@@ -126,14 +126,25 @@ final class Respaldo {
     }
 
     private static <T> T conNas(Context ctx, Tarea<T> tarea) throws Throwable {
-        SmbConfig[] configs = {
-            SmbConfig.createDefaultConfig(),
-            SmbConfig.builder().withDialects(SMB2Dialect.SMB_2_1, SMB2Dialect.SMB_2_0_2)
-                .withSigningRequired(false).build()
+        // Configuración 1: SMB con signing requerido (más seguro)
+        SmbConfig cfgSigning = SmbConfig.builder()
+            .withDialects(SMB2Dialect.SMB_3_0, SMB2Dialect.SMB_2_1, SMB2Dialect.SMB_2_0_2)
+            .withSigningRequired(true)
+            .build();
+        // Configuración 2: SMB sin signing (compatibilidad legacy)
+        SmbConfig cfgLegacy = SmbConfig.createDefaultConfig();
+        // Configuración 3: SMB con signing opcional (intentaremos primero required, luego false)
+        SmbConfig cfgOpt = SmbConfig.builder()
+            .withDialects(SMB2Dialect.SMB_2_1, SMB2Dialect.SMB_2_0_2)
+            .withSigningRequired(false).build();
+        AuthenticationContext[] cuentas = {
+            AuthenticationContext.guest(),
+            AuthenticationContext.anonymous(),
+            AuthenticationContext.user("kuli", "".toCharArray()) // intentar auth de usuario
         };
-        AuthenticationContext[] cuentas = { AuthenticationContext.guest(), AuthenticationContext.anonymous() };
         Throwable ultimo = null;
-        for (SmbConfig cfg : configs) {
+        // Intentar con signing requerido primero, luego sin signing
+        for (SmbConfig cfg : new SmbConfig[]{cfgSigning, cfgLegacy, cfgOpt}) {
             for (AuthenticationContext cuenta : cuentas) {
                 try (SMBClient cliente = new SMBClient(cfg);
                      Connection conexion = cliente.connect(ip(ctx))) {
