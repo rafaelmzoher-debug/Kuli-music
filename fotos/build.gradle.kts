@@ -18,6 +18,14 @@ android {
         versionName = "1.4"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+        resources {
+            excludes += listOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module")
+        }
+    }
 }
 dependencies { implementation("com.hierynomus:smbj:0.13.0")
     implementation("com.google.mlkit:image-labeling:17.0.9") }
