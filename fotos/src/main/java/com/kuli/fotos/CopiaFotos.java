@@ -160,6 +160,12 @@ final class CopiaFotos {
                 conNas(ctx, d -> {
                     asegurar(d, creadas, CARPETA);
                     asegurar(d, creadas, dirDia);
+                    if (tipo == 1) {
+                        try {
+                            String viejoMascota = dirPorDia(it) + java.io.File.separator + "Mascotas" + java.io.File.separator + it.nombre;
+                            if (d.fileExists(viejoMascota)) d.rm(viejoMascota);
+                        } catch (Throwable ignored) {}
+                    }
                     if (d.fileExists(destino)) {
                         yaEstaba[0] = true;
                     } else {
@@ -439,6 +445,21 @@ final class CopiaFotos {
     }
 
     private static int clasificarInputImage(com.google.mlkit.vision.common.InputImage img) throws Exception {
+        try {
+            com.google.mlkit.vision.face.FaceDetector fd = com.google.mlkit.vision.face.FaceDetection.getClient(
+                new com.google.mlkit.vision.face.FaceDetectorOptions.Builder()
+                    .setPerformanceMode(com.google.mlkit.vision.face.FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                    .setMinFaceSize(0.03f)
+                    .build()
+            );
+            java.util.List<com.google.mlkit.vision.face.Face> faces =
+                com.google.android.gms.tasks.Tasks.await(fd.process(img), 8, java.util.concurrent.TimeUnit.SECONDS);
+            fd.close();
+            if (faces != null && !faces.isEmpty()) {
+                return 1;
+            }
+        } catch (Throwable ignored) {}
+
         com.google.mlkit.vision.label.ImageLabeler labeler = com.google.mlkit.vision.label.ImageLabeling.getClient(
             new com.google.mlkit.vision.label.defaults.ImageLabelerOptions.Builder()
                 .setConfidenceThreshold(0.50f)
