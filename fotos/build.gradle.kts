@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.kuli.fotos"
         minSdk = 26
-        targetSdk = 28
+        targetSdk = 34
         versionCode = 6
         versionName = "1.5"
     }
@@ -24,7 +24,6 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
-            pickFirsts += listOf("**/*.so")
         }
         resources {
             excludes += listOf(
