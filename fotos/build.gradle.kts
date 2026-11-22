@@ -19,4 +19,5 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
-dependencies { implementation("com.hierynomus:smbj:0.13.0") }
+dependencies { implementation("com.hierynomus:smbj:0.13.0")
+    implementation("com.google.mlkit:image-labeling:17.0.9") }
