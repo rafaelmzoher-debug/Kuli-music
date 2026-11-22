@@ -332,6 +332,116 @@ public class MainActivity extends Activity {
     }
 
     // ---------- NAS ----------
+    private void abrirGestorCapturas() {
+        if (!tienePermiso()) { pedirPermiso(); return; }
+        aviso("Buscando capturas...");
+        new Thread(() -> {
+            final java.util.ArrayList<android.net.Uri> uris = new java.util.ArrayList<>();
+            final java.util.ArrayList<String> nombres = new java.util.ArrayList<>();
+            final java.util.ArrayList<android.graphics.Bitmap> minis = new java.util.ArrayList<>();
+            String[] proj = new String[]{
+                android.provider.MediaStore.Images.Media._ID,
+                android.provider.MediaStore.Images.Media.DISPLAY_NAME,
+                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                android.provider.MediaStore.Images.Media.DATE_ADDED,
+                android.provider.MediaStore.Images.Media.SIZE
+            };
+            try (android.database.Cursor c = getContentResolver().query(
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    proj, null, null, android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+                if (c != null) {
+                    int iId = c.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media._ID);
+                    int iNom = c.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media.DISPLAY_NAME);
+                    int iRel = c.getColumnIndex(android.provider.MediaStore.Images.Media.RELATIVE_PATH);
+                    int iFec = c.getColumnIndex(android.provider.MediaStore.Images.Media.DATE_ADDED);
+                    int iTam = c.getColumnIndex(android.provider.MediaStore.Images.Media.SIZE);
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault());
+                    while (c.moveToNext()) {
+                        String nom = c.getString(iNom);
+                        String rel = iRel >= 0 ? c.getString(iRel) : "";
+                        String low = ((nom != null ? nom : "") + " " + (rel != null ? rel : "")).toLowerCase(java.util.Locale.US);
+                        if (low.contains("screenshot") || low.contains("captura") || low.contains("screen_")) {
+                            long id = c.getLong(iId);
+                            android.net.Uri u = android.content.ContentUris.withAppendedId(
+                                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+                            long fecMs = (iFec >= 0 ? c.getLong(iFec) : 0L) * 1000L;
+                            long kb = (iTam >= 0 ? c.getLong(iTam) : 0L) / 1024L;
+                            uris.add(u);
+                            nombres.add(sdf.format(new java.util.Date(fecMs)) + " · " + kb + " KB\n" + nom);
+                            android.graphics.Bitmap bmp = null;
+                            try {
+                                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                                    bmp = getContentResolver().loadThumbnail(u, new android.util.Size(120, 120), null);
+                                }
+                            } catch (Throwable ignored) {}
+                            minis.add(bmp);
+                        }
+                    }
+                }
+            } catch (Throwable e) {
+                runOnUiThread(() -> aviso("Error: " + e.getMessage()));
+                return;
+            }
+            runOnUiThread(() -> {
+                if (uris.isEmpty()) { aviso("No hay capturas de pantalla"); return; }
+                android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+                root.setOrientation(android.widget.LinearLayout.VERTICAL);
+                root.setPadding(dp(10), dp(6), dp(10), dp(6));
+                android.widget.LinearLayout barra = new android.widget.LinearLayout(this);
+                android.widget.Button btnTodas = new android.widget.Button(this);
+                btnTodas.setText("Marcar todas");
+                android.widget.Button btnNinguna = new android.widget.Button(this);
+                btnNinguna.setText("Ninguna");
+                barra.addView(btnTodas);
+                barra.addView(btnNinguna);
+                root.addView(barra);
+                android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+                android.widget.LinearLayout lista = new android.widget.LinearLayout(this);
+                lista.setOrientation(android.widget.LinearLayout.VERTICAL);
+                scroll.addView(lista);
+                root.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, dp(350)));
+                final java.util.ArrayList<android.widget.CheckBox> checks = new java.util.ArrayList<>();
+                for (int i = 0; i < uris.size(); i++) {
+                    android.widget.LinearLayout fila = new android.widget.LinearLayout(this);
+                    fila.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    fila.setPadding(0, dp(5), 0, dp(5));
+                    android.widget.ImageView iv = new android.widget.ImageView(this);
+                    if (minis.get(i) != null) iv.setImageBitmap(minis.get(i));
+                    fila.addView(iv, new android.widget.LinearLayout.LayoutParams(dp(52), dp(52)));
+                    android.widget.CheckBox cb = new android.widget.CheckBox(this);
+                    cb.setText(nombres.get(i));
+                    cb.setTextSize(12f);
+                    cb.setPadding(dp(8), 0, 0, 0);
+                    checks.add(cb);
+                    fila.addView(cb, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+                    lista.addView(fila);
+                }
+                btnTodas.setOnClickListener(v -> { for (android.widget.CheckBox c : checks) c.setChecked(true); });
+                btnNinguna.setOnClickListener(v -> { for (android.widget.CheckBox c : checks) c.setChecked(false); });
+                new AlertDialog.Builder(this)
+                    .setTitle("Capturas (" + uris.size() + ") · Elige cuáles borrar")
+                    .setView(root)
+                    .setPositiveButton("BORRAR DEFINITIVAMENTE", (d, w) -> {
+                        java.util.ArrayList<android.net.Uri> aBorrar = new java.util.ArrayList<>();
+                        for (int i = 0; i < checks.size(); i++) if (checks.get(i).isChecked()) aBorrar.add(uris.get(i));
+                        if (aBorrar.isEmpty()) { aviso("No marcaste ninguna"); return; }
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                                android.app.PendingIntent pi = android.provider.MediaStore.createDeleteRequest(getContentResolver(), aBorrar);
+                                startIntentSenderForResult(pi.getIntentSender(), 991, null, 0, 0, 0);
+                            } else {
+                                int b = 0;
+                                for (android.net.Uri u : aBorrar) b += getContentResolver().delete(u, null, null);
+                                aviso("Borradas: " + b);
+                                contarPendientes();
+                            }
+                        } catch (Throwable e) { aviso("Error: " + e.getMessage()); }
+                    })
+                    .setNegativeButton("CERRAR", null).show();
+            });
+        }).start();
+    }
+
     private void ajustesNas() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
