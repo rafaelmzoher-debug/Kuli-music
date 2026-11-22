@@ -20,15 +20,11 @@ android {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "2.22"
+        versionCode = 35
+        versionName = "2.24"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    // Permitir lectora escritura legacy hasta migrar a SAF
-    defaultConfig {
-        // Añadir requestLegacyExternalStorage para Android 10 compatibility
-        // (se gestiona en elManifest mediante attribute)
-    }
+    
 }
 dependencies {
     implementation("com.google.zxing:core:3.5.3")
