@@ -90,6 +90,13 @@ public class MainActivity extends Activity {
         fila2.addView(auto, lpCol);
         Button nas = boton("⚙️ Ajustes NAS", false);
         nas.setOnClickListener(v -> ajustesNas());
+        android.widget.Button btnCapturas = new android.widget.Button(this);
+        btnCapturas.setText("🧹 Capturas");
+        btnCapturas.setAllCaps(false);
+        btnCapturas.setOnClickListener(v -> abrirGestorCapturas());
+        if (nas.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) nas.getParent()).addView(btnCapturas);
+        }
         fila2.addView(nas, lpCol); p.addView(fila2);
         LinearLayout filaExtraFotos = new LinearLayout(this); filaExtraFotos.setOrientation(LinearLayout.HORIZONTAL);
         Button btnElegida = boton("➕ Subir elegida", false);
