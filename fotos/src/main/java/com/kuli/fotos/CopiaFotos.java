@@ -441,7 +441,7 @@ final class CopiaFotos {
     private static int clasificarInputImage(com.google.mlkit.vision.common.InputImage img) throws Exception {
         com.google.mlkit.vision.label.ImageLabeler labeler = com.google.mlkit.vision.label.ImageLabeling.getClient(
             new com.google.mlkit.vision.label.defaults.ImageLabelerOptions.Builder()
-                .setConfidenceThreshold(0.55f)
+                .setConfidenceThreshold(0.50f)
                 .build()
         );
         java.util.List<com.google.mlkit.vision.label.ImageLabel> labels =
@@ -452,20 +452,19 @@ final class CopiaFotos {
         for (com.google.mlkit.vision.label.ImageLabel l : labels) {
             String t = l.getText().toLowerCase(java.util.Locale.US);
             float conf = l.getConfidence();
-            // Prioridad absoluta a personas, ropa, disfraces o mascotas humanas (botargas)
             if (t.contains("person") || t.contains("human") || t.contains("people") || t.contains("face")
                 || t.contains("selfie") || t.contains("child") || t.contains("baby") || t.contains("man")
                 || t.contains("woman") || t.contains("boy") || t.contains("girl") || t.contains("crowd")
                 || t.contains("mascot") || t.contains("costume") || t.contains("clothing") || t.contains("hand")
                 || t.contains("hair") || t.contains("portrait") || t.contains("smile") || t.contains("dress")
-                || t.contains("suit") || t.contains("hat") || t.contains("glasses")) {
+                || t.contains("suit") || t.contains("hat") || t.contains("glasses") || t.contains("fun")
+                || t.contains("team") || t.contains("community") || t.contains("event") || t.contains("leisure")
+                || t.contains("jeans") || t.contains("shoe") || t.contains("footwear") || t.contains("sitting")) {
                 esPersona = true;
             }
-            // Solo considerar animal real si la confianza es alta (>= 0.78) y es especie concreta
-            if (conf >= 0.78f && (t.contains("dog") || t.contains("cat") || t.contains("pet")
-                || t.contains("bird") || t.contains("horse") || t.contains("puppy") || t.contains("kitten")
-                || t.contains("rabbit") || t.contains("hamster") || t.contains("turtle") || t.contains("fish")
-                || t.contains("reptile") || t.contains("wildlife"))) {
+            if (conf >= 0.88f && (t.equals("dog") || t.equals("cat") || t.equals("puppy") || t.equals("kitten")
+                || t.equals("bird") || t.equals("horse") || t.equals("rabbit") || t.equals("hamster")
+                || t.equals("turtle") || t.equals("pet"))) {
                 esAnimal = true;
             }
         }
