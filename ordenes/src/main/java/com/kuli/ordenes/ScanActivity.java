@@ -74,7 +74,7 @@ public class ScanActivity extends ComponentActivity {
         guia.setBackgroundColor(Color.argb(140, 0, 0, 0));
         guia.setPadding(dp(12), dp(10), dp(12), dp(10));
         FrameLayout.LayoutParams lg = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        lg.bottomMargin = dp(90);
+        lg.bottomMargin = dp(130);
         raiz.addView(guia, lg);
 
         Button cerrar = boton("✕");
@@ -92,6 +92,13 @@ public class ScanActivity extends ComponentActivity {
         FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(dp(56), dp(48), Gravity.TOP | Gravity.END);
         ll.topMargin = dp(36); ll.rightMargin = dp(12);
         raiz.addView(luz, ll);
+
+        Button mano = boton("✍ Escribir el nº de serie a mano"); // V223
+        mano.setTextSize(13);
+        mano.setOnClickListener(v -> { setResult(2); finish(); });
+        FrameLayout.LayoutParams lmm = new FrameLayout.LayoutParams(-1, dp(46), Gravity.BOTTOM);
+        lmm.bottomMargin = dp(76); lmm.leftMargin = dp(24); lmm.rightMargin = dp(24);
+        raiz.addView(mano, lmm);
 
         Button google = boton("Probar el escáner de Google");
         google.setTextSize(13);
@@ -148,7 +155,7 @@ public class ScanActivity extends ComponentActivity {
                 ProcessCameraProvider proveedor = futuro.get();
                 Preview previa = new Preview.Builder().build();
                 previa.setSurfaceProvider(vista.getSurfaceProvider());
-                ImageAnalysis analisis = new ImageAnalysis.Builder().setTargetResolution(new Size(1080, 1920)).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
+                ImageAnalysis analisis = new ImageAnalysis.Builder().setTargetResolution(new Size(1440, 2560)).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
                 analisis.setAnalyzer(hilo, this::analizar);
                 proveedor.unbindAll();
                 camara = proveedor.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previa, analisis);
@@ -161,18 +168,51 @@ public class ScanActivity extends ComponentActivity {
         Image img = ip.getImage();
         if (img == null) { ip.close(); return; }
         lector.process(InputImage.fromMediaImage(img, ip.getImageInfo().getRotationDegrees()))
-            .addOnSuccessListener(list -> {
+            .addOnSuccessListener(hilo, list -> {
+                boolean leido = false;
                 for (Barcode c : list) {
                     if (c.getRawValue() != null && !c.getRawValue().trim().isEmpty()) {
                         if (bloqueado.compareAndSet(false, true)) entregar(c.getRawValue().trim());
+                        leido = true;
                         break;
                     }
                 }
-            }).addOnCompleteListener(t -> ip.close());
+                if (!leido && !terminado && (++cuadros % 2) == 0) { // V223: segundo lector (ZXing, con más esfuerzo)
+                    String z = leerConZxing(ip);
+                    if (z != null && bloqueado.compareAndSet(false, true)) entregar(z);
+                }
+            }).addOnCompleteListener(hilo, t -> ip.close());
     }
+    private int cuadros = 0;
+    private com.google.zxing.MultiFormatReader zx;
+
+    // V223: lee DataMatrix / QR / rayas con ZXing sobre la imagen en blanco y negro. Devuelve null si no hay nada.
+    private String leerConZxing(ImageProxy ip) {
+        try {
+            if (zx == null) {
+                zx = new com.google.zxing.MultiFormatReader();
+                java.util.Map<com.google.zxing.DecodeHintType, Object> h = new java.util.EnumMap<>(com.google.zxing.DecodeHintType.class);
+                h.put(com.google.zxing.DecodeHintType.TRY_HARDER, Boolean.TRUE);
+                h.put(com.google.zxing.DecodeHintType.POSSIBLE_FORMATS, java.util.Arrays.asList(
+                    com.google.zxing.BarcodeFormat.DATA_MATRIX, com.google.zxing.BarcodeFormat.QR_CODE,
+                    com.google.zxing.BarcodeFormat.CODE_128, com.google.zxing.BarcodeFormat.CODE_39));
+                zx.setHints(h);
+            }
+            java.nio.ByteBuffer buf = ip.getPlanes()[0].getBuffer();
+            int ancho = ip.getWidth(), alto = ip.getHeight(), paso = ip.getPlanes()[0].getRowStride();
+            byte[] y = new byte[buf.remaining()];
+            buf.get(y);
+            com.google.zxing.PlanarYUVLuminanceSource fuente =
+                new com.google.zxing.PlanarYUVLuminanceSource(y, paso, alto, 0, 0, ancho, alto, false);
+            com.google.zxing.Result r = zx.decodeWithState(new com.google.zxing.BinaryBitmap(new HybridBinarizer(fuente)));
+            String t = r == null ? null : r.getText();
+            return (t == null || t.trim().isEmpty()) ? null : t.trim();
+        } catch (Throwable e) { return null; }
+        finally { if (zx != null) zx.reset(); }
+    }
+
     private void enfocar(float x, float y){if(camara!=null)camara.getCameraControl().startFocusAndMetering(new FocusMeteringAction.Builder(vista.getMeteringPointFactory().createPoint(x,y)).build());}
     private void entregar(String v) {
-        if (terminado) return;
         if (terminado) return;
         terminado = true;
         try { ((Vibrator) getSystemService(VIBRATOR_SERVICE)).vibrate(60); } catch (Throwable ignorar) { }

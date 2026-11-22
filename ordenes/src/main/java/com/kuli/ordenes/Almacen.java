@@ -21,6 +21,7 @@ final class Almacen {
         java.util.HashMap<String, Long> fechas = new java.util.HashMap<>(); // cuándo entró cada unidad con serie
     }
 
+    // V223
     static final String NOMBRE_ALMACEN = "TESA I+M MALAGA";
 
     // Fecha en que entró una unidad (o, si no tiene serie, la del material).
@@ -40,7 +41,7 @@ final class Almacen {
     synchronized void cargar() {
         try {
             File ext = new File("/sdcard/Almacen de Rafa/almacen.json");
-            if (ext.exists() && (!archivo.exists() || ext.lastModified() > archivo.lastModified())) {
+            if (ext.exists() && !archivo.exists()) { // V223: solo si no hay almacén; nunca pisa uno que ya existe
                 try (InputStream in = new FileInputStream(ext); java.io.OutputStream out = new java.io.FileOutputStream(archivo)) {
                     byte[] buf = new byte[4096]; int n;
                     while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
@@ -186,6 +187,9 @@ final class Almacen {
         } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Leyendo copia", e); items.clear(); }
     }
 
+    // V223: la pantalla pone aquí qué hacer si no se puede guardar.
+    static volatile java.util.function.Consumer<String> alFallar;
+
     synchronized void guardar() {
         try {
             JSONArray a = new JSONArray();
@@ -221,6 +225,7 @@ final class Almacen {
             }
         } catch (Exception e) {
             android.util.Log.e("KULI_ORDENES", "Guardando almacén", e);
+            try { if (alFallar != null) alFallar.accept("No se pudo guardar el almacén. ¿Móvil lleno?"); } catch (Throwable ignorar) { }
         }
     }
 
@@ -276,7 +281,8 @@ final class Almacen {
     }
 
     synchronized Item buscarPorRaw(String raw) {
-        for (Item it : items) if (it.raws.contains(raw)) return it;
+        if (raw == null) return null;
+        for (Item it : items) for (String x : it.raws) if (x.equalsIgnoreCase(raw)) return it; // V223: sin distinguir mayúsculas
         return null;
     }
 
@@ -286,7 +292,7 @@ final class Almacen {
         if (!esEtiquetaLarga(r)) return r;
         r = (r.startsWith("0000") && r.contains("/") && r.length() >= 10) ? r.substring(2, 10) : r.substring(0, 8);
         if (r.equals("88414936")) return "00414936";
-        if (r.equals("88412547")) return "00412537";
+        if (r.equals("88412547")) return "00412547"; // V223: el H3 es otro material, no el H2
         return r;
     }
 
@@ -360,6 +366,12 @@ final class Almacen {
         return r;
     }
 
+    // V223: número entero o error claro ANTES de tocar el almacén.
+    private static int entero(String s) {
+        try { return Integer.parseInt(s.trim()); }
+        catch (Exception e) { throw new IllegalArgumentException("Cantidad no válida: " + s); }
+    }
+
     // Suma al almacén lo que dice el archivo. Lanza IllegalStateException si ya estaba cargado.
     synchronized String importarAlbaran(File f, boolean vaciar) throws Exception {
         String id = f.getName();
@@ -380,10 +392,10 @@ final class Almacen {
                 catch (Exception ignorar) { }
             }
             else if (p[0].equals("U") && p.length > 1) usadosS.add(p[1].toUpperCase(Locale.ROOT));
-            else if (p[0].equals("UC") && p.length > 2) usadosC.put(p[1], Integer.parseInt(p[2]));
+            else if (p[0].equals("UC") && p.length > 2) usadosC.put(p[1], entero(p[2]));
             else if (p[0].equals("G") && p.length > 1) gastarS.add(p[1].toUpperCase(Locale.ROOT));
-            else if (p[0].equals("GC") && p.length > 2) gastarC.add(new String[]{p[1], p[2]});
-            else lineas.add(p);
+            else if (p[0].equals("GC") && p.length > 2) { entero(p[2]); gastarC.add(new String[]{p[1], p[2]}); }
+            else { if (p[0].equals("C") && p.length > 3) entero(p[3]); lineas.add(p); }
         }
         java.util.HashSet<String> cargados = leerCargados();
         if (vaciar) { items.clear(); cargados.clear(); }
@@ -497,7 +509,7 @@ final class Almacen {
     synchronized int gastar(String codigo, String raw) {
         Item it = buscar(codigo);
         if (it == null) return -1;
-        if (raw != null) it.raws.remove(raw);
+        if (raw != null) { final String rr = raw; it.raws.removeIf(x -> x.equalsIgnoreCase(rr)); }
         it.cantidad--;
         int quedan = Math.max(it.cantidad, 0);
         if (it.cantidad <= 0) { it.cantidad = 0; if (it.minimo <= 0) items.remove(it); }
