@@ -3277,7 +3277,7 @@ public class MainActivity extends Activity {
                 try {
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(f).openConnection();
                     c.setConnectTimeout(8000); c.setReadTimeout(15000);
-                    c.setRequestProperty("User-Agent", "KULIMusic/3.12");
+                    c.setInstanceFollowRedirects(true); c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36");
                     String nombre = null, grupo = null, tvgId = null;
                     boolean soloEs = f.contains("Free-TV");
                     boolean porId = false;
@@ -3447,9 +3447,8 @@ public class MainActivity extends Activity {
         dlg.setContentView(caja);
         video.setOnPreparedListener(mp -> info.setVisibility(View.GONE));
         video.setOnErrorListener((mp, w, x) -> {
-            aviso("No se pudo abrir " + nombre + ". Prueba con otro canal.");
             dlg.dismiss();
-            mostrarCanalesTv(null);
+            reproducirTvWeb(nombre, url);
             return true;
         });
         dlg.setOnDismissListener(d -> { try { video.stopPlayback(); } catch (Exception ignored) { } });
