@@ -390,6 +390,18 @@ fila2.addView(nas, lpCol); p.addView(fila2);
                 btnNinguna.setText("Ninguna");
                 barra.addView(btnTodas);
                 barra.addView(btnNinguna);
+                android.widget.Button btnGf = new android.widget.Button(this);
+                btnGf.setText("☁️ Google Fotos");
+                btnGf.setOnClickListener(v -> {
+                    try {
+                        android.content.Intent i = getPackageManager().getLaunchIntentForPackage("com.google.android.apps.photos");
+                        if (i != null) startActivity(i);
+                        else startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://google.com")));
+                    } catch (Throwable e) {
+                        aviso("No se pudo abrir Google Fotos");
+                    }
+                });
+                barra.addView(btnGf);
                 root.addView(barra);
                 android.widget.ScrollView scroll = new android.widget.ScrollView(this);
                 android.widget.LinearLayout lista = new android.widget.LinearLayout(this);
