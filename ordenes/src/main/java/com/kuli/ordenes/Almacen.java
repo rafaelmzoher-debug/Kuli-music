@@ -233,7 +233,7 @@ final class Almacen {
     // mezcla código, fabricante y serie: aquí se saca el número de serie de la unidad.
     private static final String[] FABRICANTES = {"PRYSMIAN", "COMMSCOPE", "TELNET", "ELECTROSON"};
 
-    String synchronized limpiarLectura(String raw) {
+    synchronized String limpiarLectura(String raw) {
         if (raw == null) return null;
         String r = raw.trim();
         if (r.isEmpty()) return r;
