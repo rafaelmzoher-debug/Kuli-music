@@ -513,13 +513,76 @@ public class MainActivity extends Activity {
         lpPie.topMargin = dp(4);
         pantalla.addView(pie, lpPie);
 
-        // Secciones desplegables: la pantalla principal queda limpia.
-        agrupar(pantalla, "📂  Mi música del móvil", carpeta, ordenar, descargas);
-        agrupar(pantalla, "🎧  Apps y búsqueda", fila2);
-        agrupar(pantalla, "📻  Radio y TV", filaMedios);
-        agrupar(pantalla, "⚙  Ajustes", filaAjustes);
+        LinearLayout raiz = new LinearLayout(this);
+        raiz.setOrientation(LinearLayout.VERTICAL);
+        raiz.setBackgroundColor(NEGRO);
 
-        setContentView(scroll);
+        ScrollView scrollBib = new ScrollView(this);
+        scrollBib.setFillViewport(true);
+        scrollBib.setVisibility(View.GONE);
+        LinearLayout pagBib = new LinearLayout(this);
+        pagBib.setOrientation(LinearLayout.VERTICAL);
+        pagBib.setGravity(Gravity.CENTER_HORIZONTAL);
+        pagBib.setPadding(dp(16), dp(20), dp(16), dp(20));
+        scrollBib.addView(pagBib);
+
+        ScrollView scrollMed = new ScrollView(this);
+        scrollMed.setFillViewport(true);
+        scrollMed.setVisibility(View.GONE);
+        LinearLayout pagMed = new LinearLayout(this);
+        pagMed.setOrientation(LinearLayout.VERTICAL);
+        pagMed.setGravity(Gravity.CENTER_HORIZONTAL);
+        pagMed.setPadding(dp(16), dp(20), dp(16), dp(20));
+        scrollMed.addView(pagMed);
+
+        for (View v : new View[]{carpeta, ordenar, descargas, fila2}) {
+            if (v != null && v.getParent() instanceof android.view.ViewGroup) {
+                android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
+                ((android.view.ViewGroup) v.getParent()).removeView(v);
+                pagBib.addView(v, lp);
+            }
+        }
+        for (View v : new View[]{filaMedios, filaAjustes}) {
+            if (v != null && v.getParent() instanceof android.view.ViewGroup) {
+                android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
+                ((android.view.ViewGroup) v.getParent()).removeView(v);
+                pagMed.addView(v, lp);
+            }
+        }
+
+        android.widget.FrameLayout contenedorTabs = new android.widget.FrameLayout(this);
+        contenedorTabs.addView(scroll, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        contenedorTabs.addView(scrollBib, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        contenedorTabs.addView(scrollMed, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        raiz.addView(contenedorTabs, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout barraInf = new LinearLayout(this);
+        barraInf.setOrientation(LinearLayout.HORIZONTAL);
+        barraInf.setBackgroundColor(FONDO_ALTO);
+        barraInf.setPadding(dp(4), dp(8), dp(4), dp(10));
+        barraInf.setElevation(dp(8));
+
+        final TextView tab1 = texto("🎵\nReproductor", 11, DORADO);
+        final TextView tab2 = texto("📁\nBiblioteca/NAS", 11, GRIS);
+        final TextView tab3 = texto("📻\nRadio/TV/Ajustes", 11, GRIS);
+        for (TextView t : new TextView[]{tab1, tab2, tab3}) {
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(dp(2), dp(4), dp(2), dp(4));
+            barraInf.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+        }
+
+        Runnable[] accionesTab = new Runnable[]{
+            () -> { scroll.setVisibility(View.VISIBLE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.GONE); tab1.setTextColor(DORADO); tab2.setTextColor(GRIS); tab3.setTextColor(GRIS); },
+            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.VISIBLE); scrollMed.setVisibility(View.GONE); tab1.setTextColor(GRIS); tab2.setTextColor(DORADO); tab3.setTextColor(GRIS); },
+            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.VISIBLE); tab1.setTextColor(GRIS); tab2.setTextColor(GRIS); tab3.setTextColor(DORADO); }
+        };
+
+        tab1.setOnClickListener(v -> accionesTab[0].run());
+        tab2.setOnClickListener(v -> accionesTab[1].run());
+        tab3.setOnClickListener(v -> accionesTab[2].run());
+
+        raiz.addView(barraInf, new LinearLayout.LayoutParams(-1, -2));
+        setContentView(raiz);
 
         MainActivity viejo = instancia;
         instancia = this;
@@ -603,7 +666,7 @@ public class MainActivity extends Activity {
     }
     private void portadaVacia() {
         portada.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        portada.setPadding(dp(56), dp(56), dp(56), dp(56));
+        portada.setPadding(dp(36), dp(56), dp(56), dp(56));
         portada.setImageResource(android.R.drawable.ic_media_play);
         portada.setColorFilter(DORADO);
     }
