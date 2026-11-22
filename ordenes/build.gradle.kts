@@ -19,12 +19,11 @@ android {
     defaultConfig {
         applicationId = "com.kuli.ordenes"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 38
-        versionName = "2.24"
+        targetSdk = 28
+        versionCode = 39
+        versionName = "2.25"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    
 }
 dependencies {
     implementation("com.google.zxing:core:3.5.3")

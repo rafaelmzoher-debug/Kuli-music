@@ -139,11 +139,9 @@ public class MainActivity extends Activity {
         try {
             android.content.SharedPreferences sp = getSharedPreferences("ordenes", MODE_PRIVATE);
             long ahora = System.currentTimeMillis();
-            // Solo hacer respaldo cada 20 minutos como máximo, y solo en hilo dedicado
             if (ahora - sp.getLong("ult_resp", 0) > 180000) {
                 sp.edit().putLong("ult_resp", ahora).apply();
-                // Ejecutar en hilo de copia diaria (ya usa hilos.execute)
-                copiaDiaria(); // esta ya tiene su propio manejador de hilos
+                respaldoNas(false);
             }
         } catch (Exception ignorar) { }
     }
@@ -581,7 +579,7 @@ public class MainActivity extends Activity {
     // ---------- Permisos ----------
     private boolean tienePermiso() {
         return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-            && (android.os.Build.VERSION.SDK_INT >= 30 ? android.os.Environment.isExternalStorageManager() : checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
+            && checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
     @Override public void onRequestPermissionsResult(int cod, String[] p, int[] r) {
