@@ -161,7 +161,7 @@ final class CopiaFotos {
                     asegurar(d, creadas, CARPETA);
                     asegurar(d, creadas, dirDia);
                     if (d.fileExists(destino)) {
-                        yaEstaba = true;
+                        yaEstaba[0] = true;
                     } else {
                         try {
                             long n = copiarUno(ctx, d, it.uri, destino);
@@ -173,7 +173,7 @@ final class CopiaFotos {
                     }
                     return null;
                 });
-                if (yaEstaba) {
+                if (yaEstaba[0]) {
                     r.omitidas++;
                 } else {
                     r.copiadas++;
