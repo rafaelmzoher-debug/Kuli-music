@@ -1142,6 +1142,60 @@ public class MainActivity extends Activity {
         }
     }
 
+    private android.media.audiofx.DynamicsProcessing niveladorAudio = null;
+
+    private void aplicarNiveladorVolumen(MediaPlayer mp) {
+        if (mp == null) return;
+        try {
+            int sessionId = mp.getAudioSessionId();
+            if (sessionId <= 0) return;
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                if (niveladorAudio != null) {
+                    try { niveladorAudio.release(); } catch (Throwable ignored) {}
+                    niveladorAudio = null;
+                }
+                android.media.audiofx.DynamicsProcessing.Config.Builder cfgBuilder =
+                    new android.media.audiofx.DynamicsProcessing.Config.Builder(
+                        android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                        1,     // canal
+                        false, // preEq
+                        0,
+                        true,  // mbc (compresor multibanda para igualar canciones bajas y altas)
+                        2,
+                        false, // postEq
+                        0,
+                        true   // limiter (evita picos fuertes)
+                    );
+                android.media.audiofx.DynamicsProcessing.Config cfg = cfgBuilder.build();
+                for (int ch = 0; ch < cfg.getChannelCount(); ch++) {
+                    android.media.audiofx.DynamicsProcessing.Mbc mbc = cfg.getMbcByChannelIndex(ch);
+                    mbc.setEnabled(true);
+                    for (int b = 0; b < mbc.getBandCount(); b++) {
+                        android.media.audiofx.DynamicsProcessing.MbcBand band = mbc.getBand(b);
+                        band.setEnabled(true);
+                        band.setThreshold(-24.0f);
+                        band.setRatio(4.0f);
+                        band.setKneeWidth(6.0f);
+                        band.setAttackTime(15.0f);
+                        band.setReleaseTime(120.0f);
+                        band.setPostGain(6.5f);
+                    }
+                    android.media.audiofx.DynamicsProcessing.Limiter lim = cfg.getLimiterByChannelIndex(ch);
+                    lim.setEnabled(true);
+                    lim.setThreshold(-2.0f);
+                    lim.setRatio(10.0f);
+                    lim.setAttackTime(2.0f);
+                    lim.setReleaseTime(60.0f);
+                    lim.setPostGain(0.0f);
+                }
+                niveladorAudio = new android.media.audiofx.DynamicsProcessing(0, sessionId, cfg);
+                niveladorAudio.setEnabled(true);
+            }
+        } catch (Throwable e) {
+            android.util.Log.w("KULI_AUDIO", "Nivelador no disponible: " + e.getMessage());
+        }
+    }
+
     private void registrarEscuchada(String u) {
         if (u == null || u.isEmpty()) return;
         try {
@@ -1192,6 +1246,7 @@ public class MainActivity extends Activity {
                 try { reproductor.seekTo(posicionPendienteMs); } catch (Exception ignored) { }
                 posicionPendienteMs = 0;
             }
+            aplicarNiveladorVolumen(reproductor);
             reproductor.start(); actualizarNotificacionSegundoPlano(true); estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             iniciarServicio();
             arrastrando = false;
@@ -3953,6 +4008,7 @@ public class MainActivity extends Activity {
             djSiguientePlayer.setDataSource(this, Uri.fromFile(sigFile));
             djSiguientePlayer.prepare();
             djSiguientePlayer.setVolume(0.0f, 0.0f);
+            aplicarNiveladorVolumen(djSiguientePlayer);
             djSiguientePlayer.start();
 
             final int pasos = 28; // 28 pasos * 250ms = 7 segundos de mezcla real
