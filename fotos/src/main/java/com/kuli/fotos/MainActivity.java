@@ -207,7 +207,7 @@ public class MainActivity extends Activity {
                     + "\n\nComprueba que el NAS está encendido y que estás en la WiFi de casa.")
                 .setPositiveButton("CERRAR", null).show();
         } else {
-            String t = r.copiadas + " copiadas";
+            String t = r.copiadas + " copiadas (" + r.personas + " personas, " + r.animales + " animales)";
             if (r.omitidas > 0) t += " · " + r.omitidas + " ya estaban";
             if (r.fallos > 0) t += " · " + r.fallos + " con fallo";
             estado.setText(cancelar.get() ? "Parado" : (r.abortado ? "Se cortó la conexión" : "✓ Terminado"));
@@ -326,20 +326,42 @@ public class MainActivity extends Activity {
 
     // ---------- NAS ----------
     private void ajustesNas() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(18);
+        box.setPadding(p, dp(8), p, dp(4));
+
         final EditText campo = new EditText(this);
         campo.setText(CopiaFotos.ip(this));
         campo.setSingleLine(true);
         campo.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this).setTitle("Dirección del NAS")
-            .setMessage("En casa: " + CopiaFotos.IP_DEFECTO)
-            .setView(campo)
-            .setPositiveButton("GUARDAR", (d, w) -> {
-                String ip = campo.getText().toString().trim();
-                if (ip.isEmpty()) ip = CopiaFotos.IP_DEFECTO;
-                prefs().edit().putString("nas_ip", ip).apply();
-                aviso("NAS: " + ip);
-            })
-            .setNegativeButton("CANCELAR", null).show();
+        box.addView(campo);
+
+        final android.widget.CheckBox chkMascotas = new android.widget.CheckBox(this);
+        chkMascotas.setText("Separar animales en subcarpeta Mascotas");
+        chkMascotas.setChecked(prefs().getBoolean("sep_mascotas", true));
+        box.addView(chkMascotas);
+
+        final android.widget.CheckBox chkWa = new android.widget.CheckBox(this);
+        chkWa.setText("Incluir fotos/vídeos de WhatsApp y Telegram");
+        chkWa.setChecked(prefs().getBoolean("inc_wa", false));
+        box.addView(chkWa);
+
+        new AlertDialog.Builder(this).setTitle("Ajustes NAS y Filtros")
+                .setMessage("IP en casa: " + CopiaFotos.IP_DEFECTO)
+                .setView(box)
+                .setPositiveButton("GUARDAR", (d, w) -> {
+                    String ip = campo.getText().toString().trim();
+                    if (ip.isEmpty()) ip = CopiaFotos.IP_DEFECTO;
+                    prefs().edit()
+                        .putString("nas_ip", ip)
+                        .putBoolean("sep_mascotas", chkMascotas.isChecked())
+                        .putBoolean("inc_wa", chkWa.isChecked())
+                        .apply();
+                    contarPendientes();
+                    aviso("Guardado · NAS: " + ip);
+                })
+                .setNegativeButton("CANCELAR", null).show();
     }
 
     // ---------- Ayudas de diseño ----------

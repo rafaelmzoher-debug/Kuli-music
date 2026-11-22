@@ -45,6 +45,7 @@ final class CopiaFotos {
     static final class Resultado {
         int copiadas, omitidas, fallos;
         boolean abortado;
+        int personas, animales;
         String ultimoError = "";
     }
     private interface Tarea<T> { T ejecutar(DiskShare disco) throws Exception; }
@@ -89,7 +90,9 @@ final class CopiaFotos {
                 long tomada = c.getLong(5);
                 if (nombre == null || tam <= 0) continue;
                 String rl = ruta.toLowerCase(Locale.ROOT);
-                if (rl.contains("/.trashed") || rl.contains("/.thumbnails") || rl.contains("/.pending")
+                boolean incWa = ctx.getSharedPreferences("fotos", Context.MODE_PRIVATE).getBoolean("inc_wa", false);
+                    if (!incWa && (rl.contains("/whatsapp/") || rl.contains("/telegram/") || rl.contains("/messenger/") || rl.contains("/instagram/") || rl.contains("/download/"))) continue;
+                    if (rl.contains("/.trashed") || rl.contains("/.thumbnails") || rl.contains("/.pending")
                     || nombre.startsWith(".")) continue;
                 String clave = (video ? "v" : "i") + id + ":" + tam;
                 if (vistas.contains(clave) != soloCopiadas) continue;
@@ -141,8 +144,16 @@ final class CopiaFotos {
                 if (cancelar != null && cancelar.get()) break;
                 Item it = lista.get(i);
                 if (p != null) p.alAvanzar(i, lista.size(), it.nombre);
-                if (it.video || !esFotoRealDeCamara(ctx, it)) { r.omitidas++; continue; }
-                String dirDia = dirPorDia(it);
+                int tipo = clasificarPersonaOAnimal(ctx, it);
+                if (tipo == 0) {
+                    r.omitidas++;
+                    nuevas.add(it.clave);
+                    if (nuevas.size() >= 20) { guardar(ctx, nuevas); nuevas.clear(); }
+                    continue;
+                }
+                if (tipo == 1) r.personas++; else r.animales++;
+                boolean sepMascotas = ctx.getSharedPreferences("fotos", Context.MODE_PRIVATE).getBoolean("sep_mascotas", true);
+                String dirDia = dirPorDia(it) + (tipo == 2 && sepMascotas ? java.io.File.separator + "Mascotas" : "");
                 String destino = dirDia + java.io.File.separator + it.nombre;
                 try {
                     asegurar(disco, creadas, CARPETA);
@@ -365,6 +376,84 @@ final class CopiaFotos {
         }
     }
 
+
+    // Devuelve: 0 = nada, 1 = persona, 2 = animal
+    static int clasificarPersonaOAnimal(Context ctx, Item it) {
+        String s = ((it.nombre != null ? it.nombre : "") + " " + (it.origen != null ? it.origen : "")).toLowerCase(java.util.Locale.US);
+        if (s.contains("screenshot") || s.contains("captura") || s.contains("screen_")) {
+            return 0;
+        }
+        if (it.video) {
+            android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
+            try {
+                mmr.setDataSource(ctx, it.uri);
+                String durStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                long durUs = (durStr != null ? Long.parseLong(durStr) : 2000L) * 1000L;
+                long[] tiempos = new long[]{ durUs / 6, durUs / 2, (durUs * 5) / 6 };
+                int res = 0;
+                for (long tUs : tiempos) {
+                    android.graphics.Bitmap frame = mmr.getFrameAtTime(tUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                    if (frame != null) {
+                        int c = clasificarBitmap(frame);
+                        frame.recycle();
+                        if (c == 1) return 1;
+                        if (c == 2) res = 2;
+                    }
+                }
+                return res;
+            } catch (Throwable e) {
+                android.util.Log.e("KULI_FOTOS", "Error video: " + e.getMessage());
+                return 0;
+            } finally {
+                try { mmr.release(); } catch (Throwable ignored) {}
+            }
+        }
+        try {
+            if (tienePersonas(ctx, it.uri)) return 1;
+        } catch (Throwable ignored) {}
+        try {
+            com.google.mlkit.vision.common.InputImage img = com.google.mlkit.vision.common.InputImage.fromFilePath(ctx, it.uri);
+            return clasificarInputImage(img);
+        } catch (Throwable e) {
+            android.util.Log.e("KULI_FOTOS", "Error MLKit: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    private static int clasificarBitmap(android.graphics.Bitmap bmp) {
+        try {
+            com.google.mlkit.vision.common.InputImage img = com.google.mlkit.vision.common.InputImage.fromBitmap(bmp, 0);
+            return clasificarInputImage(img);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private static int clasificarInputImage(com.google.mlkit.vision.common.InputImage img) throws Exception {
+        com.google.mlkit.vision.label.ImageLabeler labeler = com.google.mlkit.vision.label.ImageLabeling.getClient(
+            new com.google.mlkit.vision.label.defaults.ImageLabelerOptions.Builder()
+                .setConfidenceThreshold(0.65f)
+                .build()
+        );
+        java.util.List<com.google.mlkit.vision.label.ImageLabel> labels =
+            com.google.android.gms.tasks.Tasks.await(labeler.process(img), 8, java.util.concurrent.TimeUnit.SECONDS);
+        labeler.close();
+        boolean esAnimal = false;
+        for (com.google.mlkit.vision.label.ImageLabel l : labels) {
+            String t = l.getText().toLowerCase(java.util.Locale.US);
+            if (t.contains("person") || t.contains("human") || t.contains("people") || t.contains("face")
+                || t.contains("selfie") || t.contains("child") || t.contains("baby") || t.contains("man")
+                || t.contains("woman") || t.contains("boy") || t.contains("girl") || t.contains("crowd")) {
+                return 1;
+            }
+            if (t.contains("animal") || t.contains("dog") || t.contains("cat") || t.contains("pet")
+                || t.contains("bird") || t.contains("horse") || t.contains("wildlife") || t.contains("mammal")
+                || t.contains("puppy") || t.contains("kitten") || t.contains("fish") || t.contains("reptile")) {
+                esAnimal = true;
+            }
+        }
+        return esAnimal ? 2 : 0;
+    }
 
     private static boolean esFotoRealDeCamara(Context ctx, Item it) {
         String s = ((it.nombre != null ? it.nombre : "") + " " + " " + (it.origen != null ? it.origen : "")).toLowerCase(java.util.Locale.US);
