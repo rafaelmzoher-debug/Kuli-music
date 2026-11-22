@@ -1167,7 +1167,7 @@ public class MainActivity extends Activity {
                         true   // limiter (evita picos fuertes)
                     );
                 android.media.audiofx.DynamicsProcessing.Config cfg = cfgBuilder.build();
-                for (int ch = 0; ch < cfg.getChannelCount(); ch++) {
+                for (int ch = 0; ch < 1; ch++) {
                     android.media.audiofx.DynamicsProcessing.Mbc mbc = cfg.getMbcByChannelIndex(ch);
                     mbc.setEnabled(true);
                     for (int b = 0; b < mbc.getBandCount(); b++) {
