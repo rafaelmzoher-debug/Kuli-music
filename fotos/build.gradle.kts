@@ -23,7 +23,7 @@ android {
             useLegacyPackaging = true
         }
         resources {
-            excludes += listOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module")
+            excludes += listOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
         }
     }
 }
