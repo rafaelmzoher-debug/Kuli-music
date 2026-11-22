@@ -156,23 +156,32 @@ final class CopiaFotos {
                 String dirDia = dirPorDia(it) + (tipo == 2 && sepMascotas ? java.io.File.separator + "Mascotas" : "");
                 String destino = dirDia + java.io.File.separator + it.nombre;
                 try {
-                    asegurar(disco, creadas, CARPETA);
-                    asegurar(disco, creadas, dirDia);
-                    if (disco.fileExists(destino)) {
-                        r.omitidas++;
+                final boolean[] yaEstaba = new boolean[]{false};
+                conectar(ctx, d -> {
+                    asegurar(d, creadas, CARPETA);
+                    asegurar(d, creadas, dirDia);
+                    if (d.fileExists(destino)) {
+                        yaEstaba = true;
                     } else {
                         try {
-                            long n = copiarUno(ctx, disco, it.uri, destino);
+                            long n = copiarUno(ctx, d, it.uri, destino);
                             if (n <= 0) throw new java.io.IOException("archivo vacío");
                         } catch (Exception e) {
-                            try { disco.rm(destino); } catch (Exception ignorar) { }
+                            try { d.rm(destino); } catch (Exception ignorar) { }
                             throw e;
                         }
-                        r.copiadas++;
                     }
-                    nuevas.add(it.clave);
-                    seguidos = 0;
-                } catch (Exception e) {
+                    return null;
+                });
+                if (yaEstaba) {
+                    r.omitidas++;
+                } else {
+                    r.copiadas++;
+                }
+                nuevas.add(it.clave);
+                seguidos = 0;
+            } catch (Throwable t) {
+                Exception e = (t instanceof Exception) ? (Exception) t : new Exception(t);
                     r.fallos++;
                     r.ultimoError = e.getClass().getSimpleName() + ": " + e.getMessage();
                     android.util.Log.e("KULI_FOTOS", "Fallo con " + it.nombre, e);
