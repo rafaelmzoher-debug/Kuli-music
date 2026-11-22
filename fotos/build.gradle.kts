@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.kuli.fotos"
         minSdk = 26
-        targetSdk = 28
+        targetSdk = 34
         versionCode = 5
         versionName = "1.4"
     }
