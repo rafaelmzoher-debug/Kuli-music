@@ -665,10 +665,22 @@ public class MainActivity extends Activity {
         return b;
     }
     private void portadaVacia() {
-        portada.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        portada.setPadding(dp(36), dp(36), dp(36), dp(36));
-        portada.setImageResource(android.R.drawable.ic_media_play);
-        portada.setColorFilter(DORADO);
+        portada.clearColorFilter();
+        portada.setPadding(0, 0, 0, 0);
+        portada.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int sz = dp(96);
+        android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(sz, sz, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(bmp);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setColor(DORADO);
+        p.setStyle(android.graphics.Paint.Style.FILL);
+        android.graphics.Path path = new android.graphics.Path();
+        path.moveTo(sz * 0.34f, sz * 0.24f);
+        path.lineTo(sz * 0.76f, sz * 0.50f);
+        path.lineTo(sz * 0.34f, sz * 0.76f);
+        path.close();
+        c.drawPath(path, p);
+        portada.setImageBitmap(bmp);
     }
     private void aviso(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
 
