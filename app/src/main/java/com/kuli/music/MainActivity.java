@@ -1287,9 +1287,9 @@ public class MainActivity extends Activity {
         MediaPlayer mp = new MediaPlayer();
         try {
             try {
-                android.media.AudioAttributes aa = new android.media.android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.android.media.AudioAttributes.USAGE_MEDIA)
-                        .setContentType(android.media.android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
+                android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build();
                 mp.setAudioAttributes(aa);
                 android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
                 if (am != null) {
