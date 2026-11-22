@@ -140,7 +140,7 @@ final class Respaldo {
         AuthenticationContext[] cuentas = {
             AuthenticationContext.guest(),
             AuthenticationContext.anonymous(),
-            AuthenticationContext.user("kuli", "".toCharArray()) // intentar auth de usuario
+            new AuthenticationContext("kuli", "".toCharArray(), "") // intentar auth de usuario
         };
         Throwable ultimo = null;
         // Intentar con signing requerido primero, luego sin signing

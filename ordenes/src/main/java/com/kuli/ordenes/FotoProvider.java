@@ -27,7 +27,7 @@ public class FotoProvider extends ContentProvider {
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         String filename = uri.getLastPathSegment();
         if (filename == null) throw new FileNotFoundException("Nombre de archivo nulo en URI: " + uri);
-        File f = new File(carpetaTmp, filename);
+        File f = new File(getContext().getCacheDir(), filename);
         if (!f.exists()) {
             // La cámara podría no haber escrito aún; intentar crear vacío para que el intent no falle
             try {
@@ -41,7 +41,7 @@ public class FotoProvider extends ContentProvider {
         try {
             return ParcelFileDescriptor.open(f, m);
         } catch (Exception e) {
-            throw new FileNotFoundException("No pudo abrirse el archivo: " + f.getAbsolutePath(), e);
+            throw new FileNotFoundException("No pudo abrirse el archivo: " + f.getAbsolutePath());
         }
     }
 
@@ -62,10 +62,10 @@ public class FotoProvider extends ContentProvider {
         return null;
     }
 
-    @Override public int delete(Uri uri, String path) {
+    @Override public int delete(Uri uri, String sel, String[] args) {
         String filename = uri.getLastPathSegment();
         if (filename != null) {
-            File f = new File(carpetaTmp, filename);
+            File f = new File(getContext().getCacheDir(), filename);
             f.delete();
         }
         return 0;
