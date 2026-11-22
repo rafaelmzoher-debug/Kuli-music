@@ -94,6 +94,7 @@ public class MainActivity extends Activity {
         if (!nueva.exists() && vieja.exists()) vieja.renameTo(nueva); // pasa lo que ya tenías a la carpeta nueva
         raiz = (nueva.exists() || nueva.mkdirs()) ? nueva : vieja;
         almacen = new Almacen(raiz);
+        Almacen.alFallar = msg -> runOnUiThread(() -> avisoLargo(msg)); // V223
         contenido = new FrameLayout(this);
         contenido.setBackgroundColor(NEGRO);
         setContentView(contenido);
@@ -105,9 +106,16 @@ public class MainActivity extends Activity {
             notaPendiente = b.getString("notaPend", "");
             rutaTemporal = b.getString("temporal");
         }
-        if (!tienePermiso()) requestPermissions(new String[]{
-            android.Manifest.permission.READ_EXTERNAL_STORAGE,
-            android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISO);
+        android.content.SharedPreferences spU = getSharedPreferences("ordenes", MODE_PRIVATE);
+        boolean pideUbic = !spU.getBoolean("pidio_ubic", false)
+            && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED;
+        if (!tienePermiso() || pideUbic) {
+            if (pideUbic) spU.edit().putBoolean("pidio_ubic", true).apply();
+            requestPermissions(new String[]{
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                android.Manifest.permission.ACCESS_FINE_LOCATION}, PERMISO); // V223: la ubicación se pide una vez, para poner la calle en la foto
+        }
         if (ordenAbierta != null) mostrarOrden(ordenAbierta); else mostrarInicio();
         copiaDiaria();
     }
@@ -1138,6 +1146,22 @@ public class MainActivity extends Activity {
         } catch (Throwable t) {
             escanearGoogle(alLeer, alTerminar);
         }
+    }
+
+    // V223: cuando la etiqueta no se lee, se escribe el número de serie a mano.
+    private void escribirSerie(final Consumer<String> alLeer, final Runnable alTerminar) {
+        final EditText e = new EditText(this);
+        e.setSingleLine(true);
+        e.setHint("Nº de serie (ej. 88FEB6268920 o 26/009103)");
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        new AlertDialog.Builder(this).setTitle("✍ Escribir el nº de serie").setView(e)
+            .setPositiveButton("OK", (d, w) -> {
+                String v = e.getText().toString().trim().replace(" ", "");
+                if (v.isEmpty()) { if (alTerminar != null) alTerminar.run(); return; }
+                recibirLectura(v, alLeer);
+            })
+            .setNegativeButton("CANCELAR", (d, w) -> { if (alTerminar != null) alTerminar.run(); })
+            .setOnCancelListener(d -> { if (alTerminar != null) alTerminar.run(); }).show();
     }
 
     private void recibirLectura(String v, Consumer<String> alLeer) {
@@ -2777,6 +2801,31 @@ public class MainActivity extends Activity {
 
     // ---------- Hacer o elegir foto ----------
     
+    // V224: pide una ubicación nueva (espera hasta 8 s). Se llama desde un hilo, nunca desde la pantalla.
+    private android.location.Location ubicacionNueva(final android.location.LocationManager lm) {
+        final android.location.Location[] res = {null};
+        final java.util.concurrent.CountDownLatch cierre = new java.util.concurrent.CountDownLatch(1);
+        final android.location.LocationListener oyente = new android.location.LocationListener() {
+            public void onLocationChanged(android.location.Location l) { res[0] = l; cierre.countDown(); }
+            public void onStatusChanged(String p, int s, Bundle e) { }
+            public void onProviderEnabled(String p) { }
+            public void onProviderDisabled(String p) { }
+        };
+        try {
+            runOnUiThread(() -> {
+                try {
+                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER))
+                        lm.requestSingleUpdate(android.location.LocationManager.NETWORK_PROVIDER, oyente, android.os.Looper.getMainLooper());
+                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER))
+                        lm.requestSingleUpdate(android.location.LocationManager.GPS_PROVIDER, oyente, android.os.Looper.getMainLooper());
+                } catch (Throwable t) { cierre.countDown(); }
+            });
+            cierre.await(8, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Throwable ignorar) { }
+        try { runOnUiThread(() -> { try { lm.removeUpdates(oyente); } catch (Throwable ignorar) { } }); } catch (Throwable ignorar) { }
+        return res[0];
+    }
+
     private String obtenerDireccionGpsActual() {
         try {
             if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
@@ -2787,6 +2836,7 @@ public class MainActivity extends Activity {
             if (lm == null) return "";
             android.location.Location loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
             if (loc == null) loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+            if (loc == null) loc = ubicacionNueva(lm); // V224: si el móvil no tiene ninguna guardada, se pide una ahora
             if (loc == null) return "";
             android.location.Geocoder geo = new android.location.Geocoder(this, java.util.Locale.getDefault());
             java.util.List<android.location.Address> dirs = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
@@ -2816,9 +2866,6 @@ public class MainActivity extends Activity {
         if (!datosValidos(orden)) return;
         ordenPendiente = orden.trim();
         notaPendiente = nota == null ? "" : nota.trim();
-        if (notaPendiente.isEmpty()) {
-            notaPendiente = obtenerDireccionGpsActual();
-        }
         String nombre = "cam_" + System.currentTimeMillis() + ".jpg";
         File dir = new File(getCacheDir(), "tmp");
         dir.mkdirs();
@@ -2841,9 +2888,6 @@ public class MainActivity extends Activity {
         if (!datosValidos(orden)) return;
         ordenPendiente = orden.trim();
         notaPendiente = nota == null ? "" : nota.trim();
-        if (notaPendiente.isEmpty()) {
-            notaPendiente = obtenerDireccionGpsActual();
-        }
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("image/*");
         startActivityForResult(Intent.createChooser(i, "Elige la foto"), PIDE_GALERIA);
@@ -2857,6 +2901,7 @@ public class MainActivity extends Activity {
             String raw = datos == null ? null : datos.getStringExtra("raw");
             if (res == RESULT_OK && raw != null && !raw.trim().isEmpty() && l != null) recibirLectura(raw.trim(), l);
             else if (res == RESULT_FIRST_USER && l != null) escanearGoogle(l, t);
+            else if (res == 2 && l != null) escribirSerie(l, t); // V223
             else if (t != null) t.run();
             return;
         }
@@ -2875,9 +2920,11 @@ public class MainActivity extends Activity {
     }
 
     private void guardar(final Uri uri, final File archivo, final boolean fechaDeLaFoto) {
-        final String orden = ordenPendiente, nota = notaPendiente;
+        final String orden = ordenPendiente, nota0 = notaPendiente;
         aviso("Guardando…");
         hilos.execute(() -> {
+            String nota = nota0;
+            if (nota.isEmpty() && !fechaDeLaFoto) nota = obtenerDireccionGpsActual(); // V223: ya en segundo plano
             String error = null;
             File salida = null;
             long fecha = System.currentTimeMillis();
