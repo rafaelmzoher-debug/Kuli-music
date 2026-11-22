@@ -3073,7 +3073,12 @@ public class MainActivity extends Activity {
                 {"4. Cuatro", "cuatro", "web:https://mitele.es"},
                 {"5. Telecinco", "telecinco", "web:https://mitele.es"},
                 {"6. laSexta", "lasexta", "web:https://atresplayer.com"},
-                {"7. La Séptima", "la septima", "web:https://tdtchannels.com"}
+                {"7. La Séptima", "la septima", "web:https://tdtchannels.com"},
+                {"8. Canal+", "canalplus", "web:https://www.canalplus.es"},
+                {"9. Movistar Deportes", "movistardeportes", "web:https://www.movistarplus.es"},
+                {"10. Eurosport", "eurosport", "web:https://www.eurosport.es"},
+                {"11. Gol T", "golt", "web:https://www.mediaset.es"},
+                {"12. La Liga TV", "laligatv", "web:https://www.laliga.com"}
             };
             boolean[] usados = new boolean[n.size()];
             for (String[] t : top) {
