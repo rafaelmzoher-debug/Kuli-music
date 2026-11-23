@@ -3942,9 +3942,26 @@ public class MainActivity extends Activity {
                     if (st == null || st.trim().isEmpty()) st = "Variados";
                     grupos.computeIfAbsent(st, k -> new java.util.ArrayList<>()).add(f);
                 }
+                java.security.SecureRandom rng = new java.security.SecureRandom();
+                String histRaw = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE).getString("recientes", "");
+                java.util.HashSet<String> yaOidas = new java.util.HashSet<>();
+                for (String s : histRaw.split("\n")) if (!s.isEmpty()) yaOidas.add(s);
                 java.util.ArrayList<String> estilos = new java.util.ArrayList<>(grupos.keySet());
-                java.util.Collections.shuffle(estilos);
-                for (String est : estilos) java.util.Collections.shuffle(grupos.get(est));
+                java.util.Collections.shuffle(estilos, rng);
+                for (String est : estilos) {
+                    java.util.ArrayList<java.io.File> g = grupos.get(est);
+                    java.util.ArrayList<java.io.File> nuevas = new java.util.ArrayList<>();
+                    java.util.ArrayList<java.io.File> vistas = new java.util.ArrayList<>();
+                    for (java.io.File x : g) {
+                        if (yaOidas.contains(android.net.Uri.fromFile(x).toString())) vistas.add(x);
+                        else nuevas.add(x);
+                    }
+                    java.util.Collections.shuffle(nuevas, rng);
+                    java.util.Collections.shuffle(vistas, rng);
+                    g.clear();
+                    g.addAll(nuevas);
+                    g.addAll(vistas);
+                }
                 etiquetasDj = new java.util.ArrayList<>();
                 boolean quedan = true;
                 while (quedan) {
@@ -3968,8 +3985,24 @@ public class MainActivity extends Activity {
                     else if (which == 4 && ("Latino".equals(st) || "Dance".equals(st))) sel.add(f);
                 }
                 if (sel.isEmpty()) sel.addAll(todas);
-                java.util.Collections.shuffle(sel);
+                java.security.SecureRandom rng2 = new java.security.SecureRandom();
+                String histRaw2 = getSharedPreferences("kuli_historial_dj", MODE_PRIVATE).getString("recientes", "");
+                java.util.HashSet<String> yaOidas2 = new java.util.HashSet<>();
+                for (String s : histRaw2.split("\n")) if (!s.isEmpty()) yaOidas2.add(s);
+                java.util.ArrayList<java.io.File> nuevas2 = new java.util.ArrayList<>();
+                java.util.ArrayList<java.io.File> vistas2 = new java.util.ArrayList<>();
+                for (java.io.File x : sel) {
+                    if (yaOidas2.contains(android.net.Uri.fromFile(x).toString())) vistas2.add(x);
+                    else nuevas2.add(x);
+                }
+                java.util.Collections.shuffle(nuevas2, rng2);
+                java.util.Collections.shuffle(vistas2, rng2);
+                sel.clear();
+                sel.addAll(nuevas2);
+                sel.addAll(vistas2);
             }
+            aleatorio = false;
+            repetir = true;
             colaDj = sel;
             indiceDj = 0;
             modoDjActivo = true;
