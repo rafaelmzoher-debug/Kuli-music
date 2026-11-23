@@ -46,7 +46,7 @@ import java.util.Random;
  * Requiere MANAGE_EXTERNAL_STORAGE concedido manualmente en Ajustes
  * (uso privado, no distribuible en Play Store).
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends android.app.Activity {
 
     // -------------------------------------------------------------------------
     // Constantes
@@ -118,10 +118,10 @@ public class MainActivity extends AppCompatActivity {
 
         bindViews();
         setupListeners();
-        setupMediaSession();
+        // setupMediaSession();
 
         // Comprobar permiso de acceso total a archivos
-        if (!checkAndRequestStoragePermission()) {
+        if (!checkStoragePermissionGranted()) {
             return; // Se reanuda en onResume tras concederlo
         }
 
