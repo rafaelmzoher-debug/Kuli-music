@@ -31,7 +31,7 @@
         android:roundIcon="@android:drawable/ic_media_play"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
         tools:targetApi="31">
 
         <activity
@@ -54,13 +54,6 @@
             </intent-filter>
         </receiver>
 
-        <service
-            android:name="androidx.media.session.MediaButtonReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
 
     </application>
 </manifest>
