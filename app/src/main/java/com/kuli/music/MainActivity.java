@@ -562,69 +562,24 @@ public class MainActivity extends Activity {
         barraInf.setPadding(dp(4), dp(8), dp(4), dp(10));
         barraInf.setElevation(dp(8));
 
-        final LinearLayout panelVinilo = new LinearLayout(this);
-        panelVinilo.setOrientation(LinearLayout.VERTICAL);
-        panelVinilo.setGravity(Gravity.CENTER);
-        panelVinilo.setPadding(dp(12), dp(8), dp(12), dp(8));
-        panelVinilo.setVisibility(View.GONE);
-
-        final VinylTurntableView platoVinilo = new VinylTurntableView(this);
-        panelVinilo.addView(platoVinilo, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        LinearLayout filaVinilo = new LinearLayout(this);
-        filaVinilo.setOrientation(LinearLayout.HORIZONTAL);
-        filaVinilo.setGravity(Gravity.CENTER);
-        filaVinilo.setPadding(0, dp(8), 0, dp(4));
-        Button vAnt = circulo("⏮", 52, 20, CONTORNO);
-        final Button vPlay = circulo("▶", 68, 26, LLENO);
-        Button vSig = circulo("⏭", 52, 20, CONTORNO);
-        Button vOrg = pastilla("📥 Organizar", CONTORNO);
-        vAnt.setOnClickListener(v -> anterior.performClick());
-        vPlay.setOnClickListener(v -> {
-            botonPlay.performClick();
-            boolean sonando = reproductor != null && reproductor.isPlaying();
-            platoVinilo.setPlaying(sonando);
-            vPlay.setText(sonando ? "⏸" : "▶");
-        });
-        vSig.setOnClickListener(v -> siguiente.performClick());
-        vOrg.setOnClickListener(v -> new Thread(() -> {
-            MusicOrganizer.ensureFolderStructure();
-            MusicOrganizer.OrganizeResult r = MusicOrganizer.organizeDownloads();
-            runOnUiThread(() -> aviso("Organizadas " + r.movedCount + " canciones en KULI MUSIC"));
-        }).start());
-        platoVinilo.setOnTurntableGestureListener(new VinylTurntableView.OnTurntableGestureListener() {
-            @Override public void onNextTrack() { siguiente.performClick(); }
-            @Override public void onPreviousTrack() { anterior.performClick(); }
-            @Override public void onTogglePlayPause() { vPlay.performClick(); }
-        });
-        filaVinilo.addView(vAnt);
-        filaVinilo.addView(vPlay);
-        filaVinilo.addView(vSig);
-        filaVinilo.addView(vOrg);
-        panelVinilo.addView(filaVinilo, new LinearLayout.LayoutParams(-1, -2));
-        raiz.addView(panelVinilo, raiz.getChildCount() - 1, new LinearLayout.LayoutParams(-1, 0, 1f));
-
         final TextView tab1 = texto("🎵\nReproductor", 11, DORADO);
         final TextView tab2 = texto("📁\nBiblioteca/NAS", 11, GRIS);
         final TextView tab3 = texto("📻\nRadio/TV/Ajustes", 11, GRIS);
-        final TextView tab4 = texto("💿\nVinilo", 11, GRIS);
-        for (TextView t : new TextView[]{tab1, tab2, tab3, tab4}) {
+        for (TextView t : new TextView[]{tab1, tab2, tab3}) {
             t.setGravity(Gravity.CENTER);
             t.setPadding(dp(2), dp(4), dp(2), dp(4));
             barraInf.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         }
 
         Runnable[] accionesTab = new Runnable[]{
-            () -> { scroll.setVisibility(View.VISIBLE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.GONE); panelVinilo.setVisibility(View.GONE); tab1.setTextColor(DORADO); tab2.setTextColor(GRIS); tab3.setTextColor(GRIS); tab4.setTextColor(GRIS); },
-            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.VISIBLE); scrollMed.setVisibility(View.GONE); panelVinilo.setVisibility(View.GONE); tab1.setTextColor(GRIS); tab2.setTextColor(DORADO); tab3.setTextColor(GRIS); tab4.setTextColor(GRIS); },
-            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.VISIBLE); panelVinilo.setVisibility(View.GONE); tab1.setTextColor(GRIS); tab2.setTextColor(GRIS); tab3.setTextColor(DORADO); tab4.setTextColor(GRIS); },
-            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.GONE); panelVinilo.setVisibility(View.VISIBLE); tab1.setTextColor(GRIS); tab2.setTextColor(GRIS); tab3.setTextColor(GRIS); tab4.setTextColor(DORADO); boolean s = reproductor != null && reproductor.isPlaying(); platoVinilo.setPlaying(s); vPlay.setText(s ? "⏸" : "▶"); }
+            () -> { scroll.setVisibility(View.VISIBLE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.GONE); tab1.setTextColor(DORADO); tab2.setTextColor(GRIS); tab3.setTextColor(GRIS); },
+            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.VISIBLE); scrollMed.setVisibility(View.GONE); tab1.setTextColor(GRIS); tab2.setTextColor(DORADO); tab3.setTextColor(GRIS); },
+            () -> { scroll.setVisibility(View.GONE); scrollBib.setVisibility(View.GONE); scrollMed.setVisibility(View.VISIBLE); tab1.setTextColor(GRIS); tab2.setTextColor(GRIS); tab3.setTextColor(DORADO); }
         };
 
         tab1.setOnClickListener(v -> accionesTab[0].run());
         tab2.setOnClickListener(v -> accionesTab[1].run());
         tab3.setOnClickListener(v -> accionesTab[2].run());
-        tab4.setOnClickListener(v -> accionesTab[3].run());
 
         raiz.addView(barraInf, new LinearLayout.LayoutParams(-1, -2));
         setContentView(raiz);
