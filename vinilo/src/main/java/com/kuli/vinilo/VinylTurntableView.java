@@ -492,8 +492,8 @@ public class VinylTurntableView extends View {
         // Ángulos:
         // - Reposo (armAngle=0): brazo apuntando hacia abajo-derecha, fuera del disco.
         // - Sobre disco (armAngle=1): brazo apuntando hacia el centro del disco.
-        float restAngleDeg = 25f;    // inclinación hacia fuera en reposo
-        float playAngleDeg = -48f;   // inclinación hacia el disco al reproducir
+        float restAngleDeg = 92f;    // inclinación hacia fuera en reposo
+        float playAngleDeg = 132f;   // inclinación hacia el disco al reproducir
 
         float currentAngleDeg = restAngleDeg + (playAngleDeg - restAngleDeg) * armAngle;
         double currentAngleRad = Math.toRadians(currentAngleDeg);
