@@ -1157,7 +1157,7 @@ public class MainActivity extends Activity {
                 android.media.audiofx.DynamicsProcessing.Config.Builder cfgBuilder =
                     new android.media.audiofx.DynamicsProcessing.Config.Builder(
                         android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-                        1,     // canal
+                        2,     // canales (estéreo)  V344
                         false, // preEq
                         0,
                         true,  // mbc (compresor multibanda para igualar canciones bajas y altas)
@@ -1167,7 +1167,7 @@ public class MainActivity extends Activity {
                         true   // limiter (evita picos fuertes)
                     );
                 android.media.audiofx.DynamicsProcessing.Config cfg = cfgBuilder.build();
-                for (int ch = 0; ch < 1; ch++) {
+                for (int ch = 0; ch < 2; ch++) {
                     android.media.audiofx.DynamicsProcessing.Mbc mbc = cfg.getMbcByChannelIndex(ch);
                     mbc.setEnabled(true);
                     for (int b = 0; b < mbc.getBandCount(); b++) {
@@ -3994,6 +3994,7 @@ public class MainActivity extends Activity {
     }
 
     private void iniciarMezclaCruzadaDj() {
+        if (modoLista) return; // V344: la mezcla la hace el motor de la lista; dos a la vez sonaban mal
         if (djMezclando || !modoDjActivo || colaDj == null || colaDj.size() < 2) return;
         djMezclando = true;
         final int sigIdx = (indiceDj + 1) % colaDj.size();
@@ -4053,6 +4054,7 @@ public class MainActivity extends Activity {
     }
 
     private void programarVigilanteDj() {
+        if (modoLista) return; // V344
         if (djMixWatcher != null) djMixHandler.removeCallbacks(djMixWatcher);
         djMixWatcher = new Runnable() {
             @Override public void run() {
