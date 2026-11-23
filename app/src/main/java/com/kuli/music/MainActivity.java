@@ -1529,7 +1529,7 @@ public class MainActivity extends Activity {
             || g.contains("bachata") || g.contains("cumbia") || g.contains("tropical")) return "Latino";
         if (g.contains("rock") || g.contains("alternativ") || g.contains("metal") || g.contains("punk")) return "Rock";
         if (g.contains("danc") || g.contains("electr") || g.contains("house") || g.contains("techno")
-            || g.contains("disco")) return "Dance";
+            || g.contains("disco") || g.contains("baile")) return "Dance"; // V345
         if (g.contains("balad") || g.contains("romant") || g.contains("singer") || g.contains("easy listening")) return "Baladas";
         if (g.contains("pop")) return "Pop";
         return null;
@@ -2480,6 +2480,8 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             java.util.ArrayList<java.io.File> todas = new java.util.ArrayList<>();
             recolectarMp3Directo(base, todas);
+            artistaEstilo = null; // V345
+            cargarArtistasAprendidos();
             android.content.SharedPreferences cache = getSharedPreferences("kuli_estilos", MODE_PRIVATE);
             android.content.SharedPreferences.Editor ed = cache.edit();
             final java.util.ArrayList<java.io.File[]> plan = new java.util.ArrayList<>();
@@ -3922,6 +3924,8 @@ public class MainActivity extends Activity {
         aviso("🎧 Mirando el estilo de " + todas.size() + " canciones… (la primera vez tarda un poco, luego es al instante)");
         final java.util.ArrayList<java.io.File> todasF = todas;
         new Thread(() -> {
+            artistaEstilo = null; // V345: se vuelve a aprender por si has movido canciones
+            cargarArtistasAprendidos();
             android.content.SharedPreferences cache = getSharedPreferences("kuli_estilos", MODE_PRIVATE);
             android.content.SharedPreferences.Editor ed = cache.edit();
             java.util.HashMap<String, String> mapa = new java.util.HashMap<>();
@@ -4190,6 +4194,8 @@ public class MainActivity extends Activity {
         for (String h : h26) if (todo.contains(simple(h))) return "Novedades 2026";
         String[] fl = {"flamenc", "bordon 4", "asi canta jerez", "paloma blanca", "los del rio", "el mani", "camela", "estopa", "melendi", "el barrio", "niña pastori", "nina pastori", "india martinez", "fondo flamenco", "decai", "rebujitos", "canelita", "galvan real", "daviles", "keen levy", "nyno vargas", "moncho chavea", "omar montes", "maka", "original elias", "demarco", "chambao", "ketama", "paco de lucia", "camaron", "jose merce", "diego el cigala", "estrella morente", "falete", "parrita", "bambino", "chiquetete", "manzanita", "peret", "kiko veneno", "juanito makande", "el canijo", "tomasito", "la hungara", "maria artes", "el tren de los sueños", "son de sol", "las chuches", "los caños", "andy", "lucas", "kiko y shara", "raya real", "siempre asi", "requiebros", "ecos del rocio", "cantores de hispalis", "los marismeños", "sevillanas", "rumba"};
         for (String f : fl) if (todo.contains(simple(f))) return "Flamenkito";
+        String aprendido = estiloAprendido(aut); // V345: el estilo que ya le diste a otras canciones del mismo artista
+        if (aprendido != null) return aprendido;
         String est = estiloDeGenero(gen);
         if (est != null) return est;
         if (anio >= 1980 && anio <= 2009) return anio < 1990 ? "Años 80" : anio < 2000 ? "Años 90" : "Años 2000";
@@ -4207,13 +4213,58 @@ public class MainActivity extends Activity {
     private java.util.HashMap<String, String> estilosDj = new java.util.HashMap<>();
     private java.util.ArrayList<String> etiquetasDj = new java.util.ArrayList<>();
 
+    // V345: aprende artista -> estilo mirando las carpetas de estilo que ya tienes en KULI MUSIC.
+    private volatile java.util.HashMap<String, String> artistaEstilo = null;
+
+    private String estiloAprendido(String artista) {
+        java.util.HashMap<String, String> m = artistaEstilo;
+        if (m == null || artista == null) return null;
+        String k = simple(artista).trim();
+        return k.isEmpty() ? null : m.get(k);
+    }
+
+    private void cargarArtistasAprendidos() {
+        if (artistaEstilo != null) return;
+        java.util.HashMap<String, java.util.HashMap<String, Integer>> cuenta = new java.util.HashMap<>();
+        try {
+            java.io.File base = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+            java.io.File[] subs = base.listFiles();
+            if (subs != null) for (java.io.File d : subs) {
+                String n = d.getName();
+                if (!d.isDirectory() || n.equals(OrdenarMusica.ALBUMES) || n.equals(OrdenarMusica.SUELTAS) || n.equals(OrdenarMusica.DUPLICADAS)) continue;
+                java.util.ArrayList<java.io.File> fs = new java.util.ArrayList<>();
+                recolectarMp3Directo(d, fs);
+                for (java.io.File f : fs) {
+                    String autor = null;
+                    MediaMetadataRetriever m = new MediaMetadataRetriever();
+                    try { m.setDataSource(f.getAbsolutePath()); autor = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST); }
+                    catch (Exception ignorar) { } finally { try { m.release(); } catch (Exception ignorar) { } }
+                    if (autor == null) continue;
+                    String k = simple(autor).trim();
+                    if (k.length() < 3) continue;
+                    java.util.HashMap<String, Integer> c = cuenta.get(k);
+                    if (c == null) { c = new java.util.HashMap<>(); cuenta.put(k, c); }
+                    Integer v = c.get(n);
+                    c.put(n, v == null ? 1 : v + 1);
+                }
+            }
+        } catch (Throwable ignorar) { }
+        java.util.HashMap<String, String> res = new java.util.HashMap<>();
+        for (java.util.Map.Entry<String, java.util.HashMap<String, Integer>> e : cuenta.entrySet()) {
+            String mejor = null; int max = 0;
+            for (java.util.Map.Entry<String, Integer> x : e.getValue().entrySet()) if (x.getValue() > max) { max = x.getValue(); mejor = x.getKey(); }
+            if (mejor != null) res.put(e.getKey(), mejor);
+        }
+        artistaEstilo = res;
+    }
+
     private String estiloDj(java.io.File f) {
         String v = estilosDj.get(f.getAbsolutePath());
         return v != null ? v : detectarEstiloPersonalizado(simple(f.getName()), "", "", 0);
     }
 
     private String estiloDeArchivo(java.io.File f, android.content.SharedPreferences cache, android.content.SharedPreferences.Editor ed) {
-        String k = "v2|" + f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified();
+        String k = "v3|" + (artistaEstilo == null ? 0 : artistaEstilo.size()) + "|" + f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified();
         String v = cache.getString(k, null);
         if (v != null) return v;
         String genero = null, autor = null;
