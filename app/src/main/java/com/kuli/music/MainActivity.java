@@ -2362,29 +2362,134 @@ public class MainActivity extends Activity {
         if (grupos.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
         final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
         final ArrayList<String> todas = new ArrayList<>();
-        String[] items = new String[claves.size() + 1];
+        String[] items = new String[claves.size() + 2]; // V346
         items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
+        items[1] = "🎨  Reclasificar «Pop» por artista";
         for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
-            items[i + 1] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
+            items[i + 2] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
             todas.addAll(lista);
         }
         final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
             .setItems(items, (d, i) -> {
                 if (i == 0) modoDj(grupos);
-                else mostrarCancionesNas(claves.get(i - 1), grupos.get(claves.get(i - 1)), grupos);
+                else if (i == 1) reclasificarPopNas(grupos);
+                else mostrarCancionesNas(claves.get(i - 2), grupos.get(claves.get(i - 2)), grupos);
             })
             .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
             .setNeutralButton("🔍 BUSCAR", (d, w) -> buscarEnNas(grupos))
             .setNegativeButton("📥 AL MÓVIL", (d, w) -> elegirParaMovil(grupos)).show();
         // Mantener pulsada una carpeta: suena entera, en aleatorio.
         dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
-            if (pos == 0) return false;
+            if (pos < 2) return false;
             dlg.dismiss();
-            reproducirAleatorio(grupos.get(claves.get(pos - 1)));
+            reproducirAleatorio(grupos.get(claves.get(pos - 2)));
             return true;
         });
         aviso("Toca una carpeta para verla · mantenla pulsada para oírla entera en aleatorio");
+    }
+
+    // V346: artista de un archivo del NAS con nombre «Artista - Título».
+    private String artistaDeNombreNas(String ruta) {
+        String n = nombreSinExtension(ruta);
+        int i = n.indexOf(" - ");
+        if (i <= 0) return null;
+        String a = simple(n.substring(0, i)).trim();
+        return a.length() < 3 ? null : a;
+    }
+
+    // V346: mira los artistas de las demás carpetas y propone sacar de «Pop» lo que tiene su sitio.
+    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final ArrayList<String> pop = grupos.get("Pop");
+        if (pop == null || pop.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
+        java.util.HashMap<String, java.util.HashMap<String, Integer>> cuenta = new java.util.HashMap<>();
+        for (java.util.Map.Entry<String, ArrayList<String>> e : grupos.entrySet()) {
+            String est = e.getKey();
+            if (est.equals("Pop") || est.equals("Sin clasificar")) continue;
+            for (String r : e.getValue()) {
+                String a = artistaDeNombreNas(r);
+                if (a == null) continue;
+                java.util.HashMap<String, Integer> c = cuenta.get(a);
+                if (c == null) { c = new java.util.HashMap<>(); cuenta.put(a, c); }
+                Integer v = c.get(est);
+                c.put(est, v == null ? 1 : v + 1);
+            }
+        }
+        java.util.HashMap<String, String> mejor = new java.util.HashMap<>();
+        for (java.util.Map.Entry<String, java.util.HashMap<String, Integer>> e : cuenta.entrySet()) {
+            String m = null; int max = 0;
+            for (java.util.Map.Entry<String, Integer> x : e.getValue().entrySet()) if (x.getValue() > max) { max = x.getValue(); m = x.getKey(); }
+            if (m != null) mejor.put(e.getKey(), m);
+        }
+        final ArrayList<String[]> plan = new ArrayList<>();
+        TreeMap<String, Integer> resumen = new TreeMap<>();
+        for (String r : pop) {
+            String a = artistaDeNombreNas(r);
+            String est = a == null ? null : mejor.get(a);
+            if (est == null) continue;
+            plan.add(new String[]{r, est});
+            Integer v = resumen.get(est);
+            resumen.put(est, v == null ? 1 : v + 1);
+        }
+        if (plan.isEmpty()) { aviso("No encuentro ninguna canción de Pop con un artista que ya esté en otra carpeta"); return; }
+        StringBuilder sb = new StringBuilder(plan.size() + " de las " + pop.size() + " canciones de Pop se pueden colocar:\n\n");
+        for (java.util.Map.Entry<String, Integer> e : resumen.entrySet()) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+        sb.append("\nEl resto se queda en Pop. Se puede deshacer.");
+        new AlertDialog.Builder(this).setTitle("🎨 Reclasificar «Pop»").setMessage(sb.toString())
+            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    // V346: mueve varias canciones del NAS de carpeta. plan = {rutaRelativa, estiloDestino}. estiloOrigen = el que había (para deshacer).
+    private void moverVariasNas(final ArrayList<String[]> plan, final String estiloOrigen) {
+        aviso("Moviendo " + plan.size() + " canciones… no cierres la app");
+        new Thread(() -> {
+            final ArrayList<String[]> hechas = new ArrayList<>();
+            int fallos = 0;
+            try {
+                final ArrayList<String[]> lote = plan;
+                final ArrayList<String[]> ok = new ArrayList<>();
+                final int[] mal = {0};
+                conNas(disco -> {
+                    java.util.HashSet<String> creadas = new java.util.HashSet<>();
+                    for (String[] p : lote) {
+                        try {
+                            String estilo = p[1].replaceAll("[\\/:*?\"<>|]", "_").trim();
+                            if (estilo.isEmpty()) estilo = "Sin clasificar";
+                            String archivo = p[0].substring(p[0].lastIndexOf('/') + 1);
+                            if (creadas.add(estilo) && !disco.folderExists("KULI MUSIC\\" + estilo)) disco.mkdir("KULI MUSIC\\" + estilo);
+                            String origen = "KULI MUSIC\\" + p[0].replace('/', '\\');
+                            String destino = "KULI MUSIC\\" + estilo + "\\" + archivo;
+                            if (disco.fileExists(destino)) { mal[0]++; continue; }
+                            try (File f = disco.openFile(origen,
+                                    EnumSet.of(AccessMask.DELETE), null, SMB2ShareAccess.ALL,
+                                    SMB2CreateDisposition.FILE_OPEN,
+                                    EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))) {
+                                f.rename(destino);
+                            }
+                            ok.add(new String[]{p[0], estilo + "/" + archivo});
+                        } catch (Exception e) { mal[0]++; }
+                    }
+                    return null;
+                });
+                hechas.addAll(ok);
+                fallos = mal[0];
+            } catch (Throwable e) {
+                runOnUiThread(() -> mostrarErrorNas("No se pudieron mover las canciones", e));
+                return;
+            }
+            final int f2 = fallos;
+            runOnUiThread(() -> {
+                for (String[] h : hechas) actualizarFavoritoMovido(h[0], h[1]);
+                final ArrayList<String[]> inverso = new ArrayList<>();
+                for (String[] h : hechas) inverso.add(new String[]{h[1], estiloOrigen});
+                AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("✓ Hecho")
+                    .setMessage("Movidas " + hechas.size() + " canciones" + (f2 > 0 ? " (" + f2 + " no se han podido mover)" : "") + ".")
+                    .setPositiveButton("OK", (d, w) -> abrirListaNas());
+                if (!inverso.isEmpty()) b.setNeutralButton("↩ DESHACER", (d, w) -> moverVariasNas(inverso, "Pop"));
+                b.show();
+            });
+        }).start();
     }
 
     // ---------- Modo DJ: 4 canciones de un estilo, luego otro estilo ----------
