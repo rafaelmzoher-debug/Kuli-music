@@ -46,8 +46,7 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: KULI MUSIC build ${{ github.run_number }}
-          files: 
-          vinilo/build/outputs/apk/debug/vinilo-debug.apk|
+          files: |
             app/build/outputs/apk/debug/app-debug.apk
             fotos/build/outputs/apk/debug/fotos-debug.apk
             ordenes/build/outputs/apk/debug/ordenes-debug.apk
@@ -55,4 +54,5 @@ jobs:
             familia/build/outputs/apk/debug/familia-debug.apk
             arcade/build/outputs/apk/debug/arcade-debug.apk
             mapas/build/outputs/apk/debug/mapas-debug.apk
+          vinilo/build/outputs/apk/debug/vinilo-debug.apk
           make_latest: true
