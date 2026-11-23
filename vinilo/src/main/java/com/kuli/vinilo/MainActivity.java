@@ -673,7 +673,6 @@ public class MainActivity extends android.app.Activity {
             super.onBackPressed();
         }
     }
-}
     private void addAudioFilesRecursive(File dir, List<File> out) {
         if (dir == null || !dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
