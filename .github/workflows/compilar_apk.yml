@@ -54,5 +54,5 @@ jobs:
             familia/build/outputs/apk/debug/familia-debug.apk
             arcade/build/outputs/apk/debug/arcade-debug.apk
             mapas/build/outputs/apk/debug/mapas-debug.apk
-          vinilo/build/outputs/apk/debug/vinilo-debug.apk
+            vinilo/build/outputs/apk/debug/vinilo-debug.apk
           make_latest: true
