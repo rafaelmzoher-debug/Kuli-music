@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.kuli.fotos"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 6
         versionName = "1.5"
     }
@@ -38,20 +38,6 @@ android {
                 "META-INF/versions/**",
                 "**/module-info.class"
             )
-        }
-    }
-
-    productFlavors {
-        create("tv") {
-            minSdk = 21
-            targetSdk = 35
-            // Versión TV para galería/fotos
-        }
-
-        create("phone") {
-            minSdk = 26
-            targetSdk = 35
-            // Versión phone original
         }
     }
 }
