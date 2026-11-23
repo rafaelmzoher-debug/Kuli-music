@@ -2717,8 +2717,11 @@ public class MainActivity extends Activity {
                         gastarCodigo(orden, it.codigo, serie, true);
                     }
                 } else {
-                    new AlertDialog.Builder(this).setTitle("No estaba en el almacén")
-                        .setMessage("La unidad con serie " + serie + " no estaba contada.\n\n¿La apunto igualmente como usada en esta orden?")
+                    final String otraOrden = ordenDondeSeUso(serie, orden); // V228
+                    new AlertDialog.Builder(this).setTitle(otraOrden != null ? "⚠ Ya se usó en otra orden" : "No estaba en el almacén")
+                        .setMessage(otraOrden != null
+                            ? "El equipo con serie " + serie + " ya se apuntó en la orden " + otraOrden + ".\n\n¿Lo apunto también en esta orden?"
+                            : "La unidad con serie " + serie + " no estaba contada.\n\n¿La apunto igualmente como usada en esta orden?")
                         .setCancelable(false)
                         .setPositiveButton("APUNTAR", (d, w) -> { anotarMaterial(orden, serie, "(no estaba en el almacén)"); gastarSeguido(orden); })
                         .setNegativeButton("NO", (d, w) -> gastarSeguido(orden)).show();
@@ -2727,6 +2730,23 @@ public class MainActivity extends Activity {
                 aviso("No reconozco ese código. Prueba con el de rayas.");
                 gastarSeguido(orden);
             }
+    }
+
+    // V228: busca en las demás órdenes si ya se apuntó esa serie (devuelve el nombre de la orden o null).
+    private String ordenDondeSeUso(String serie, String ordenActual) {
+        try {
+            String actual = limpiar(ordenActual);
+            File[] dirs = raiz.listFiles();
+            if (dirs == null) return null;
+            for (File d : dirs) {
+                if (!d.isDirectory() || d.getName().equals(actual)) continue;
+                for (String l : leerMaterial(d.getName())) {
+                    String[] q = l.split(" \\| ");
+                    if (q.length >= 3 && q[2].trim().equalsIgnoreCase(serie.trim())) return d.getName();
+                }
+            }
+        } catch (Throwable ignorar) { }
+        return null;
     }
 
     private void gastarCodigo(final String orden, final String codigo) { gastarCodigo(orden, codigo, null, false); }
