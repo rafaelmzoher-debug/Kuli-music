@@ -110,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {
-            try (java.io.PrintWriter pw = new java.io.PrintWriter("/sdcard/Download/vinilo_crash.txt")) {
+            try (java.io.PrintWriter pw = new java.io.PrintWriter("/sdcard/Android/data/com.kuli.vinilo/files/crash.txt")) {
                 ex.printStackTrace(pw);
             } catch (Exception ignored) {}
         });
