@@ -1,55 +1,3 @@
-package com.kuli.vinilo;
-
-import android.app.Activity;
-import android.content.Intent;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.media.MediaMetadataRetriever;
-import android.media.MediaPlayer;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Environment;
-import android.provider.Settings;
-import android.view.Gravity;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-
-public class MainActivity extends Activity {
-    private VinylTurntableView vinyl;
-    private TextView tvInfo;
-    private Button btnPlay;
-    private MediaPlayer mp;
-    private final List<File> list = new ArrayList<>();
-    private int idx = 0;
-
-    @Override protected void onCreate(Bundle b) {
-        super.onCreate(b);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.parseColor("#181310"));
-        root.setPadding(24, 48, 24, 32);
-
-        tvInfo = new TextView(this);
-        tvInfo.setText("KULI VINILO · Toca Organizar para cargar");
-        tvInfo.setTextColor(Color.parseColor("#E8C27A"));
-        tvInfo.setTextSize(16f);
-        tvInfo.setGravity(Gravity.CENTER);
-        root.addView(tvInfo);
-
-        vinyl = new VinylTurntableView(this);
-        vinyl.setOnSwipeListener(new VinylTurntableView.OnSwipeListener() {
-            @Override public void onSwipeLeft() { play(idx + 1); }
-            @Override public void onSwipeRight() { play(idx - 1); }
-        });
-        root.addView(vinyl, new LinearLayout.LayoutParams(-1, 0, 1f));
-
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         row.addView(btn("⏮", v -> play(idx - 1)));
@@ -72,9 +20,7 @@ public class MainActivity extends Activity {
         b.setOnClickListener(l); return b;
     }
 
-    private boolean okPerm() {
-        return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
-    }
+    private boolean okPerm() { return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager(); }
 
     private void organize() {
         if (!okPerm()) {
@@ -89,8 +35,7 @@ public class MainActivity extends Activity {
     }
 
     private void scan() {
-        list.clear();
-        if (!okPerm()) return;
+        list.clear(); if (!okPerm()) return;
         addDir(new File("/storage/emulated/0/Music"));
         tvInfo.setText("KULI VINILO · " + list.size() + " pistas");
     }
