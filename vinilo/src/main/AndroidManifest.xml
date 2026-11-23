@@ -31,7 +31,7 @@
         android:roundIcon="@android:drawable/ic_media_play"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
-        android:theme="@android:style/Theme.Material.NoActionBarAppCompat.NoActionBar"
+        android:theme="@android:style/Theme.Material.NoActionBar"
         tools:targetApi="31">
 
         <activity
