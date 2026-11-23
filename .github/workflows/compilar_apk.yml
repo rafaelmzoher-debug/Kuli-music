@@ -26,7 +26,7 @@ jobs:
       - name: Firma fija (para poder actualizar sin desinstalar)
         run: mkdir -p ~/.android && cp .kuli/debug.keystore ~/.android/debug.keystore
       - name: Compilar
-        run:         run: gradle assembleDebug --no-daemon --no-configuration-cache --console=plain
+        run: gradle assembleDebug --no-daemon --no-configuration-cache --console=plain
 
       - uses: actions/upload-artifact@v4
         with:
