@@ -655,6 +655,14 @@ public class MainActivity extends Activity {
         });
         p.addView(nota, margen(-1, -2, 8));
 
+        // V227: se enseña la calle antes de hacer la foto
+        final TextView gpsTxt = texto(dirPantalla.isEmpty() ? "📍 Buscando ubicación…" : dirPantalla, 13, GRIS, false);
+        p.addView(gpsTxt, margen(-1, -2, 6));
+        new Thread(() -> {
+            final String d = obtenerDireccionGpsActual();
+            if (!d.isEmpty()) dirPantalla = d;
+            runOnUiThread(() -> gpsTxt.setText(d.isEmpty() ? (dirPantalla.isEmpty() ? "📍 Sin ubicación (activa el GPS y el permiso)" : dirPantalla) : d));
+        }).start();
         LinearLayout fila = new LinearLayout(this);
         fila.setOrientation(LinearLayout.HORIZONTAL);
         Button foto = boton("📷  Hacer foto", true);
@@ -2828,6 +2836,7 @@ public class MainActivity extends Activity {
         return res[0];
     }
 
+    private String dirPantalla = ""; // V227
     private String obtenerDireccionGpsActual() {
         try {
             if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
@@ -2933,6 +2942,7 @@ public class MainActivity extends Activity {
             String nota = nota0;
             if (!fechaDeLaFoto) { // V226: la calle se añade siempre, aunque ya haya material escrito
                 String dirGps = obtenerDireccionGpsActual();
+            if (dirGps.isEmpty()) dirGps = dirPantalla; // V227
                 if (!dirGps.isEmpty()) nota = nota.isEmpty() ? dirGps : nota + "\n" + dirGps;
             }
             String error = null;

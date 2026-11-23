@@ -292,7 +292,7 @@ final class Almacen {
         if (!esEtiquetaLarga(r)) return r;
         r = (r.startsWith("0000") && r.contains("/") && r.length() >= 10) ? r.substring(2, 10) : r.substring(0, 8);
         if (r.equals("88414936")) return "00414936";
-        if (r.equals("88412547")) return "00412547"; // V223: el H3 es otro material, no el H2
+        if (r.equals("88412547")) return "00412537"; // V227: las cajas H2 y H3 llevan la misma etiqueta 88412547; se vuelve al H2
         return r;
     }
 
