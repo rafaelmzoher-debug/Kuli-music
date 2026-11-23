@@ -589,13 +589,12 @@ public class MainActivity extends Activity {
         vSig.setOnClickListener(v -> siguiente.performClick());
         vOrg.setOnClickListener(v -> new Thread(() -> {
             MusicOrganizer.ensureFolderStructure();
-            MusicOrganizer.OrganizeResult r = MusicOrganizer.organizeDownloads();
-            runOnUiThread(() -> aviso("Organizadas " + r.movedCount + " canciones en KULI MUSIC"));
+            int movidas = MusicOrganizer.organizeDownloads();
+            runOnUiThread(() -> aviso("Organizadas " + movidas + " canciones en KULI MUSIC"));
         }).start());
-        platoVinilo.setOnTurntableGestureListener(new VinylTurntableView.OnTurntableGestureListener() {
-            @Override public void onNextTrack() { siguiente.performClick(); }
-            @Override public void onPreviousTrack() { anterior.performClick(); }
-            @Override public void onTogglePlayPause() { vPlay.performClick(); }
+        platoVinilo.setOnSwipeListener(new VinylTurntableView.OnSwipeListener() {
+            @Override public void onSwipeLeft() { siguiente.performClick(); }
+            @Override public void onSwipeRight() { anterior.performClick(); }
         });
         filaVinilo.addView(vAnt);
         filaVinilo.addView(vPlay);
