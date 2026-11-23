@@ -176,10 +176,9 @@ public class MainActivity extends Activity implements AudioManager.OnAudioFocusC
         if (!okPerm()) { tvStyle.setText("KULI VINILO · Toca 📥 Organizar"); tvTitle.setText("Concede permiso de archivos"); return; }
         MusicOrganizer.ensureFolderStructure();
         if ("TODOS".equals(st)) {
-            for (String s : MusicOrganizer.ALL_STYLES) list.addAll(MusicOrganizer.getTracksInStyle(s));
             addDir(new File("/storage/emulated/0/Music"));
         } else {
-            list.addAll(MusicOrganizer.getTracksInStyle(st));
+            addDir(new File(MusicOrganizer.BASE_MUSIC_DIR, st));
         }
         tvStyle.setText("KULI VINILO · " + st + " (" + list.size() + ")");
         if (list.isEmpty()) { tvTitle.setText("Sin canciones en " + st); tvArtist.setText("Toca 📥 Organizar"); return; }
@@ -194,7 +193,7 @@ public class MainActivity extends Activity implements AudioManager.OnAudioFocusC
     private void addDir(File d) {
         File[] fs = d.listFiles(); if (fs == null) return;
         for (File f : fs) {
-            if (f.isDirectory()) { if (!f.getAbsolutePath().equals(MusicOrganizer.BASE_MUSIC_DIR)) addDir(f); }
+            if (f.isDirectory()) { addDir(f); }
             else { String n = f.getName().toLowerCase(Locale.ROOT); if ((n.endsWith(".mp3") || n.endsWith(".m4a")) && !list.contains(f)) list.add(f); }
         }
     }
