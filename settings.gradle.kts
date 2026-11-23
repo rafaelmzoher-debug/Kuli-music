@@ -10,4 +10,3 @@ include(":arcade")
 
 include(":mapas")
 include(":boveda")
-include(":vinilo")
