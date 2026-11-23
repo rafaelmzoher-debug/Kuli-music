@@ -2841,15 +2841,20 @@ public class MainActivity extends Activity {
             if (loc == null) loc = ubicacionNueva(lm); // V224: si el móvil no tiene ninguna guardada, se pide una ahora
             if (loc == null) return "";
             android.location.Geocoder geo = new android.location.Geocoder(this, java.util.Locale.getDefault());
-            java.util.List<android.location.Address> dirs = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
-            if (dirs != null && !dirs.isEmpty()) {
-                android.location.Address a = dirs.get(0);
-                String calle = a.getThoroughfare() != null ? a.getThoroughfare() : "";
-                String num = a.getSubThoroughfare() != null ? " " + a.getSubThoroughfare() : "";
-                String locName = a.getLocality() != null ? ", " + a.getLocality() : "";
-                String res = (calle + num + locName).trim();
-                if (!res.isEmpty()) return "📍 " + res;
-            }
+            String coord = "📍 " + String.format(java.util.Locale.US, "%.5f, %.5f", loc.getLatitude(), loc.getLongitude());
+            try { // V226: si no hay servicio de direcciones, queda al menos la posición
+                java.util.List<android.location.Address> dirs = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
+                if (dirs != null && !dirs.isEmpty()) {
+                    android.location.Address a = dirs.get(0);
+                    String calle = a.getThoroughfare() != null ? a.getThoroughfare() : "";
+                    String num = a.getSubThoroughfare() != null ? " " + a.getSubThoroughfare() : "";
+                    String locName = a.getLocality() != null ? ", " + a.getLocality() : "";
+                    String res = (calle + num + locName).trim();
+                    if (res.isEmpty() && a.getMaxAddressLineIndex() >= 0 && a.getAddressLine(0) != null) res = a.getAddressLine(0).trim();
+                    if (!res.isEmpty()) return "📍 " + res;
+                }
+            } catch (Throwable ignorar) { }
+            return coord;
         } catch (Throwable ignored) {}
         return "";
     }
@@ -2926,7 +2931,10 @@ public class MainActivity extends Activity {
         aviso("Guardando…");
         hilos.execute(() -> {
             String nota = nota0;
-            if (nota.isEmpty() && !fechaDeLaFoto) nota = obtenerDireccionGpsActual(); // V223: ya en segundo plano
+            if (!fechaDeLaFoto) { // V226: la calle se añade siempre, aunque ya haya material escrito
+                String dirGps = obtenerDireccionGpsActual();
+                if (!dirGps.isEmpty()) nota = nota.isEmpty() ? dirGps : nota + "\n" + dirGps;
+            }
             String error = null;
             File salida = null;
             long fecha = System.currentTimeMillis();
@@ -2979,7 +2987,7 @@ public class MainActivity extends Activity {
         lineas.add(formatoLargo(fecha));
         String[] dsel = leerDatos(orden);
         if (!dsel[1].isEmpty()) lineas.add(dsel[1]);
-        if (nota != null && !nota.isEmpty()) lineas.add(nota);
+        if (nota != null && !nota.isEmpty()) for (String ln : nota.split("\n")) if (!ln.trim().isEmpty()) lineas.add(ln.trim()); // V226
         float alto = lineas.size() * tam * 1.25f + tam * 0.6f;
         Paint fondo = new Paint();
         fondo.setColor(Color.argb(175, 0, 0, 0));
