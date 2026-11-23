@@ -674,3 +674,41 @@ public class MainActivity extends android.app.Activity {
         }
     }
 }
+            String title = f.getName().replaceFirst("\\.[^.]+$", ""), artist = "Kuli Music";
+            try {
+                MediaMetadataRetriever mmr = new MediaMetadataRetriever();
+                mmr.setDataSource(f.getAbsolutePath());
+                String t = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+                String a = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+                byte[] art = mmr.getEmbeddedPicture();
+                if (t != null && !t.trim().isEmpty()) title = t;
+                if (a != null && !a.trim().isEmpty()) artist = a;
+                vinylView.setAlbumArt(art != null ? BitmapFactory.decodeByteArray(art, 0, art.length) : null);
+                mmr.release();
+            } catch (Exception ignored) {}
+            tvTitle.setText(title);
+            tvArtist.setText(artist);
+            vinylView.setTrackInfo(title, artist);
+            vinylView.setPlaying(true);
+            btnPlay.setText("⏸");
+        } catch (Exception e) {
+            Toast.makeText(this, "Error: " + f.getName(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String fmt(int ms) {
+        int s = Math.max(0, ms / 1000);
+        return String.format(Locale.US, "%02d:%02d", s / 60, s % 60);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (tracks.isEmpty() && canReadFiles()) loadStyle(style);
+    }
+
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        handler.removeCallbacks(ticker);
+        if (player != null) { player.release(); player = null; }
+    }
+}
