@@ -19,13 +19,14 @@ android {
     defaultConfig {
         applicationId = "com.kuli.vinilo"
         minSdk = 26
-        targetSdk = 28
+        targetSdk = 34
         versionCode = 41
         versionName = "2.27"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.media:media:1.7.0")
     implementation("com.google.zxing:core:3.5.3")
     // Una sola versión de Kotlin para todas las librerías (evita "Duplicate class kotlin...").
