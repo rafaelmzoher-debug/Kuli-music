@@ -1502,6 +1502,9 @@ public class MainActivity extends Activity {
             String y = m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR);
             if (y != null && y.length() >= 4) anio = Integer.parseInt(y.substring(0, 4));
         } catch (Exception ignored) { } finally { try { m.release(); } catch (Exception ignored) { } }
+        // V349: sin nombre real y sin título/artista dentro -> no se mete en ninguna carpeta de estilo.
+        if (nombreDeUri(u).startsWith("cancion_") && (titulo == null || titulo.trim().isEmpty()) && (autor == null || autor.trim().isEmpty()))
+            return "Sin clasificar";
         String estilo = detectarEstiloPersonalizado(simple(nombreDeUri(u)), autor, genero, anio);
         if (estilo == null) {
             String termino = (titulo != null && !titulo.trim().isEmpty())
