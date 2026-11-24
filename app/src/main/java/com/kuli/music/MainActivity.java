@@ -2399,7 +2399,65 @@ public class MainActivity extends Activity {
     }
 
     // V346: mira los artistas de las demás carpetas y propone sacar de «Pop» lo que tiene su sitio.
-    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V347
+        final ArrayList<String> pop0 = grupos.get("Pop");
+        if (pop0 == null || pop0.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
+        new AlertDialog.Builder(this).setTitle("🎨 Reclasificar «Pop»")
+            .setMessage("• POR ARTISTA: rápido, usa los artistas que ya tienes en otras carpetas.\n\n"
+                + "• CON INTERNET: pregunta a iTunes el estilo de cada canción de Pop (" + pop0.size() + ").\n"
+                + "Tarda unos " + Math.max(1, pop0.size() * 3 / 60) + " minutos: deja la app abierta y el móvil enchufado.")
+            .setPositiveButton("CON INTERNET", (d, w) -> reclasificarPopInternet(grupos))
+            .setNeutralButton("POR ARTISTA", (d, w) -> reclasificarPopPorArtista(grupos))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    // V347: pregunta a iTunes el género de cada canción de Pop y propone moverla a su estilo.
+    private void reclasificarPopInternet(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        if (!hayWifi()) { aviso("Necesitas WiFi o datos para esto"); return; }
+        final ArrayList<String> pop = new ArrayList<>(grupos.get("Pop"));
+        final android.content.SharedPreferences memo = getSharedPreferences("kuli_itunes_genero", MODE_PRIVATE);
+        aviso("Preguntando a iTunes… puedes dejar la app abierta");
+        new Thread(() -> {
+            final ArrayList<String[]> plan = new ArrayList<>();
+            final TreeMap<String, Integer> resumen = new TreeMap<>();
+            int hechas = 0, sinDato = 0;
+            for (String r : pop) {
+                String genero = memo.getString(r, null);
+                if (genero == null) {
+                    String termino = nombreSinExtension(r).replace('_', ' ').replace(" - ", " ")
+                        .replaceAll("\\([^)]*\\)|\\[[^\\]]*\\]", " ").trim();
+                    String[] x = consultarItunes(termino);
+                    genero = x == null ? "" : x[0];
+                    memo.edit().putString(r, genero == null ? "" : genero).apply();
+                    try { Thread.sleep(3200); } catch (InterruptedException ie) { break; }
+                }
+                String est = estiloDeGenero(genero);
+                if (est == null) sinDato++;
+                else if (!est.equals("Pop")) {
+                    plan.add(new String[]{r, est});
+                    Integer v = resumen.get(est);
+                    resumen.put(est, v == null ? 1 : v + 1);
+                }
+                hechas++;
+                if (hechas % 40 == 0) {
+                    final String msg = "iTunes: " + hechas + " de " + pop.size() + "…";
+                    runOnUiThread(() -> aviso(msg));
+                }
+            }
+            final int sd = sinDato;
+            runOnUiThread(() -> {
+                if (plan.isEmpty()) { aviso("iTunes no ha encontrado ningún estilo distinto de Pop"); return; }
+                StringBuilder sb = new StringBuilder(plan.size() + " de las " + pop.size() + " canciones de Pop tienen otro estilo:\n\n");
+                for (java.util.Map.Entry<String, Integer> e : resumen.entrySet()) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+                sb.append("\nSin dato en iTunes: ").append(sd).append(" (se quedan en Pop).\nSe puede deshacer.");
+                new AlertDialog.Builder(this).setTitle("🌐 Reclasificar «Pop»").setMessage(sb.toString())
+                    .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+                    .setNegativeButton("CANCELAR", null).show();
+            });
+        }).start();
+    }
+
+    private void reclasificarPopPorArtista(final LinkedHashMap<String, ArrayList<String>> grupos) {
         final ArrayList<String> pop = grupos.get("Pop");
         if (pop == null || pop.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
         java.util.HashMap<String, java.util.HashMap<String, Integer>> cuenta = new java.util.HashMap<>();
