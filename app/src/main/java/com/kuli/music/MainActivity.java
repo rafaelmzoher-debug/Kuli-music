@@ -2404,6 +2404,15 @@ public class MainActivity extends Activity {
     // V346: mira los artistas de las demás carpetas y propone sacar de «Pop» lo que tiene su sitio.
     private String carpetaOrden = "Pop"; // V349
 
+    // V351: mantiene la pantalla encendida mientras dura una tarea larga (iTunes, leer etiquetas).
+    private void pantallaFija(final boolean si) {
+        runOnUiThread(() -> {
+            if (si) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });
+    }
+
+
     private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V349: elegir carpeta
         final ArrayList<String> cands = new ArrayList<>();
         for (String k : new String[]{"Pop", "Flamenkito"}) if (grupos.get(k) != null && !grupos.get(k).isEmpty()) cands.add(k);
@@ -2504,6 +2513,8 @@ public class MainActivity extends Activity {
         final android.content.SharedPreferences memo = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
         aviso("Leyendo " + pop.size() + " archivos del NAS… puede tardar unos minutos");
         new Thread(() -> {
+        pantallaFija(true); // V351
+        try {
             final int[] cuenta = {0, 0, 0}; // con etiqueta, sin nada, no mp3
             final ArrayList<String[]> plan = new ArrayList<>();
             try {
@@ -2562,6 +2573,7 @@ public class MainActivity extends Activity {
                         .setNegativeButton("AHORA NO", null).show();
                 }
             });
+        } finally { runOnUiThread(() -> pantallaFija(false)); }
         }).start();
     }
 
@@ -2626,6 +2638,8 @@ public class MainActivity extends Activity {
         final android.content.SharedPreferences memo = getSharedPreferences("kuli_itunes_genero", MODE_PRIVATE);
         aviso("Preguntando a iTunes… puedes dejar la app abierta");
         new Thread(() -> {
+        pantallaFija(true); // V351
+        try {
             final ArrayList<String[]> plan = new ArrayList<>();
             final TreeMap<String, Integer> resumen = new TreeMap<>();
             int hechas = 0, sinDato = 0;
@@ -2662,6 +2676,7 @@ public class MainActivity extends Activity {
                     .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, carpetaOrden))
                     .setNegativeButton("CANCELAR", null).show();
             });
+        } finally { runOnUiThread(() -> pantallaFija(false)); }
         }).start();
     }
 
