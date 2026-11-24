@@ -2649,10 +2649,22 @@ public class MainActivity extends Activity {
     // ---------- Material usado en una orden ----------
     private void materialUsado(final String orden) {
         new AlertDialog.Builder(this).setTitle("Material usado en la orden " + orden)
-            .setItems(new String[]{"📷 Escanear el código", "📋 Elegir del almacén"}, (d, i) -> {
+            .setItems(new String[]{"📷 Escanear el código", "📋 Elegir del almacén", "🔌 Rosetas (sin tocar el almacén)"}, (d, i) -> {
                 if (i == 0) gastarSeguido(orden);
-                else elegirDelAlmacen(orden);
+                else if (i == 1) elegirDelAlmacen(orden);
+                else rosetasSinAlmacen(orden);
             }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    // V229: apunta rosetas en la orden sin descontarlas del almacén.
+    private void rosetasSinAlmacen(final String orden) {
+        final String[] cant = {"1 roseta", "2 rosetas", "3 rosetas", "4 rosetas"};
+        new AlertDialog.Builder(this).setTitle("🔌 ¿Cuántas rosetas?")
+            .setItems(cant, (d, i) -> {
+                for (int k = 0; k <= i; k++) anotarMaterial(orden, "00546040", "Roseta");
+                aviso("✓ " + (i + 1) + (i == 0 ? " roseta apuntada" : " rosetas apuntadas") + " (el almacén no cambia)");
+                mostrarOrden(orden);
+            }).setNegativeButton("CANCELAR", (d, w) -> mostrarOrden(orden)).show();
     }
 
     private void elegirDelAlmacen(final String orden) {
