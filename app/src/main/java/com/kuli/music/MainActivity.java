@@ -2364,7 +2364,7 @@ public class MainActivity extends Activity {
         final ArrayList<String> todas = new ArrayList<>();
         String[] items = new String[claves.size() + 2]; // V346
         items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
-        items[1] = "🎨  Reclasificar «Pop» por artista";
+        items[1] = "🎨  Ordenar «Pop» (villancicos, etiquetas…)";
         for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
             items[i + 2] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
@@ -2399,15 +2399,207 @@ public class MainActivity extends Activity {
     }
 
     // V346: mira los artistas de las demás carpetas y propone sacar de «Pop» lo que tiene su sitio.
-    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V347
+    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V348
         final ArrayList<String> pop0 = grupos.get("Pop");
         if (pop0 == null || pop0.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
-        new AlertDialog.Builder(this).setTitle("🎨 Reclasificar «Pop»")
-            .setMessage("• POR ARTISTA: rápido, usa los artistas que ya tienes en otras carpetas.\n\n"
-                + "• CON INTERNET: pregunta a iTunes el estilo de cada canción de Pop (" + pop0.size() + ").\n"
-                + "Tarda unos " + Math.max(1, pop0.size() * 3 / 60) + " minutos: deja la app abierta y el móvil enchufado.")
-            .setPositiveButton("CON INTERNET", (d, w) -> reclasificarPopInternet(grupos))
-            .setNeutralButton("POR ARTISTA", (d, w) -> reclasificarPopPorArtista(grupos))
+        String[] op = {
+            "🎄  Villancicos → carpeta «Navidad»",
+            "🏷  Leer título y artista de los «cancion_…»",
+            "🌐  Con internet (iTunes)  ~" + Math.max(1, pop0.size() * 3 / 60) + " min",
+            "🎨  Por artista (rápido)",
+            "🗑  Quitar los que no tienen nombre"};
+        new AlertDialog.Builder(this).setTitle("🎨 Ordenar «Pop» (" + pop0.size() + ")")
+            .setItems(op, (d, i) -> {
+                if (i == 0) navidadPop(grupos);
+                else if (i == 1) etiquetasPop(grupos);
+                else if (i == 2) reclasificarPopInternet(grupos);
+                else if (i == 3) reclasificarPopPorArtista(grupos);
+                else quitarSinNombre(grupos);
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    // V348
+    private static final String[] NAVIDAD_PAL = {"villancic", "navidad", "nochebuena", "noche de paz", "a belen", "portal de belen", "belen pastores", "pastores", "reyes magos", "campanillas", "christmas", "jingle bell", "tamborilero", "burrito sabanero", "fum fum", "campana sobre campana", "ande ande ande", "arbol de navidad", "feliz navidad", "santa claus"};
+    private boolean esNavidad(String t) {
+        String x = simple(t == null ? "" : t);
+        for (String k : NAVIDAD_PAL) if (x.contains(k)) return true;
+        return false;
+    }
+    private boolean temporadaNavidad() {
+        int m = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH);
+        return m == java.util.Calendar.DECEMBER || m == java.util.Calendar.JANUARY;
+    }
+
+    private void navidadPop(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        ArrayList<String[]> plan = new ArrayList<>();
+        for (String r : grupos.get("Pop")) {
+            String n = nombreSinExtension(r).replace('_', ' ');
+            String et = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE).getString(r, "");
+            if (esNavidad(n + " " + et)) plan.add(new String[]{r, "Navidad"});
+        }
+        if (plan.isEmpty()) { aviso("No encuentro villancicos en Pop"); return; }
+        StringBuilder sb = new StringBuilder(plan.size() + " canciones parecen villancicos:\n\n");
+        for (int i = 0; i < plan.size() && i < 12; i++) sb.append("• ").append(nombreSinExtension(plan.get(i)[0])).append("\n");
+        if (plan.size() > 12) sb.append("… y ").append(plan.size() - 12).append(" más\n");
+        sb.append("\nSe moverán a la carpeta «Navidad». Se puede deshacer.");
+        final ArrayList<String[]> p2 = plan;
+        new AlertDialog.Builder(this).setTitle("🎄 Navidad").setMessage(sb.toString())
+            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(p2, "Pop"))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    // V348: lee la etiqueta ID3 (título y artista) de un trozo del principio del archivo.
+    private String[] leerEtiquetaId3(byte[] b, int n) {
+        try {
+            if (n < 10 || b[0] != 'I' || b[1] != 'D' || b[2] != '3') return null;
+            int ver = b[3] & 0xFF;
+            int tam = ((b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) | ((b[8] & 0x7F) << 7) | (b[9] & 0x7F);
+            int fin = Math.min(n, 10 + tam);
+            int p = 10;
+            String tit = null, art = null;
+            int cab = ver == 2 ? 6 : 10;
+            while (p + cab <= fin) {
+                String id = new String(b, p, ver == 2 ? 3 : 4, "ISO-8859-1");
+                if (id.charAt(0) == 0) break;
+                int sz;
+                if (ver == 2) sz = ((b[p + 3] & 0xFF) << 16) | ((b[p + 4] & 0xFF) << 8) | (b[p + 5] & 0xFF);
+                else if (ver == 4) sz = ((b[p + 4] & 0x7F) << 21) | ((b[p + 5] & 0x7F) << 14) | ((b[p + 6] & 0x7F) << 7) | (b[p + 7] & 0x7F);
+                else sz = ((b[p + 4] & 0xFF) << 24) | ((b[p + 5] & 0xFF) << 16) | ((b[p + 6] & 0xFF) << 8) | (b[p + 7] & 0xFF);
+                if (sz <= 1 || p + cab + sz > fin) break;
+                boolean esT = id.equals("TIT2") || id.equals("TT2"), esA = id.equals("TPE1") || id.equals("TP1");
+                if (esT || esA) {
+                    int enc = b[p + cab] & 0xFF;
+                    String cs = enc == 0 ? "ISO-8859-1" : enc == 1 ? "UTF-16" : enc == 2 ? "UTF-16BE" : "UTF-8";
+                    String v = new String(b, p + cab + 1, sz - 1, cs).replace("\u0000", "").trim();
+                    if (esT) tit = v; else art = v;
+                }
+                p += cab + sz;
+            }
+            if ((tit == null || tit.isEmpty()) && (art == null || art.isEmpty())) return null;
+            return new String[]{art == null ? "" : art, tit == null ? "" : tit};
+        } catch (Throwable e) { return null; }
+    }
+
+    private void etiquetasPop(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final ArrayList<String> pop = new ArrayList<>();
+        for (String r : grupos.get("Pop")) if (nombreSinExtension(r).startsWith("cancion_")) pop.add(r);
+        if (pop.isEmpty()) { aviso("No hay archivos «cancion_…» en Pop"); return; }
+        final android.content.SharedPreferences memo = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
+        aviso("Leyendo " + pop.size() + " archivos del NAS… puede tardar unos minutos");
+        new Thread(() -> {
+            final int[] cuenta = {0, 0, 0}; // con etiqueta, sin nada, no mp3
+            final ArrayList<String[]> plan = new ArrayList<>();
+            try {
+                conNas(disco -> {
+                    int hechos = 0;
+                    for (String r : pop) {
+                        String v = memo.getString(r, null);
+                        if (v == null) {
+                            String bajo = r.toLowerCase();
+                            if (!bajo.endsWith(".mp3")) v = "?";
+                            else {
+                                byte[] b = new byte[131072];
+                                int n = 0;
+                                try (File f = disco.openFile("KULI MUSIC\\" + r.replace('/', '\\'),
+                                        EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL,
+                                        SMB2CreateDisposition.FILE_OPEN,
+                                        EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
+                                     InputStream in = f.getInputStream()) {
+                                    int x;
+                                    while (n < b.length && (x = in.read(b, n, b.length - n)) > 0) n += x;
+                                } catch (Exception e) { n = -1; }
+                                if (n < 0) continue;
+                                String[] t = leerEtiquetaId3(b, n);
+                                v = t == null ? "" : t[0] + "\t" + t[1];
+                            }
+                            memo.edit().putString(r, v).apply();
+                        }
+                        if (v.equals("?")) cuenta[2]++;
+                        else if (v.isEmpty()) cuenta[1]++;
+                        else {
+                            cuenta[0]++;
+                            String[] t = v.split("\t", -1);
+                            String est = esNavidad(t[0] + " " + t[1]) ? "Navidad"
+                                : detectarEstiloPersonalizado(t[1], t[0], "", 0);
+                            if (est != null && !est.equals("Pop")) plan.add(new String[]{r, est});
+                        }
+                        if (++hechos % 50 == 0) { final String m = "Leídos " + hechos + " de " + pop.size() + "…"; runOnUiThread(() -> aviso(m)); }
+                    }
+                    return null;
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> mostrarErrorNas("No se pudieron leer las etiquetas", e));
+                return;
+            }
+            runOnUiThread(() -> {
+                StringBuilder sb = new StringBuilder("De " + pop.size() + " archivos «cancion_…»:\n\n• Con título/artista dentro: " + cuenta[0]
+                    + "\n• Sin nada dentro: " + cuenta[1] + (cuenta[2] > 0 ? "\n• Otro formato (no mp3): " + cuenta[2] : ""));
+                if (plan.isEmpty()) {
+                    sb.append("\n\nNinguno cambia de carpeta por su etiqueta.");
+                    if (cuenta[1] > 0) sb.append("\nLos «sin nada» los puedes quitar con 🗑 Quitar los que no tienen nombre.");
+                    new AlertDialog.Builder(this).setTitle("🏷 Etiquetas").setMessage(sb.toString()).setPositiveButton("OK", null).show();
+                } else {
+                    sb.append("\n\n").append(plan.size()).append(" cambian de carpeta por su etiqueta. Se puede deshacer.");
+                    new AlertDialog.Builder(this).setTitle("🏷 Etiquetas").setMessage(sb.toString())
+                        .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+                        .setNegativeButton("AHORA NO", null).show();
+                }
+            });
+        }).start();
+    }
+
+    // V348: los «cancion_…» que se han mirado y no llevan nada dentro, se apartan a «KULI PAPELERA» (fuera de la música). Se pueden recuperar.
+    private void quitarSinNombre(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final android.content.SharedPreferences memo = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
+        final ArrayList<String> malas = new ArrayList<>();
+        int sinMirar = 0;
+        for (String r : grupos.get("Pop")) {
+            if (!nombreSinExtension(r).startsWith("cancion_")) continue;
+            String v = memo.getString(r, null);
+            if (v == null) sinMirar++;
+            else if (v.isEmpty()) malas.add(r);
+        }
+        if (malas.isEmpty()) {
+            aviso(sinMirar > 0 ? "Primero usa «Leer título y artista» para saber cuáles no tienen nada" : "No hay canciones sin nombre");
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("🗑 Quitar sin nombre")
+            .setMessage(malas.size() + " canciones no tienen título ni artista (ni en el nombre ni dentro).\n\n"
+                + "No se borran: se mueven a la carpeta «KULI PAPELERA» del NAS, fuera de tu música. Si quieres alguna, la sacas de allí; si no, borras la carpeta cuando quieras."
+                + (sinMirar > 0 ? "\n\n(" + sinMirar + " más sin mirar todavía.)" : ""))
+            .setPositiveButton("APARTAR", (d, w) -> {
+                aviso("Apartando " + malas.size() + " canciones…");
+                new Thread(() -> {
+                    final int[] ok = {0};
+                    try {
+                        conNas(disco -> {
+                            if (!disco.folderExists("KULI PAPELERA")) disco.mkdir("KULI PAPELERA");
+                            for (String r : malas) {
+                                try {
+                                    String archivo = r.substring(r.lastIndexOf('/') + 1);
+                                    String destino = "KULI PAPELERA\\" + archivo;
+                                    if (disco.fileExists(destino)) continue;
+                                    try (File f = disco.openFile("KULI MUSIC\\" + r.replace('/', '\\'),
+                                            EnumSet.of(AccessMask.DELETE), null, SMB2ShareAccess.ALL,
+                                            SMB2CreateDisposition.FILE_OPEN,
+                                            EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))) {
+                                        f.rename(destino);
+                                    }
+                                    ok[0]++;
+                                } catch (Exception e) { }
+                            }
+                            return null;
+                        });
+                    } catch (Throwable e) {
+                        runOnUiThread(() -> mostrarErrorNas("No se pudieron apartar", e));
+                        return;
+                    }
+                    runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("✓ Hecho")
+                        .setMessage("Apartadas " + ok[0] + " canciones a «KULI PAPELERA».")
+                        .setPositiveButton("OK", (dd, ww) -> abrirListaNas()).show());
+                }).start();
+            })
             .setNegativeButton("CANCELAR", null).show();
     }
 
@@ -2556,6 +2748,7 @@ public class MainActivity extends Activity {
         LinkedHashMap<String, ArrayList<String>> baraja = new LinkedHashMap<>();
         for (String k : grupos.keySet()) {
             if (k.equals("Sin clasificar") || grupos.get(k).isEmpty()) continue;
+            if (k.equals("Navidad") && !temporadaNavidad()) continue; // V348
             ArrayList<String> c = new ArrayList<>(grupos.get(k));
             Collections.shuffle(c, azar);
             baraja.put(k, c);
@@ -4353,6 +4546,7 @@ public class MainActivity extends Activity {
     private String detectarEstiloPersonalizado(String nom, String aut, String gen, int anio) {
         String todo = simple(nom + " " + (aut == null ? "" : aut));
         String[] h26 = {"2026", "ni borracho", "la graciosa", "al golpito", "scandic", "choque", "el baifo", "caprichoso", "te dare", "mas cara", "galdar", "superestrella", "pa ti toa", "dardos", "bby wow", "la perla", "largate", "soleao", "yo y tu", "cosita linda", "una vida en llamas", "tus iniciales", "milko freestyle", "dai dai", "las muñequitas", "drop dead", "dama y vagabundo", "no me guillo", "maladie", "una casa en el teide", "punto de partida", "ser artista", "demonias muñecas"};
+        if (esNavidad(nom + " " + (aut == null ? "" : aut))) return "Navidad"; // V348
         if (anio == 2026) return "Novedades 2026";
         for (String h : h26) if (todo.contains(simple(h))) return "Novedades 2026";
         String[] fl = {"flamenc", "bordon 4", "asi canta jerez", "paloma blanca", "los del rio", "el mani", "camela", "estopa", "melendi", "el barrio", "niña pastori", "nina pastori", "india martinez", "fondo flamenco", "decai", "rebujitos", "canelita", "galvan real", "daviles", "keen levy", "nyno vargas", "moncho chavea", "omar montes", "maka", "original elias", "demarco", "chambao", "ketama", "paco de lucia", "camaron", "jose merce", "diego el cigala", "estrella morente", "falete", "parrita", "bambino", "chiquetete", "manzanita", "peret", "kiko veneno", "juanito makande", "el canijo", "tomasito", "la hungara", "maria artes", "el tren de los sueños", "son de sol", "las chuches", "los caños", "andy", "lucas", "kiko y shara", "raya real", "siempre asi", "requiebros", "ecos del rocio", "cantores de hispalis", "los marismeños", "sevillanas", "rumba"};
@@ -4427,7 +4621,7 @@ public class MainActivity extends Activity {
     }
 
     private String estiloDeArchivo(java.io.File f, android.content.SharedPreferences cache, android.content.SharedPreferences.Editor ed) {
-        String k = "v3|" + (artistaEstilo == null ? 0 : artistaEstilo.size()) + "|" + f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified();
+        String k = "v4|" + (artistaEstilo == null ? 0 : artistaEstilo.size()) + "|" + f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified();
         String v = cache.getString(k, null);
         if (v != null) return v;
         String genero = null, autor = null;
