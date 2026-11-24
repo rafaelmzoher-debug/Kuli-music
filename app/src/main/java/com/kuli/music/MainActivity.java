@@ -2287,19 +2287,22 @@ public class MainActivity extends Activity {
         };
         AuthenticationContext[] cuentas = { AuthenticationContext.guest(), AuthenticationContext.anonymous() };
         Throwable ultimo = null;
-        for (SmbConfig cfg : configs) {
-            for (AuthenticationContext ctx : cuentas) {
-                try (SMBClient cliente = new SMBClient(cfg);
-                     Connection conexion = cliente.connect(nasIp())) {
-                    Session sesion = conexion.authenticate(ctx);
-                    try (DiskShare disco = (DiskShare) sesion.connectShare("Public")) {
-                        return tarea.ejecutar(disco);
+        for (int intento = 1; intento <= 3; intento++) {
+            for (SmbConfig cfg : configs) {
+                for (AuthenticationContext ctx : cuentas) {
+                    try (SMBClient cliente = new SMBClient(cfg);
+                         Connection conexion = cliente.connect(nasIp())) {
+                        Session sesion = conexion.authenticate(ctx);
+                        try (DiskShare disco = (DiskShare) sesion.connectShare("Public")) {
+                            return tarea.ejecutar(disco);
+                        }
+                    } catch (Throwable e) {
+                        ultimo = e;
+                        android.util.Log.e("KULI_NAS", "Intento " + intento + " fallido: " + e.getMessage());
                     }
-                } catch (Throwable e) {
-                    ultimo = e;
-                    android.util.Log.e("KULI_NAS", "Intento fallido", e);
                 }
             }
+            if (intento < 3) try { Thread.sleep(1000); } catch (Exception ignored) {}
         }
         throw ultimo != null ? ultimo : new java.io.IOException("Sin conexión con el NAS");
     }
@@ -2328,7 +2331,28 @@ public class MainActivity extends Activity {
 
     private void abrirListaNas() {
         if (!hayWifi()) { aviso("Necesitas la WiFi de casa (o la VPN) para ver el NAS"); return; }
-        aviso("Conectando con el NAS…");
+        
+        // Cargar caché local primero para carga instantánea
+        final java.io.File archivoCache = new java.io.File(getCacheDir(), "nas_cache.json");
+        if (archivoCache.exists()) {
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(archivoCache)) {
+                byte[] bytes = new byte[(int) archivoCache.length()];
+                fis.read(bytes);
+                org.json.JSONObject json = new org.json.JSONObject(new String(bytes, "UTF-8"));
+                LinkedHashMap<String, ArrayList<String>> cacheMap = new LinkedHashMap<>();
+                java.util.Iterator<String> keys = json.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    org.json.JSONArray arr = json.getJSONArray(key);
+                    ArrayList<String> canciones = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) canciones.add(arr.getString(i));
+                    cacheMap.put(key, canciones);
+                }
+                if (!cacheMap.isEmpty()) mostrarGruposNas(cacheMap);
+            } catch (Exception e) { android.util.Log.e("KULI_NAS", "Error leyendo caché", e); }
+        }
+
+        aviso("Refrescando lista del NAS…");
         new Thread(() -> {
             try {
                 final LinkedHashMap<String, ArrayList<String>> grupos = conNas(disco -> {
@@ -2354,9 +2378,19 @@ public class MainActivity extends Activity {
                     if (!sueltas.isEmpty()) r.put("Sin clasificar", sueltas);
                     return r;
                 });
+                
+                // Guardar en caché
+                try {
+                    org.json.JSONObject json = new org.json.JSONObject();
+                    for (String k : grupos.keySet()) json.put(k, new org.json.JSONArray(grupos.get(k)));
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(archivoCache)) {
+                        fos.write(json.toString().getBytes("UTF-8"));
+                    }
+                } catch (Exception e) { android.util.Log.e("KULI_NAS", "Error guardando caché", e); }
+
                 runOnUiThread(() -> mostrarGruposNas(grupos));
             } catch (Throwable e) {
-                runOnUiThread(() -> mostrarErrorNas("No se pudo abrir el NAS", e));
+                if (!archivoCache.exists()) runOnUiThread(() -> mostrarErrorNas("No se pudo abrir el NAS", e));
             }
         }).start();
     }
@@ -4768,11 +4802,17 @@ public class MainActivity extends Activity {
                         if (!artUrl.isEmpty()) {
                             java.net.HttpURLConnection ci = (java.net.HttpURLConnection) new java.net.URL(artUrl).openConnection();
                             ci.setConnectTimeout(4500); ci.setReadTimeout(4500);
-                            java.io.InputStream isi = ci.getInputStream();
-                            bmp = BitmapFactory.decodeStream(isi);
-                            isi.close();
-                            if (bmp != null) {
-                                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(fImg)) { bmp.compress(Bitmap.CompressFormat.JPEG, 88, fos); }
+                            try (java.io.InputStream isi = ci.getInputStream()) {
+                                BitmapFactory.Options opciones = new BitmapFactory.Options();
+                                opciones.inJustDecodeBounds = true;
+                                byte[] data = streamToBytes(isi);
+                                BitmapFactory.decodeByteArray(data, 0, data.length, opciones);
+                                opciones.inSampleSize = calcularSampleSize(opciones, 512, 512);
+                                opciones.inJustDecodeBounds = false;
+                                bmp = BitmapFactory.decodeByteArray(data, 0, data.length, opciones);
+                                if (bmp != null) {
+                                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(fImg)) { bmp.compress(Bitmap.CompressFormat.JPEG, 88, fos); }
+                                }
                             }
                         }
                     }
@@ -4791,6 +4831,26 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception ignored) { }
         }).start();
+    }
+
+    private byte[] streamToBytes(java.io.InputStream is) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[16384];
+        while ((nRead = is.read(data, 0, data.length)) != -1) buffer.write(data, 0, nRead);
+        return buffer.toByteArray();
+    }
+
+    private int calcularSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
+        final int height = options.outHeight;
+        final int width = options.outWidth;
+        int inSampleSize = 1;
+        if (height > reqHeight || width > reqWidth) {
+            final int halfHeight = height / 2;
+            final int halfWidth = width / 2;
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) inSampleSize *= 2;
+        }
+        return inSampleSize;
     }
 
 }
