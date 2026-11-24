@@ -2334,6 +2334,7 @@ public class MainActivity extends Activity {
         
         // Cargar caché local primero para carga instantánea
         final java.io.File archivoCache = new java.io.File(getCacheDir(), "nas_cache.json");
+        if (listaNasCambiada) { archivoCache.delete(); listaNasCambiada = false; } // V353: tras mover, lista fresca
         if (archivoCache.exists()) {
             try (java.io.FileInputStream fis = new java.io.FileInputStream(archivoCache)) {
                 byte[] bytes = new byte[(int) archivoCache.length()];
@@ -2399,28 +2400,32 @@ public class MainActivity extends Activity {
         if (grupos.isEmpty()) { aviso("No hay canciones en la carpeta KULI MUSIC del NAS"); return; }
         final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
         final ArrayList<String> todas = new ArrayList<>();
-        String[] items = new String[claves.size() + 2]; // V346
+        String[] items = new String[claves.size() + 3]; // V346/V353
         items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
         items[1] = "🎨  Ordenar «Pop», «Flamenkito» o «Latino»…";
+        items[2] = "🧺  Elegir canciones (mover o apartar)"; // V353
         for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
-            items[i + 2] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
+            items[i + 3] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
             todas.addAll(lista);
         }
+        try { if (dlgNasActual != null && dlgNasActual.isShowing()) dlgNasActual.dismiss(); } catch (Exception ignorar) { } // V353
         final AlertDialog dlg = new AlertDialog.Builder(this).setTitle("☁ NAS · " + todas.size() + " canciones")
             .setItems(items, (d, i) -> {
                 if (i == 0) modoDj(grupos);
                 else if (i == 1) reclasificarPopNas(grupos);
-                else mostrarCancionesNas(claves.get(i - 2), grupos.get(claves.get(i - 2)), grupos);
+                else if (i == 2) elegirCancionesFuente(grupos);
+                else mostrarCancionesNas(claves.get(i - 3), grupos.get(claves.get(i - 3)), grupos);
             })
             .setPositiveButton("▶ TODO", (d, w) -> reproducirListaNas(todas, 0))
             .setNeutralButton("🔍 BUSCAR", (d, w) -> buscarEnNas(grupos))
             .setNegativeButton("📥 AL MÓVIL", (d, w) -> elegirParaMovil(grupos)).show();
+        dlgNasActual = dlg;
         // Mantener pulsada una carpeta: suena entera, en aleatorio.
         dlg.getListView().setOnItemLongClickListener((padre, vista, pos, id) -> {
-            if (pos < 2) return false;
+            if (pos < 3) return false;
             dlg.dismiss();
-            reproducirAleatorio(grupos.get(claves.get(pos - 2)));
+            reproducirAleatorio(grupos.get(claves.get(pos - 3)));
             return true;
         });
         aviso("Toca una carpeta para verla · mantenla pulsada para oírla entera en aleatorio");
@@ -2787,7 +2792,11 @@ public class MainActivity extends Activity {
     // V346: mueve varias canciones del NAS de carpeta. plan = {rutaRelativa, estiloDestino}. estiloOrigen = el que había (para deshacer).
     private final String[] motivoFallo = {""}; // V352
 
+    private AlertDialog dlgNasActual = null;       // V353
+    private boolean listaNasCambiada = false;      // V353
+
     private void moverVariasNas(final ArrayList<String[]> plan, final String estiloOrigen) {
+        listaNasCambiada = true; // V353
         aviso("Moviendo " + plan.size() + " canciones… no cierres la app");
         new Thread(() -> {
             final ArrayList<String[]> hechas = new ArrayList<>();
@@ -2837,6 +2846,182 @@ public class MainActivity extends Activity {
                 if (!inverso.isEmpty()) b.setNeutralButton("↩ DESHACER", (d, w) -> moverVariasNas(inverso, "Pop"));
                 b.show();
             });
+        }).start();
+    }
+
+    // ================= V353: elegir canciones a mano (NAS o carpeta del móvil) =================
+    private void elegirCancionesFuente(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        new AlertDialog.Builder(this).setTitle("🧺 Elegir canciones")
+            .setItems(new String[]{"☁  Del NAS", "📱  De una carpeta del móvil"}, (d, i) -> {
+                if (i == 0) {
+                    if (grupos == null) abrirListaNas(); else elegirCarpetaNas(grupos);
+                } else elegirCarpetaMovil();
+            }).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void elegirCarpetaNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final ArrayList<String> claves = new ArrayList<>(grupos.keySet());
+        String[] it = new String[claves.size()];
+        for (int i = 0; i < it.length; i++) it[i] = "📁  " + claves.get(i) + "  (" + grupos.get(claves.get(i)).size() + ")";
+        new AlertDialog.Builder(this).setTitle("¿De qué carpeta del NAS?")
+            .setItems(it, (d, i) -> marcarCancionesNas(claves.get(i), grupos.get(claves.get(i))))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void marcarCancionesNas(final String carpeta, final ArrayList<String> rutas) {
+        final boolean[] m = new boolean[rutas.size()];
+        String[] nom = new String[rutas.size()];
+        for (int i = 0; i < nom.length; i++) nom[i] = nombreSinExtension(rutas.get(i));
+        new AlertDialog.Builder(this).setTitle("Marca canciones · " + carpeta)
+            .setMultiChoiceItems(nom, m, (d, i, v) -> m[i] = v)
+            .setPositiveButton("MOVER", (d, w) -> {
+                final ArrayList<String> sel = new ArrayList<>();
+                for (int i = 0; i < m.length; i++) if (m[i]) sel.add(rutas.get(i));
+                if (sel.isEmpty()) { aviso("No has marcado ninguna"); return; }
+                elegirEstilo("Mover " + sel.size() + " canciones a…", est -> {
+                    ArrayList<String[]> plan = new ArrayList<>();
+                    for (String r : sel) plan.add(new String[]{r, est});
+                    moverVariasNas(plan, carpeta);
+                });
+            })
+            .setNeutralButton("🗑 APARTAR", (d, w) -> {
+                final ArrayList<String> sel = new ArrayList<>();
+                for (int i = 0; i < m.length; i++) if (m[i]) sel.add(rutas.get(i));
+                if (sel.isEmpty()) { aviso("No has marcado ninguna"); return; }
+                new AlertDialog.Builder(this).setTitle("🗑 Apartar " + sel.size() + " canciones")
+                    .setMessage("No se borran: se mueven a la carpeta «KULI PAPELERA» del NAS, fuera de tu música. Si quieres alguna, la sacas de allí.")
+                    .setPositiveButton("APARTAR", (d2, w2) -> apartarRutasNas(sel))
+                    .setNegativeButton("CANCELAR", null).show();
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void apartarRutasNas(final ArrayList<String> rutas) {
+        listaNasCambiada = true;
+        aviso("Apartando " + rutas.size() + " canciones…");
+        new Thread(() -> {
+            final int[] ok = {0};
+            try {
+                conNas(disco -> {
+                    if (!disco.folderExists("KULI PAPELERA")) disco.mkdir("KULI PAPELERA");
+                    for (String r : rutas) {
+                        try {
+                            String archivo = r.substring(r.lastIndexOf('/') + 1);
+                            String destino = "KULI PAPELERA\\" + archivo;
+                            if (disco.fileExists(destino)) continue;
+                            try (File f = disco.openFile("KULI MUSIC\\" + r.replace('/', '\\'),
+                                    EnumSet.of(AccessMask.DELETE), null, SMB2ShareAccess.ALL,
+                                    SMB2CreateDisposition.FILE_OPEN,
+                                    EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))) {
+                                f.rename(destino);
+                            }
+                            ok[0]++;
+                        } catch (Exception e) { }
+                    }
+                    return null;
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> mostrarErrorNas("No se pudieron apartar", e));
+                return;
+            }
+            runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("✓ Hecho")
+                .setMessage("Apartadas " + ok[0] + " de " + rutas.size() + " canciones a «KULI PAPELERA».")
+                .setPositiveButton("OK", (dd, ww) -> abrirListaNas()).show());
+        }).start();
+    }
+
+    // ---- Móvil ----
+    private void anadirCarpetaMovil(ArrayList<java.io.File> carpetas, ArrayList<Integer> cuentas, java.io.File d) {
+        if (d == null || !d.isDirectory()) return;
+        for (java.io.File c : carpetas) if (c.getAbsolutePath().equals(d.getAbsolutePath())) return;
+        java.io.File[] fs = d.listFiles();
+        int n = 0;
+        if (fs != null) for (java.io.File f : fs) if (f.isFile() && esAudio(f.getName())) n++;
+        if (n > 0) { carpetas.add(d); cuentas.add(n); }
+    }
+
+    private void elegirCarpetaMovil() {
+        final ArrayList<java.io.File> carpetas = new ArrayList<>();
+        final ArrayList<Integer> cuentas = new ArrayList<>();
+        java.io.File musica = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
+        java.io.File bajadas = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+        java.io.File[] raices = {carpetaMovil(), musica, bajadas};
+        for (java.io.File r : raices) {
+            anadirCarpetaMovil(carpetas, cuentas, r);
+            java.io.File[] sub = r == null ? null : r.listFiles();
+            if (sub != null) for (java.io.File s2 : sub) if (s2.isDirectory()) anadirCarpetaMovil(carpetas, cuentas, s2);
+        }
+        if (carpetas.isEmpty()) { aviso("No encuentro canciones en Música ni en Descargas"); return; }
+        String[] it = new String[carpetas.size()];
+        for (int i = 0; i < it.length; i++) it[i] = "📁  " + carpetas.get(i).getName() + "  (" + cuentas.get(i) + ")";
+        new AlertDialog.Builder(this).setTitle("¿De qué carpeta del móvil?")
+            .setItems(it, (d, i) -> marcarCancionesMovil(carpetas.get(i)))
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void marcarCancionesMovil(final java.io.File dir) {
+        java.io.File[] fs = dir.listFiles();
+        final ArrayList<java.io.File> lista = new ArrayList<>();
+        if (fs != null) for (java.io.File f : fs) if (f.isFile() && esAudio(f.getName())) lista.add(f);
+        Collections.sort(lista, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        final boolean[] m = new boolean[lista.size()];
+        String[] nom = new String[lista.size()];
+        for (int i = 0; i < nom.length; i++) nom[i] = nombreSinExtension(lista.get(i).getName());
+        new AlertDialog.Builder(this).setTitle("Marca canciones · " + dir.getName())
+            .setMultiChoiceItems(nom, m, (d, i, v) -> m[i] = v)
+            .setPositiveButton("MOVER", (d, w) -> {
+                final ArrayList<java.io.File> sel = new ArrayList<>();
+                for (int i = 0; i < m.length; i++) if (m[i]) sel.add(lista.get(i));
+                if (sel.isEmpty()) { aviso("No has marcado ninguna"); return; }
+                elegirEstilo("Mover " + sel.size() + " canciones a…", est -> {
+                    String e2 = est.replaceAll("[\\/:*?\"<>|]", "_").trim();
+                    if (e2.isEmpty()) e2 = "Sin clasificar";
+                    moverArchivosMovil(sel, new java.io.File(carpetaMovil(), e2), "carpeta «" + e2 + "»");
+                });
+            })
+            .setNeutralButton("🗑 APARTAR", (d, w) -> {
+                final ArrayList<java.io.File> sel = new ArrayList<>();
+                for (int i = 0; i < m.length; i++) if (m[i]) sel.add(lista.get(i));
+                if (sel.isEmpty()) { aviso("No has marcado ninguna"); return; }
+                final java.io.File papelera = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI PAPELERA");
+                new AlertDialog.Builder(this).setTitle("🗑 Apartar " + sel.size() + " canciones")
+                    .setMessage("No se borran: se mueven a la carpeta «KULI PAPELERA» dentro de Música, fuera de tu biblioteca. Cuando quieras, borras esa carpeta desde Archivos.")
+                    .setPositiveButton("APARTAR", (d2, w2) -> moverArchivosMovil(sel, papelera, "«KULI PAPELERA»"))
+                    .setNegativeButton("CANCELAR", null).show();
+            })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void moverArchivosMovil(final ArrayList<java.io.File> sel, final java.io.File destino, final String etiqueta) {
+        aviso("Moviendo " + sel.size() + " canciones…");
+        new Thread(() -> {
+            int ok = 0, existe = 0, mal = 0;
+            final ArrayList<String> rutas = new ArrayList<>();
+            destino.mkdirs();
+            for (java.io.File f : sel) {
+                java.io.File nuevo = new java.io.File(destino, f.getName());
+                if (nuevo.exists()) { existe++; continue; }
+                boolean hecho = f.renameTo(nuevo);
+                if (!hecho) {
+                    try (java.io.FileInputStream in = new java.io.FileInputStream(f);
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(nuevo)) {
+                        byte[] b = new byte[65536];
+                        int n;
+                        while ((n = in.read(b)) != -1) out.write(b, 0, n);
+                        out.flush();
+                        hecho = nuevo.length() == f.length() && f.delete();
+                        if (!hecho) { /* copiada pero no se pudo borrar el original */ rutas.add(nuevo.getAbsolutePath()); mal++; continue; }
+                    } catch (Exception e) { nuevo.delete(); }
+                }
+                if (hecho) { ok++; rutas.add(f.getAbsolutePath()); rutas.add(nuevo.getAbsolutePath()); } else mal++;
+            }
+            try { android.media.MediaScannerConnection.scanFile(this, rutas.toArray(new String[0]), null, null); } catch (Throwable ignorar) { }
+            final int ok2 = ok, ex2 = existe, mal2 = mal;
+            runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("✓ Hecho")
+                .setMessage("Movidas " + ok2 + " canciones a " + etiqueta + "."
+                    + (ex2 > 0 ? "\n" + ex2 + " no se movieron porque ya había una con el mismo nombre." : "")
+                    + (mal2 > 0 ? "\n" + mal2 + " no se han podido mover (Android no deja tocar archivos que creó otra app: muévelas tú desde Archivos)." : ""))
+                .setPositiveButton("OK", null).show());
         }).start();
     }
 
@@ -2922,11 +3107,12 @@ public class MainActivity extends Activity {
     // ESTILOS-KULI: menú de ordenar + carpetas por estilo con deshacer.
     private void ordenarMusica() {
         new AlertDialog.Builder(this).setTitle("🧹 Ordenar música")
-            .setItems(new String[]{"🧹 Ordenar y poner nombres", "🎨 Carpetas por estilo", "📥 Juntar música de otras carpetas", "↩ Deshacer el último movimiento"}, (d, i) -> {
+            .setItems(new String[]{"🧹 Ordenar y poner nombres", "🎨 Carpetas por estilo", "📥 Juntar música de otras carpetas", "↩ Deshacer el último movimiento", "🧺 Elegir canciones a mano"}, (d, i) -> {
                 if (i == 0) ordenarClasico();
                 else if (i == 1) ordenarPorEstilos();
                 else if (i == 2) juntarMusica();
-                else deshacerEstilos();
+                else if (i == 3) deshacerEstilos();
+                else elegirCancionesFuente(null);
             }).setNegativeButton("Cancelar", null).show();
     }
 
