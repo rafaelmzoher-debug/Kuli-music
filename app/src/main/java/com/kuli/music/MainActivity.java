@@ -2364,7 +2364,7 @@ public class MainActivity extends Activity {
         final ArrayList<String> todas = new ArrayList<>();
         String[] items = new String[claves.size() + 2]; // V346
         items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
-        items[1] = "🎨  Ordenar «Pop» (villancicos, etiquetas…)";
+        items[1] = "🎨  Ordenar «Pop» o «Flamenkito»…";
         for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
             items[i + 2] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
@@ -2399,16 +2399,29 @@ public class MainActivity extends Activity {
     }
 
     // V346: mira los artistas de las demás carpetas y propone sacar de «Pop» lo que tiene su sitio.
-    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V348
-        final ArrayList<String> pop0 = grupos.get("Pop");
-        if (pop0 == null || pop0.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
+    private String carpetaOrden = "Pop"; // V349
+
+    private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V349: elegir carpeta
+        final ArrayList<String> cands = new ArrayList<>();
+        for (String k : new String[]{"Pop", "Flamenkito"}) if (grupos.get(k) != null && !grupos.get(k).isEmpty()) cands.add(k);
+        if (cands.isEmpty()) { aviso("No hay carpetas Pop ni Flamenkito en el NAS"); return; }
+        String[] nom = new String[cands.size()];
+        for (int i = 0; i < nom.length; i++) nom[i] = "📁  " + cands.get(i) + "  (" + grupos.get(cands.get(i)).size() + ")";
+        new AlertDialog.Builder(this).setTitle("¿Qué carpeta ordenamos?")
+            .setItems(nom, (d, i) -> { carpetaOrden = cands.get(i); ordenarCarpetaNas(grupos); })
+            .setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void ordenarCarpetaNas(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final ArrayList<String> pop0 = grupos.get(carpetaOrden);
+        if (pop0 == null || pop0.isEmpty()) { aviso("No hay carpeta " + carpetaOrden + " en el NAS"); return; }
         String[] op = {
             "🎄  Villancicos → carpeta «Navidad»",
             "🏷  Leer título y artista de los «cancion_…»",
             "🌐  Con internet (iTunes)  ~" + Math.max(1, pop0.size() * 3 / 60) + " min",
             "🎨  Por artista (rápido)",
             "🗑  Quitar los que no tienen nombre"};
-        new AlertDialog.Builder(this).setTitle("🎨 Ordenar «Pop» (" + pop0.size() + ")")
+        new AlertDialog.Builder(this).setTitle("🎨 Ordenar «" + carpetaOrden + "» (" + pop0.size() + ")")
             .setItems(op, (d, i) -> {
                 if (i == 0) navidadPop(grupos);
                 else if (i == 1) etiquetasPop(grupos);
@@ -2433,7 +2446,7 @@ public class MainActivity extends Activity {
 
     private void navidadPop(final LinkedHashMap<String, ArrayList<String>> grupos) {
         ArrayList<String[]> plan = new ArrayList<>();
-        for (String r : grupos.get("Pop")) {
+        for (String r : grupos.get(carpetaOrden)) {
             String n = nombreSinExtension(r).replace('_', ' ');
             String et = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE).getString(r, "");
             if (esNavidad(n + " " + et)) plan.add(new String[]{r, "Navidad"});
@@ -2445,7 +2458,7 @@ public class MainActivity extends Activity {
         sb.append("\nSe moverán a la carpeta «Navidad». Se puede deshacer.");
         final ArrayList<String[]> p2 = plan;
         new AlertDialog.Builder(this).setTitle("🎄 Navidad").setMessage(sb.toString())
-            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(p2, "Pop"))
+            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(p2, carpetaOrden))
             .setNegativeButton("CANCELAR", null).show();
     }
 
@@ -2483,7 +2496,7 @@ public class MainActivity extends Activity {
 
     private void etiquetasPop(final LinkedHashMap<String, ArrayList<String>> grupos) {
         final ArrayList<String> pop = new ArrayList<>();
-        for (String r : grupos.get("Pop")) if (nombreSinExtension(r).startsWith("cancion_")) pop.add(r);
+        for (String r : grupos.get(carpetaOrden)) if (nombreSinExtension(r).startsWith("cancion_")) pop.add(r);
         if (pop.isEmpty()) { aviso("No hay archivos «cancion_…» en Pop"); return; }
         final android.content.SharedPreferences memo = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
         aviso("Leyendo " + pop.size() + " archivos del NAS… puede tardar unos minutos");
@@ -2522,7 +2535,7 @@ public class MainActivity extends Activity {
                             String[] t = v.split("\t", -1);
                             String est = esNavidad(t[0] + " " + t[1]) ? "Navidad"
                                 : detectarEstiloPersonalizado(t[1], t[0], "", 0);
-                            if (est != null && !est.equals("Pop")) plan.add(new String[]{r, est});
+                            if (est != null && !est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop"))) plan.add(new String[]{r, est});
                         }
                         if (++hechos % 50 == 0) { final String m = "Leídos " + hechos + " de " + pop.size() + "…"; runOnUiThread(() -> aviso(m)); }
                     }
@@ -2542,7 +2555,7 @@ public class MainActivity extends Activity {
                 } else {
                     sb.append("\n\n").append(plan.size()).append(" cambian de carpeta por su etiqueta. Se puede deshacer.");
                     new AlertDialog.Builder(this).setTitle("🏷 Etiquetas").setMessage(sb.toString())
-                        .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+                        .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, carpetaOrden))
                         .setNegativeButton("AHORA NO", null).show();
                 }
             });
@@ -2554,7 +2567,7 @@ public class MainActivity extends Activity {
         final android.content.SharedPreferences memo = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
         final ArrayList<String> malas = new ArrayList<>();
         int sinMirar = 0;
-        for (String r : grupos.get("Pop")) {
+        for (String r : grupos.get(carpetaOrden)) {
             if (!nombreSinExtension(r).startsWith("cancion_")) continue;
             String v = memo.getString(r, null);
             if (v == null) sinMirar++;
@@ -2606,7 +2619,7 @@ public class MainActivity extends Activity {
     // V347: pregunta a iTunes el género de cada canción de Pop y propone moverla a su estilo.
     private void reclasificarPopInternet(final LinkedHashMap<String, ArrayList<String>> grupos) {
         if (!hayWifi()) { aviso("Necesitas WiFi o datos para esto"); return; }
-        final ArrayList<String> pop = new ArrayList<>(grupos.get("Pop"));
+        final ArrayList<String> pop = new ArrayList<>(grupos.get(carpetaOrden));
         final android.content.SharedPreferences memo = getSharedPreferences("kuli_itunes_genero", MODE_PRIVATE);
         aviso("Preguntando a iTunes… puedes dejar la app abierta");
         new Thread(() -> {
@@ -2625,7 +2638,7 @@ public class MainActivity extends Activity {
                 }
                 String est = estiloDeGenero(genero);
                 if (est == null) sinDato++;
-                else if (!est.equals("Pop")) {
+                else if (!est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop")) && !(!carpetaOrden.equals("Pop") && detectarEstiloPersonalizado(nombreSinExtension(r).replace('_', ' '), "", "", 0).equals(carpetaOrden))) {
                     plan.add(new String[]{r, est});
                     Integer v = resumen.get(est);
                     resumen.put(est, v == null ? 1 : v + 1);
@@ -2643,19 +2656,19 @@ public class MainActivity extends Activity {
                 for (java.util.Map.Entry<String, Integer> e : resumen.entrySet()) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
                 sb.append("\nSin dato en iTunes: ").append(sd).append(" (se quedan en Pop).\nSe puede deshacer.");
                 new AlertDialog.Builder(this).setTitle("🌐 Reclasificar «Pop»").setMessage(sb.toString())
-                    .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+                    .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, carpetaOrden))
                     .setNegativeButton("CANCELAR", null).show();
             });
         }).start();
     }
 
     private void reclasificarPopPorArtista(final LinkedHashMap<String, ArrayList<String>> grupos) {
-        final ArrayList<String> pop = grupos.get("Pop");
+        final ArrayList<String> pop = grupos.get(carpetaOrden);
         if (pop == null || pop.isEmpty()) { aviso("No hay carpeta Pop en el NAS"); return; }
         java.util.HashMap<String, java.util.HashMap<String, Integer>> cuenta = new java.util.HashMap<>();
         for (java.util.Map.Entry<String, ArrayList<String>> e : grupos.entrySet()) {
             String est = e.getKey();
-            if (est.equals("Pop") || est.equals("Sin clasificar")) continue;
+            if (est.equals(carpetaOrden) || est.equals("Sin clasificar")) continue;
             for (String r : e.getValue()) {
                 String a = artistaDeNombreNas(r);
                 if (a == null) continue;
@@ -2686,7 +2699,7 @@ public class MainActivity extends Activity {
         for (java.util.Map.Entry<String, Integer> e : resumen.entrySet()) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
         sb.append("\nEl resto se queda en Pop. Se puede deshacer.");
         new AlertDialog.Builder(this).setTitle("🎨 Reclasificar «Pop»").setMessage(sb.toString())
-            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, "Pop"))
+            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, carpetaOrden))
             .setNegativeButton("CANCELAR", null).show();
     }
 
