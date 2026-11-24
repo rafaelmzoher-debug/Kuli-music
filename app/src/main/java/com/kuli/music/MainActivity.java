@@ -2761,15 +2761,24 @@ public class MainActivity extends Activity {
     // ---------- Modo DJ: 4 canciones de un estilo, luego otro estilo ----------
     private void modoDj(LinkedHashMap<String, ArrayList<String>> grupos) {
         java.util.Random azar = new java.util.Random();
+        final android.content.SharedPreferences hp = getSharedPreferences("kuli_dj_hist", MODE_PRIVATE); // V350
+        final java.util.HashSet<String> histDj = new java.util.HashSet<>();
+        final ArrayList<String> histLista = new ArrayList<>();
+        for (String l : hp.getString("h", "").split("\n")) if (!l.isEmpty()) { histDj.add(l); histLista.add(l); }
         LinkedHashMap<String, ArrayList<String>> baraja = new LinkedHashMap<>();
         for (String k : grupos.keySet()) {
             if (k.equals("Sin clasificar") || grupos.get(k).isEmpty()) continue;
             if (k.equals("Navidad") && !temporadaNavidad()) continue; // V348
             ArrayList<String> c = new ArrayList<>(grupos.get(k));
             Collections.shuffle(c, azar);
-            baraja.put(k, c);
+            // V350: las que sonaron en las últimas mezclas se dejan para el final de su carpeta.
+            ArrayList<String> frescas = new ArrayList<>(), viejas = new ArrayList<>();
+            for (String r : c) (histDj.contains(r) ? viejas : frescas).add(r);
+            frescas.addAll(viejas);
+            baraja.put(k, frescas);
         }
         if (baraja.size() < 2) { aviso("Para el DJ hacen falta al menos 2 estilos con canciones"); return; }
+        final java.util.HashMap<String, Integer> usados = new java.util.HashMap<>(); // V350: bloques ya puestos por estilo
         ArrayList<String> orden = new ArrayList<>();
         StringBuilder secuencia = new StringBuilder();
         String ultimo = null;
@@ -2779,12 +2788,22 @@ public class MainActivity extends Activity {
             for (String k : baraja.keySet()) if (!baraja.get(k).isEmpty() && !k.equals(ultimo)) candidatos.add(k);
             if (candidatos.isEmpty()) for (String k : baraja.keySet()) if (!baraja.get(k).isEmpty()) candidatos.add(k);
             if (candidatos.isEmpty()) break;
-            String estilo = candidatos.get(azar.nextInt(candidatos.size()));
+            // V350: se elige entre los estilos que menos bloques llevan, para que ninguno (Flamenkito, Pop…) lo tape todo.
+            int minB = Integer.MAX_VALUE;
+            for (String k : candidatos) { Integer u = usados.get(k); if ((u == null ? 0 : u) < minB) minB = u == null ? 0 : u; }
+            ArrayList<String> menos = new ArrayList<>();
+            for (String k : candidatos) { Integer u = usados.get(k); if ((u == null ? 0 : u) == minB) menos.add(k); }
+            String estilo = menos.get(azar.nextInt(menos.size()));
+            usados.put(estilo, minB + 1);
             ArrayList<String> lista = baraja.get(estilo);
             for (int i = 0; i < 4 && !lista.isEmpty(); i++) orden.add(lista.remove(0));
             if (bloques++ < 6) secuencia.append(secuencia.length() == 0 ? "" : " → ").append(estilo);
             ultimo = estilo;
         }
+        // V350: se recuerdan las primeras 150 de esta mezcla (las últimas 400 en total).
+        for (int i = 0; i < orden.size() && i < 150; i++) if (!histDj.contains(orden.get(i))) { histLista.add(orden.get(i)); histDj.add(orden.get(i)); }
+        while (histLista.size() > 400) histLista.remove(0);
+        hp.edit().putString("h", android.text.TextUtils.join("\n", histLista)).apply();
         aleatorio = false;
         estiloBoton(mezcla, APAGADO, 1000);
         aviso("🎛 DJ: " + secuencia + " …");
