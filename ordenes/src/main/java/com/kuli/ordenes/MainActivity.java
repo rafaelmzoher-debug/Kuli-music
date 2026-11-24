@@ -682,7 +682,7 @@ public class MainActivity extends Activity {
         bus.setOnClickListener(v -> buscarEquipo());
         p.addView(bus, margen(-1, dp(46), 8));
         LinearLayout filaC = new LinearLayout(this);
-        Button med = boton("🧾 A medias", false);
+        Button med = boton("🧾 Qué me falta por justificar", false);
         med.setOnClickListener(v -> ordenesAMedias());
         filaC.addView(med, new LinearLayout.LayoutParams(0, dp(46), 1f));
         Button mes = boton("📊 Resumen del mes", false);
@@ -943,6 +943,9 @@ public class MainActivity extends Activity {
         Button mat = boton("🔲  Escanear equipo usado (sale del almacén)", false);
         mat.setOnClickListener(v -> materialUsado(nombre));
         p.addView(mat, margen(-1, dp(46), 8));
+        Button rosB = boton("🔌  Rosetas (no tocan el almacén)", false); // V230
+        rosB.setOnClickListener(v -> rosetasSinAlmacen(nombre));
+        p.addView(rosB, margen(-1, dp(46), 8));
         LinearLayout filaB = new LinearLayout(this);
         Button ret = boton("↩  Equipo retirado", false);
         ret.setOnClickListener(v -> retirarSeguido(nombre));
@@ -1874,25 +1877,40 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Órdenes a medias ----------
-    private void ordenesAMedias() {
-        StringBuilder sinFoto = new StringBuilder(), sinMat = new StringBuilder();
+    private void ordenesAMedias() { // V230: qué falta en cada orden sin cerrar
         File[] dirs = raiz.listFiles();
+        final ArrayList<String> nombres = new ArrayList<>();
+        final ArrayList<String> lineas = new ArrayList<>();
         if (dirs != null) {
             Arrays.sort(dirs);
-            for (File d : dirs) {
+            for (int k = dirs.length - 1; k >= 0; k--) { // las más recientes primero
+                File d = dirs[k];
                 if (!d.isDirectory() || d.getName().equals("Albaranes") || new File(d, "cerrada.txt").exists()) continue;
-                int fotos = fotosDe(d.getName()).size();
-                int mat = leerMaterial(d.getName()).size();
-                if (fotos == 0 && mat > 0) sinFoto.append("• ").append(d.getName()).append("\n");
-                else if (fotos > 0 && mat == 0) sinMat.append("• ").append(d.getName()).append("\n");
+                String o = d.getName();
+                ArrayList<String> faltan = new ArrayList<>();
+                int fotos = fotosDe(o).size();
+                int mat = leerMaterial(o).size();
+                if (fotos == 0) faltan.add("fotos");
+                if (mat == 0) faltan.add("material");
+                java.util.Collection<String> tags = leerEtiquetas(o).values();
+                if (fotos > 0) for (String t : new String[]{"ONT", "Roseta", "Test/Potencia"}) if (!tags.contains(t)) faltan.add("foto " + t);
+                if (new File(d, "datos.txt").exists() == false) faltan.add("datos");
+                nombres.add(o);
+                lineas.add(o + "\n   " + (faltan.isEmpty() ? "solo falta cerrarla" : "falta: " + android.text.TextUtils.join(", ", faltan)));
             }
         }
-        String m = "";
-        if (sinFoto.length() > 0) m += "📷 Con material pero SIN foto:\n" + sinFoto + "\n";
-        if (sinMat.length() > 0) m += "📦 Con foto pero SIN material apuntado:\n" + sinMat;
-        new AlertDialog.Builder(this).setTitle(m.isEmpty() ? "✔ Todas las órdenes completas" : "🧾 Órdenes a medias")
-            .setMessage(m.isEmpty() ? "Todas tus órdenes tienen foto y material apuntado." : m.trim())
+        if (nombres.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("✔ Todas las órdenes cerradas")
+                .setMessage("No tienes ninguna orden pendiente de justificar.").setPositiveButton("CERRAR", null).show();
+            return;
+        }
+        int max = Math.min(nombres.size(), 80);
+        String[] items = new String[max];
+        for (int i = 0; i < max; i++) items[i] = lineas.get(i);
+        new AlertDialog.Builder(this).setTitle("🧾 Qué me falta · " + nombres.size() + (nombres.size() == 1 ? " orden" : " órdenes"))
+            .setItems(items, (d, i) -> mostrarOrden(nombres.get(i)))
             .setPositiveButton("CERRAR", null).show();
+        if (nombres.size() > max) aviso("Se muestran las " + max + " más recientes de " + nombres.size());
     }
 
     private double numero(String t) {
