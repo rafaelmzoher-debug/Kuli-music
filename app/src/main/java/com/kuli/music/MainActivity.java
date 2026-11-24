@@ -2367,7 +2367,7 @@ public class MainActivity extends Activity {
         final ArrayList<String> todas = new ArrayList<>();
         String[] items = new String[claves.size() + 2]; // V346
         items[0] = "🎛  MODO DJ  (4 de cada estilo y cambia)";
-        items[1] = "🎨  Ordenar «Pop» o «Flamenkito»…";
+        items[1] = "🎨  Ordenar «Pop», «Flamenkito» o «Latino»…";
         for (int i = 0; i < claves.size(); i++) {
             ArrayList<String> lista = grupos.get(claves.get(i));
             items[i + 2] = "📁  " + claves.get(i) + "  (" + lista.size() + ")";
@@ -2415,7 +2415,7 @@ public class MainActivity extends Activity {
 
     private void reclasificarPopNas(final LinkedHashMap<String, ArrayList<String>> grupos) { // V349: elegir carpeta
         final ArrayList<String> cands = new ArrayList<>();
-        for (String k : new String[]{"Pop", "Flamenkito"}) if (grupos.get(k) != null && !grupos.get(k).isEmpty()) cands.add(k);
+        for (String k : new String[]{"Pop", "Flamenkito", "Latino"}) if (grupos.get(k) != null && !grupos.get(k).isEmpty()) cands.add(k);
         if (cands.isEmpty()) { aviso("No hay carpetas Pop ni Flamenkito en el NAS"); return; }
         String[] nom = new String[cands.size()];
         for (int i = 0; i < nom.length; i++) nom[i] = "📁  " + cands.get(i) + "  (" + grupos.get(cands.get(i)).size() + ")";
@@ -2432,14 +2432,16 @@ public class MainActivity extends Activity {
             "🏷  Leer título y artista de los «cancion_…»",
             "🌐  Con internet (iTunes)  ~" + Math.max(1, pop0.size() * 3 / 60) + " min",
             "🎨  Por artista (rápido)",
-            "🗑  Quitar los que no tienen nombre"};
+            "🗑  Quitar los que no tienen nombre",
+            "🔤  Por nombre (artistas conocidos)"};
         new AlertDialog.Builder(this).setTitle("🎨 Ordenar «" + carpetaOrden + "» (" + pop0.size() + ")")
             .setItems(op, (d, i) -> {
                 if (i == 0) navidadPop(grupos);
                 else if (i == 1) etiquetasPop(grupos);
                 else if (i == 2) reclasificarPopInternet(grupos);
                 else if (i == 3) reclasificarPopPorArtista(grupos);
-                else quitarSinNombre(grupos);
+                else if (i == 4) quitarSinNombre(grupos);
+                else porNombreCarpeta(grupos);
             })
             .setNegativeButton("CANCELAR", null).show();
     }
@@ -2549,7 +2551,7 @@ public class MainActivity extends Activity {
                             String[] t = v.split("\t", -1);
                             String est = esNavidad(t[0] + " " + t[1]) ? "Navidad"
                                 : detectarEstiloPersonalizado(t[1], t[0], "", 0);
-                            if (est != null && !est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop"))) plan.add(new String[]{r, est});
+                            if (est != null && !est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop")) && !(carpetaOrden.equals("Flamenkito") && est.equals("Latino"))) plan.add(new String[]{r, est});
                         }
                         if (++hechos % 50 == 0) { final String m = "Leídos " + hechos + " de " + pop.size() + "…"; runOnUiThread(() -> aviso(m)); }
                     }
@@ -2575,6 +2577,33 @@ public class MainActivity extends Activity {
             });
         } finally { runOnUiThread(() -> pantallaFija(false)); }
         }).start();
+    }
+
+    // V352: mira el nombre y el artista de cada canción con las listas de la app y propone moverla si es de otro estilo.
+    private void porNombreCarpeta(final LinkedHashMap<String, ArrayList<String>> grupos) {
+        final android.content.SharedPreferences etq = getSharedPreferences("kuli_etiquetas", MODE_PRIVATE);
+        final ArrayList<String[]> plan = new ArrayList<>();
+        final TreeMap<String, Integer> resumen = new TreeMap<>();
+        for (String r : grupos.get(carpetaOrden)) {
+            String n = nombreSinExtension(r).replace('_', ' ');
+            String t = etq.getString(r, "");
+            if (t.contains("\t")) n = n + " " + t.replace('\t', ' ');
+            String est = detectarEstiloPersonalizado(n, "", "", 0);
+            if (est == null || est.equals(carpetaOrden)) continue;
+            if (est.equals("Pop") || est.equals("Sin clasificar")) continue; // «Pop» es lo que sale cuando no sabe
+            plan.add(new String[]{r, est});
+            Integer v = resumen.get(est);
+            resumen.put(est, v == null ? 1 : v + 1);
+        }
+        if (plan.isEmpty()) { aviso("Por el nombre no encuentro ninguna que sea de otro estilo"); return; }
+        StringBuilder sb = new StringBuilder(plan.size() + " de las " + grupos.get(carpetaOrden).size() + " canciones de «" + carpetaOrden + "» son de otro estilo por su nombre:\n\n");
+        for (java.util.Map.Entry<String, Integer> e : resumen.entrySet()) sb.append("• ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+        sb.append("\nEjemplos:\n");
+        for (int i = 0; i < plan.size() && i < 6; i++) sb.append("– ").append(nombreSinExtension(plan.get(i)[0])).append(" → ").append(plan.get(i)[1]).append("\n");
+        sb.append("\nSe puede deshacer.");
+        new AlertDialog.Builder(this).setTitle("🔤 Por nombre").setMessage(sb.toString())
+            .setPositiveButton("MOVER", (d, w) -> moverVariasNas(plan, carpetaOrden))
+            .setNegativeButton("CANCELAR", null).show();
     }
 
     // V348: los «cancion_…» que se han mirado y no llevan nada dentro, se apartan a «KULI PAPELERA» (fuera de la música). Se pueden recuperar.
@@ -2655,7 +2684,7 @@ public class MainActivity extends Activity {
                 }
                 String est = estiloDeGenero(genero);
                 if (est == null) sinDato++;
-                else if (!est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop")) && !(!carpetaOrden.equals("Pop") && detectarEstiloPersonalizado(nombreSinExtension(r).replace('_', ' '), "", "", 0).equals(carpetaOrden))) {
+                else if (!est.equals(carpetaOrden) && (carpetaOrden.equals("Pop") || !est.equals("Pop")) && !(carpetaOrden.equals("Flamenkito") && est.equals("Latino")) && !(!carpetaOrden.equals("Pop") && detectarEstiloPersonalizado(nombreSinExtension(r).replace('_', ' '), "", "", 0).equals(carpetaOrden))) {
                     plan.add(new String[]{r, est});
                     Integer v = resumen.get(est);
                     resumen.put(est, v == null ? 1 : v + 1);
@@ -2722,6 +2751,8 @@ public class MainActivity extends Activity {
     }
 
     // V346: mueve varias canciones del NAS de carpeta. plan = {rutaRelativa, estiloDestino}. estiloOrigen = el que había (para deshacer).
+    private final String[] motivoFallo = {""}; // V352
+
     private void moverVariasNas(final ArrayList<String[]> plan, final String estiloOrigen) {
         aviso("Moviendo " + plan.size() + " canciones… no cierres la app");
         new Thread(() -> {
@@ -2732,6 +2763,7 @@ public class MainActivity extends Activity {
                 final ArrayList<String[]> ok = new ArrayList<>();
                 final int[] mal = {0};
                 conNas(disco -> {
+                    motivoFallo[0] = "";
                     java.util.HashSet<String> creadas = new java.util.HashSet<>();
                     for (String[] p : lote) {
                         try {
@@ -2741,7 +2773,7 @@ public class MainActivity extends Activity {
                             if (creadas.add(estilo) && !disco.folderExists("KULI MUSIC\\" + estilo)) disco.mkdir("KULI MUSIC\\" + estilo);
                             String origen = "KULI MUSIC\\" + p[0].replace('/', '\\');
                             String destino = "KULI MUSIC\\" + estilo + "\\" + archivo;
-                            if (disco.fileExists(destino)) { mal[0]++; continue; }
+                            if (disco.fileExists(destino)) { mal[0]++; if (motivoFallo[0].isEmpty()) motivoFallo[0] = "Ya existe en destino: " + destino; continue; }
                             try (File f = disco.openFile(origen,
                                     EnumSet.of(AccessMask.DELETE), null, SMB2ShareAccess.ALL,
                                     SMB2CreateDisposition.FILE_OPEN,
@@ -2749,7 +2781,7 @@ public class MainActivity extends Activity {
                                 f.rename(destino);
                             }
                             ok.add(new String[]{p[0], estilo + "/" + archivo});
-                        } catch (Exception e) { mal[0]++; }
+                        } catch (Exception e) { mal[0]++; if (motivoFallo[0].isEmpty()) motivoFallo[0] = e.getClass().getSimpleName() + ": " + e.getMessage() + " [" + p[0] + "]"; }
                     }
                     return null;
                 });
@@ -2765,7 +2797,8 @@ public class MainActivity extends Activity {
                 final ArrayList<String[]> inverso = new ArrayList<>();
                 for (String[] h : hechas) inverso.add(new String[]{h[1], estiloOrigen});
                 AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("✓ Hecho")
-                    .setMessage("Movidas " + hechas.size() + " canciones" + (f2 > 0 ? " (" + f2 + " no se han podido mover)" : "") + ".")
+                    .setMessage("Movidas " + hechas.size() + " canciones" + (f2 > 0 ? " (" + f2 + " no se han podido mover)" : "") + "."
+                        + (f2 > 0 && !motivoFallo[0].isEmpty() ? "\n\nMotivo del primer fallo:\n" + motivoFallo[0] : ""))
                     .setPositiveButton("OK", (d, w) -> abrirListaNas());
                 if (!inverso.isEmpty()) b.setNeutralButton("↩ DESHACER", (d, w) -> moverVariasNas(inverso, "Pop"));
                 b.show();
@@ -4601,6 +4634,8 @@ public class MainActivity extends Activity {
         for (String h : h26) if (todo.contains(simple(h))) return "Novedades 2026";
         String[] fl = {"flamenc", "bordon 4", "asi canta jerez", "paloma blanca", "los del rio", "el mani", "camela", "estopa", "melendi", "el barrio", "niña pastori", "nina pastori", "india martinez", "fondo flamenco", "decai", "rebujitos", "canelita", "galvan real", "daviles", "keen levy", "nyno vargas", "moncho chavea", "omar montes", "maka", "original elias", "demarco", "chambao", "ketama", "paco de lucia", "camaron", "jose merce", "diego el cigala", "estrella morente", "falete", "parrita", "bambino", "chiquetete", "manzanita", "peret", "kiko veneno", "juanito makande", "el canijo", "tomasito", "la hungara", "maria artes", "el tren de los sueños", "son de sol", "las chuches", "los caños", "andy", "lucas", "kiko y shara", "raya real", "siempre asi", "requiebros", "ecos del rocio", "cantores de hispalis", "los marismeños", "sevillanas", "rumba"};
         for (String f : fl) if (todo.contains(simple(f))) return "Flamenkito";
+        String[] ba = {"camilo sesto", "julio iglesias", "jose luis perales", "nino bravo", "raphael", "jose jose", "rocio durcal", "luis miguel", "juan gabriel", "mocedades", "dyango", "jose luis rodriguez", "roberto carlos", "umberto tozzi", "nino bravo", "los panchos", "emmanuel", "marco antonio solis", "pimpinela", "chayanne", "ricardo montaner", "alejandro fernandez", "jose feliciano", "dioni", "manuel mijares", "jarabe de palo", "cesar vidal"}; // V352
+        for (String b : ba) if (todo.contains(simple(b))) return "Baladas";
         String aprendido = estiloAprendido(aut); // V345: el estilo que ya le diste a otras canciones del mismo artista
         if (aprendido != null) return aprendido;
         String est = estiloDeGenero(gen);
