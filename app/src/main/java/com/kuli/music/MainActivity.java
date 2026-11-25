@@ -124,6 +124,8 @@ public class MainActivity extends Activity {
     private boolean esRadio = false;
     private Uri ultimaUri = null;
     private int posicionPendienteMs = 0;
+    
+    private AlertDialog dialogBusquedaRef = null;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     // Escudo propio de KULI (dibujado a mano, original).
@@ -600,6 +602,8 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
+        ui.removeCallbacks(fundido);
+        ui.removeCallbacks(rampaMezcla);
         try {
             if (instancia == this && reproductor != null && uriActual != null && !esRadio) {
                 getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit()
@@ -609,6 +613,14 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) { }
         super.onPause();
+    }
+
+    @Override protected void onDestroy() {
+        ui.removeCallbacksAndMessages(null);
+        if (dialogBusquedaRef != null && dialogBusquedaRef.isShowing()) {
+            dialogBusquedaRef.dismiss();
+        }
+        super.onDestroy();
     }
 
     // ---------- Ayudas de diseño ----------
@@ -4406,22 +4418,18 @@ public class MainActivity extends Activity {
             nombres.add("🎵 " + f.getName().replace(".mp3", "").replace(".m4a", "") + rel);
         }
         final int nAlb = carpetasAlbum.size();
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("Mi música del móvil (" + nAlb + " álbumes · " + lista.size() + " temas)")
-                .setItems(nombres.toArray(new String[0]), (d, i) -> {
-                    if (i == 0) {
-                        java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
-                        for (java.io.File f : lista) uris.add(Uri.fromFile(f));
-                        subirAutomatico(uris, null);
-                    } else if (i <= nAlb) {
-                        abrirVistaAlbumConPortada(carpetasAlbum.get(i - 1));
-                    } else {
-                        java.io.File sel = lista.get(i - 1 - nAlb);
-                        reproducir(Uri.fromFile(sel));
-                    }
-                })
-                .setNegativeButton("Cerrar", null)
-                .show();
+        mostrarListaConBusqueda("Mi música del móvil (" + nAlb + " álbumes · " + lista.size() + " temas)", nombres, (d, i) -> {
+            if (i == 0) {
+                java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+                for (java.io.File f : lista) uris.add(Uri.fromFile(f));
+                subirAutomatico(uris, null);
+            } else if (i <= nAlb) {
+                abrirVistaAlbumConPortada(carpetasAlbum.get(i - 1));
+            } else {
+                java.io.File sel = lista.get(i - 1 - nAlb);
+                reproducir(Uri.fromFile(sel));
+            }
+        });
     }
 
     private void abrirVistaAlbumConPortada(java.io.File carpetaAlbum) {
@@ -4473,6 +4481,57 @@ public class MainActivity extends Activity {
             dlg.dismiss();
         });
         dlg.show();
+    }
+
+    private static class BusquedaItem {
+        String nombre;
+        int originalIndex;
+        BusquedaItem(String n, int i) { nombre = n; originalIndex = i; }
+        @Override public String toString() { return nombre; }
+    }
+
+    private void mostrarListaConBusqueda(String titulo, List<String> opciones, final android.content.DialogInterface.OnClickListener listener) {
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        builder.setTitle(titulo);
+
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        final android.widget.EditText searchBox = new android.widget.EditText(this);
+        searchBox.setHint("Buscar...");
+        searchBox.setSingleLine(true);
+        layout.addView(searchBox);
+
+        final android.widget.ListView listView = new android.widget.ListView(this);
+        final java.util.ArrayList<BusquedaItem> items = new java.util.ArrayList<>();
+        for (int i = 0; i < opciones.size(); i++) items.add(new BusquedaItem(opciones.get(i), i));
+        
+        final android.widget.ArrayAdapter<BusquedaItem> adapter = new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new java.util.ArrayList<>(items));
+        listView.setAdapter(adapter);
+        layout.addView(listView);
+
+        searchBox.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                adapter.clear();
+                String filter = s.toString().toLowerCase();
+                for (BusquedaItem item : items) {
+                    if (item.nombre.toLowerCase().contains(filter)) adapter.add(item);
+                }
+            }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        builder.setView(layout);
+        final android.app.AlertDialog dialog = builder.create();
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            BusquedaItem item = adapter.getItem(position);
+            listener.onClick(dialog, item.originalIndex);
+            dialog.dismiss();
+        });
+        builder.setNegativeButton("Cerrar", null);
+        dialog.show();
     }
 
     private void recolectarMp3Directo(java.io.File dir, java.util.List<java.io.File> out) {
