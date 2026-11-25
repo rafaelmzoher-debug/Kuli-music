@@ -507,6 +507,12 @@ public class MainActivity extends Activity {
         descargas.setOnLongClickListener(v -> { elegirCarpetaDescargas(); return true; });
         pantalla.addView(descargas, new LinearLayout.LayoutParams(-1, -2));
 
+        TextView revision = texto("🗑  Gestionar archivos en REVISIÓN", 13, Color.RED);
+        revision.setPadding(dp(12), dp(6), dp(12), dp(6));
+        revision.setGravity(Gravity.CENTER_HORIZONTAL);
+        revision.setOnClickListener(v -> gestionarRevision());
+        pantalla.addView(revision, new LinearLayout.LayoutParams(-1, -2));
+
         TextView pie = texto("✦ KULI EDITION ✦", 10, ORO);
         pie.setAlpha(0.7f);
         pie.setLetterSpacing(0.2f);
@@ -905,14 +911,37 @@ public class MainActivity extends Activity {
     }
 
     
+    private boolean esNombreValido(String nombre) {
+        if (nombre == null) return false;
+        String n = nombre.toLowerCase().trim();
+        if (n.isEmpty() || n.matches("^[0-9]+$")) return false;
+        String[] invalidos = {"track", "unknown", "audio", "sin titulo"};
+        for (String inv : invalidos) if (n.contains(inv)) return false;
+        return true;
+    }
+
+    private String obtenerEstilo(InfoPista ip) {
+        String genero = (ip.art != null ? ip.art : "") + " " + (ip.alb != null ? ip.alb : "") + " " + (ip.tit != null ? ip.tit : "");
+        genero = genero.toLowerCase();
+        if (genero.contains("flamenkito") || genero.contains("flamenco")) return "Flamenkito";
+        if (genero.contains("latino") || genero.contains("reggaeton") || genero.contains("salsa")) return "Latino";
+        if (genero.contains("pop")) return "Pop";
+        if (genero.contains("rock")) return "Rock";
+        if (genero.contains("electro") || genero.contains("dance")) return "Electrónica";
+        return "Otros";
+    }
+
     private void autoOrganizarAlbumesDescargados(boolean avisarSiNada) {
         try {
             java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
             java.io.File prism = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Prism_MP3");
             java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
             java.io.File dirAlbumes = new java.io.File(baseKuli, "Álbumes");
-            java.io.File dirSueltas = new java.io.File(baseKuli, "Sueltas");
-            dirAlbumes.mkdirs(); dirSueltas.mkdirs();
+            java.io.File dirRevision = new java.io.File(baseKuli, "Revisión");
+            dirAlbumes.mkdirs(); dirRevision.mkdirs();
+            
+            String[] estilos = {"Flamenkito", "Latino", "Pop", "Rock", "Electrónica", "Otros"};
+            for (String e : estilos) new java.io.File(baseKuli, e).mkdirs();
 
             java.util.ArrayList<java.io.File> cand = new java.util.ArrayList<>();
             for (java.io.File dir : new java.io.File[]{dl, prism}) {
@@ -962,6 +991,12 @@ public class MainActivity extends Activity {
             final java.util.ArrayList<Uri> urisParaNas = new java.util.ArrayList<>();
             java.util.HashSet<String> albumesCreados = new java.util.HashSet<>();
             for (InfoPista ip : infos) {
+                if (!esNombreValido(ip.tit)) {
+                    java.io.File destFile = new java.io.File(dirRevision, ip.f.getName());
+                    ip.f.renameTo(destFile);
+                    continue;
+                }
+
                 String ext = ip.f.getName().contains(".") ? ip.f.getName().substring(ip.f.getName().lastIndexOf(".")) : ".m4a";
                 String kAlb = ip.alb.trim().toLowerCase();
                 boolean esAlbum = !kAlb.isEmpty() && conteoAlb.getOrDefault(kAlb, 0) >= 2;
@@ -992,7 +1027,7 @@ public class MainActivity extends Activity {
                         }
                     }
                 } else {
-                    destinoDir = dirSueltas;
+                    destinoDir = new java.io.File(baseKuli, obtenerEstilo(ip));
                     nombreFinal = (!artLimpio.isEmpty() ? (artLimpio + " - " + titLimpio) : titLimpio) + ext;
                 }
 
@@ -1022,6 +1057,7 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {}
     }
+
 
     private void clasificarDescargas() {
         new Thread(() -> autoOrganizarAlbumesDescargados(true)).start();
@@ -3796,10 +3832,34 @@ public class MainActivity extends Activity {
         subirVariasAlNas(uris, estiloElegido, alSubir, null);
     }
 
+    private void gestionarRevision() {
+        java.io.File baseKuli = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "KULI MUSIC");
+        java.io.File dirRevision = new java.io.File(baseKuli, "Revisión");
+        if (!dirRevision.exists() || dirRevision.listFiles() == null || dirRevision.listFiles().length == 0) {
+            aviso("Carpeta Revisión vacía");
+            return;
+        }
+        final java.io.File[] archivos = dirRevision.listFiles();
+        String[] nombres = new String[archivos.length];
+        for (int i = 0; i < archivos.length; i++) nombres[i] = archivos[i].getName();
+        new AlertDialog.Builder(this)
+            .setTitle("🗑 Archivos en REVISIÓN (" + archivos.length + ")")
+            .setItems(nombres, (d, i) -> {
+                new AlertDialog.Builder(this).setTitle(nombres[i])
+                    .setPositiveButton("Borrar", (d2, w2) -> { archivos[i].delete(); gestionarRevision(); })
+                    .setNegativeButton("Cerrar", null).show();
+            })
+            .setPositiveButton("Vaciar todo", (d, w) -> {
+                for (java.io.File f : archivos) f.delete();
+                aviso("Revisión vaciada");
+            })
+            .setNegativeButton("Cerrar", null).show();
+    }
+
     private void subirVariasAlNas(final List<Uri> uris, String estiloElegido,
                                   final java.util.function.Consumer<Uri> alSubir, final Runnable alFin) {
         String carpeta = estiloElegido.replaceAll("[\\/:*?\"<>|]", "_").trim();
-        if (carpeta.isEmpty()) carpeta = "Sin clasificar";
+        if (carpeta.isEmpty() || carpeta.equalsIgnoreCase("Revisión")) carpeta = "Sin clasificar";
         final String estilo = carpeta;
         final int total = uris.size();
         aviso("Subiendo " + total + " al NAS (" + estilo + ")…");
@@ -3820,7 +3880,7 @@ public class MainActivity extends Activity {
                     java.util.HashSet<String> existentes = new java.util.HashSet<>();
                     for (var f : disco.list("KULI MUSIC")) {
                         String n = f.getFileName();
-                        if (n.equals(".") || n.equals("..")) continue;
+                        if (n.equals(".") || n.equals("..") || n.equalsIgnoreCase("Revisión")) continue;
                         if ((f.getFileAttributes() & 0x10L) != 0) {
                             for (var g : disco.list("KULI MUSIC\\\\" + n))
                                 if ((g.getFileAttributes() & 0x10L) == 0) existentes.add(claveNombre(g.getFileName()));
