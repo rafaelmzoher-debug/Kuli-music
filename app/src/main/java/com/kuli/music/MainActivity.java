@@ -602,8 +602,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause() {
         ui.removeCallbacks(ticker);
-        ui.removeCallbacks(fundido);
-        ui.removeCallbacks(rampaMezcla);
+        // V354: NO se paran fundido ni rampaMezcla aquí: el DJ tiene que seguir mezclando con la pantalla apagada o en el coche.
         try {
             if (instancia == this && reproductor != null && uriActual != null && !esRadio) {
                 getSharedPreferences("kuli_ajustes", MODE_PRIVATE).edit()
@@ -4524,13 +4523,14 @@ public class MainActivity extends Activity {
         });
 
         builder.setView(layout);
+        builder.setNegativeButton("Cerrar", null); // V354: antes estaba después de create() y no salía
         final android.app.AlertDialog dialog = builder.create();
+        dialogBusquedaRef = dialog;
         listView.setOnItemClickListener((parent, view, position, id) -> {
             BusquedaItem item = adapter.getItem(position);
             listener.onClick(dialog, item.originalIndex);
             dialog.dismiss();
         });
-        builder.setNegativeButton("Cerrar", null);
         dialog.show();
     }
 
