@@ -2688,11 +2688,47 @@ public class MainActivity extends Activity {
     private void elegirDelAlmacen(final String orden) {
         final ArrayList<Almacen.Item> items = almacen.lista();
         if (items.isEmpty()) { aviso("El almacén está vacío"); return; }
-        String[] nombres = new String[items.size()];
-        for (int i = 0; i < nombres.length; i++) nombres[i] = items.get(i).nombre + "  ×" + items.get(i).cantidad;
-        new AlertDialog.Builder(this).setTitle("¿Qué material has usado?")
-            .setItems(nombres, (d, i) -> gastarCodigo(orden, items.get(i).codigo))
-            .setNegativeButton("CANCELAR", null).show();
+        final ArrayList<Almacen.Item> filtrados = new ArrayList<>(items);
+        final android.widget.ArrayAdapter<String> ad = new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
+        final Runnable refrescar = () -> {
+            ad.clear();
+            for (Almacen.Item it : filtrados) ad.add(it.codigo + " - " + it.nombre + "  ×" + it.cantidad);
+            ad.notifyDataSetChanged();
+        };
+        refrescar.run();
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int p = (int) (14 * getResources().getDisplayMetrics().density);
+        box.setPadding(p, p / 2, p, 0);
+        android.widget.EditText buscador = new android.widget.EditText(this);
+        buscador.setHint("Buscar código (ej. 713) o nombre...");
+        buscador.setSingleLine(true);
+        android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(ad);
+        box.addView(buscador);
+        box.addView(lv);
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle("¿Qué material has usado?")
+                .setView(box)
+                .setNegativeButton("CANCELAR", null)
+                .create();
+        buscador.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {
+                String q = s.toString().trim().toLowerCase();
+                filtrados.clear();
+                for (Almacen.Item it : items) {
+                    if (q.isEmpty() || (it.codigo + " " + it.nombre).toLowerCase().contains(q)) filtrados.add(it);
+                }
+                refrescar.run();
+            }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        });
+        lv.setOnItemClickListener((parent, view, pos, id) -> {
+            dlg.dismiss();
+            gastarCodigo(orden, filtrados.get(pos).codigo);
+        });
+        dlg.show();
     }
 
     // SEGUIDO-KULI
