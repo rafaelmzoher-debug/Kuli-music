@@ -50,8 +50,10 @@ public class ScanActivity extends ComponentActivity {
     private final ExecutorService hilo = Executors.newSingleThreadExecutor();
     private volatile boolean terminado = false;
     private boolean linterna = false;
+    private boolean modoLote = false; // NUEVO: Modo lote
     private ScaleGestureDetector zoomGesto;
     private long ultimoPellizco = 0;
+    private TextView guia; // Añadido para actualizar feedback visual
 
     private int dp(int n) { return (int) (n * getResources().getDisplayMetrics().density + 0.5f); }
 
@@ -66,8 +68,8 @@ public class ScanActivity extends ComponentActivity {
         // marco de ayuda
         View marco = new View(this);
         marco.setBackgroundColor(Color.TRANSPARENT);
-        TextView guia = new TextView(this);
-        guia.setText("Apunta al código · toca para enfocar · dos dedos para acercar");
+        guia = new TextView(this); // Actualizado para acceso de clase
+        guia.setText("Apunta al código · toca para enfocar");
         guia.setTextColor(Color.WHITE);
         guia.setTextSize(14);
         guia.setGravity(Gravity.CENTER);
@@ -92,6 +94,18 @@ public class ScanActivity extends ComponentActivity {
         FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(dp(56), dp(48), Gravity.TOP | Gravity.END);
         ll.topMargin = dp(36); ll.rightMargin = dp(12);
         raiz.addView(luz, ll);
+
+        // NUEVO: Botón modo lote
+        Button botonLote = boton("Modo Lote: OFF");
+        botonLote.setTextSize(12);
+        botonLote.setOnClickListener(v -> {
+            modoLote = !modoLote;
+            botonLote.setText(modoLote ? "Modo Lote: ON" : "Modo Lote: OFF");
+            botonLote.setBackgroundColor(modoLote ? Color.argb(200, 0, 150, 0) : Color.argb(150, 0, 0, 0));
+        });
+        FrameLayout.LayoutParams lb = new FrameLayout.LayoutParams(dp(120), dp(48), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lb.topMargin = dp(36);
+        raiz.addView(botonLote, lb);
 
         Button mano = boton("✍ Escribir el nº de serie a mano"); // V223
         mano.setTextSize(13);
@@ -172,6 +186,9 @@ public class ScanActivity extends ComponentActivity {
                 boolean leido = false;
                 for (Barcode c : list) {
                     if (c.getRawValue() != null && !c.getRawValue().trim().isEmpty()) {
+                        // FEEDBACK VISUAL:
+                        runOnUiThread(() -> guia.setText("Código detectado: " + c.getRawValue()));
+                        
                         if (bloqueado.compareAndSet(false, true)) entregar(c.getRawValue().trim());
                         leido = true;
                         break;
@@ -211,13 +228,32 @@ public class ScanActivity extends ComponentActivity {
         finally { if (zx != null) zx.reset(); }
     }
 
-    private void enfocar(float x, float y){if(camara!=null)camara.getCameraControl().startFocusAndMetering(new FocusMeteringAction.Builder(vista.getMeteringPointFactory().createPoint(x,y)).build());}
+    private void enfocar(float x, float y) {
+        if (camara != null) {
+            camara.getCameraControl().startFocusAndMetering(
+                new FocusMeteringAction.Builder(vista.getMeteringPointFactory().createPoint(x, y))
+                    .setAutoCancelDuration(2, TimeUnit.SECONDS)
+                    .build());
+        }
+    }
+    
     private void entregar(String v) {
-        if (terminado) return;
-        terminado = true;
+        if (terminado && !modoLote) return;
+        
         try { ((Vibrator) getSystemService(VIBRATOR_SERVICE)).vibrate(60); } catch (Throwable ignorar) { }
-        setResult(RESULT_OK, new Intent().putExtra("raw", v));
-        runOnUiThread(this::finish);
+        
+        if (modoLote) {
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Escaneado: " + v, Toast.LENGTH_SHORT).show();
+                bloqueado.set(false); // Permite escanear otro inmediatamente
+            });
+            // Opcional: enviar el dato escaneado a MainActivity sin cerrar
+            // Se requiere comunicación adicional aquí si se necesita procesar el dato en tiempo real
+        } else {
+            terminado = true;
+            setResult(RESULT_OK, new Intent().putExtra("raw", v));
+            runOnUiThread(this::finish);
+        }
     }
 
     @Override protected void onDestroy() {
