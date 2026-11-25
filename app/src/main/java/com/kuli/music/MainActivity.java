@@ -3920,19 +3920,6 @@ public class MainActivity extends Activity {
         posicionFavorita = siguienteIndice;
         reproducir(Uri.parse(listaFavoritas.get(posicionFavorita)));
     }
-
-    @Override protected void onDestroy() {
-        ui.removeCallbacks(ticker);
-        if (instancia != this) { super.onDestroy(); return; }
-        boolean suena = false;
-        try { suena = reproductor != null && reproductor.isPlaying(); } catch (Exception ignored) { }
-        if (suena) { super.onDestroy(); return; }   // sigue sonando en segundo plano
-        instancia = null;
-        detenerServicio();
-        liberarSiguiente();
-        if (reproductor != null) { reproductor.release(); reproductor = null; }
-        super.onDestroy();
-    }
     // ---------- TV dentro de KULI (lista pública de canales de España) ----------
     private ArrayList<String> tvNombres, tvUrls;
 
