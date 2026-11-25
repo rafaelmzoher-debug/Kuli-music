@@ -920,8 +920,8 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    private String obtenerEstilo(InfoPista ip) {
-        String genero = (ip.art != null ? ip.art : "") + " " + (ip.alb != null ? ip.alb : "") + " " + (ip.tit != null ? ip.tit : "");
+    private String obtenerEstilo(String art, String alb, String tit) {
+        String genero = (art != null ? art : "") + " " + (alb != null ? alb : "") + " " + (tit != null ? tit : "");
         genero = genero.toLowerCase();
         if (genero.contains("flamenkito") || genero.contains("flamenco")) return "Flamenkito";
         if (genero.contains("latino") || genero.contains("reggaeton") || genero.contains("salsa")) return "Latino";
@@ -1027,7 +1027,7 @@ public class MainActivity extends Activity {
                         }
                     }
                 } else {
-                    destinoDir = new java.io.File(baseKuli, obtenerEstilo(ip));
+                    destinoDir = new java.io.File(baseKuli, obtenerEstilo(ip.art, ip.alb, ip.tit));
                     nombreFinal = (!artLimpio.isEmpty() ? (artLimpio + " - " + titLimpio) : titLimpio) + ext;
                 }
 
