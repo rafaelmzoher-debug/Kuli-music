@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
 
     static final class Resumen { String nombre; int fotos; int mat; long ultima; boolean cerrada; String datos = ""; double metros; }
     private String filtro = "";
+    private int limiteOrdenes = 30; // V232: cuántas órdenes se enseñan antes de «Ver más»
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -753,48 +754,89 @@ public class MainActivity extends Activity {
             chip.setOnClickListener(v -> { filtro = ""; mostrarInicio(); });
             p.addView(chip, margen(-1, -2, 10));
         }
-        TextView cab = texto((plegada ? "▶  " : "▼  ") + "Órdenes guardadas (" + ordenes.size() + ")", 15, GRIS, true);
-        cab.setPadding(dp(4), dp(10), dp(4), dp(10));
+        // V232: órdenes guardadas ordenadas por día, con filtro Abiertas / Cerradas / Todas
+        int nAb = 0, nCe = 0;
+        for (Resumen r0 : ordenes) { if (r0.cerrada) nCe++; else nAb++; }
+        final int ver = filtro.isEmpty() ? prefs.getInt("ver_ordenes", 2) : 2; // 0 abiertas, 1 cerradas, 2 todas
+        if (ver != 2) for (int k = ordenes.size() - 1; k >= 0; k--) if (ordenes.get(k).cerrada != (ver == 1)) ordenes.remove(k);
+        TextView cab = texto((plegada ? "▶  " : "▼  ") + "Órdenes guardadas (" + (nAb + nCe) + ")", 16, ORO, true);
+        cab.setPadding(dp(4), dp(10), dp(4), dp(6));
         cab.setOnClickListener(v -> { prefs.edit().putBoolean("plegada", !plegada).apply(); mostrarInicio(); });
         p.addView(cab, margen(-2, -2, 14));
+
+        if (!plegada && filtro.isEmpty() && nAb + nCe > 0) {
+            LinearLayout chips = new LinearLayout(this);
+            String[] nom = { "Abiertas (" + nAb + ")", "Cerradas (" + nCe + ")", "Todas" };
+            for (int k = 0; k < 3; k++) {
+                final int kk = k;
+                TextView ch = texto(nom[k], 13, k == ver ? NEGRO : Color.WHITE, true);
+                ch.setGravity(Gravity.CENTER);
+                ch.setPadding(dp(6), dp(9), dp(6), dp(9));
+                ch.setBackgroundColor(k == ver ? ORO : TARJETA);
+                ch.setOnClickListener(v -> { prefs.edit().putInt("ver_ordenes", kk).apply(); limiteOrdenes = 30; mostrarInicio(); });
+                LinearLayout.LayoutParams lc = new LinearLayout.LayoutParams(0, -2, 1f);
+                if (k > 0) lc.leftMargin = dp(6);
+                chips.addView(ch, lc);
+            }
+            p.addView(chips, margen(-1, -2, 4));
+        }
 
         if (plegada) {
             // lista cerrada: se abre tocando el título
         } else if (ordenes.isEmpty()) {
-            TextView v = texto("Todavía no hay ninguna.\nEscribe un nº de orden y pulsa «Hacer foto».", 14, GRIS, false);
+            TextView v = texto(nAb + nCe == 0 ? "Todavía no hay ninguna.\nEscribe un nº de orden y pulsa «Hacer foto»."
+                : "No hay órdenes en este apartado.", 14, GRIS, false);
             v.setGravity(Gravity.CENTER);
             p.addView(v, margen(-1, -2, 30));
         } else {
-            ListView lista = new ListView(this);
-            lista.setDivider(null);
-            lista.setAdapter(new BaseAdapter() {
-                @Override public int getCount() { return ordenes.size(); }
-                @Override public Object getItem(int i) { return ordenes.get(i); }
-                @Override public long getItemId(int i) { return i; }
-                @Override public View getView(int i, View v, ViewGroup g) {
-                    Resumen r = ordenes.get(i);
-                    TextView tv = new TextView(MainActivity.this);
-                    tv.setBackgroundColor(TARJETA);
-                    tv.setTextColor(Color.WHITE);
-                    tv.setTextSize(15);
-                    tv.setPadding(dp(14), dp(12), dp(14), dp(12));
-                    tv.setText("Orden " + r.nombre + "\n" + r.fotos + (r.fotos == 1 ? " foto" : " fotos")
-                        + "  ·  última: " + formatoCorto(r.ultima)
-                        + (r.datos.isEmpty() ? "" : "\n📍 " + r.datos)
-                        + (r.cerrada ? "\n✔ cerrada" : "")
-                        + (r.fotos == 0 ? "\n⚠ sin foto" : "") + (r.mat == 0 ? (r.fotos == 0 ? "  ·  " : "\n") + "⚠ sin material" : ""));
-                    AbsListView.LayoutParams lp = new AbsListView.LayoutParams(-1, -2);
-                    tv.setLayoutParams(lp);
-                    LinearLayout caja = new LinearLayout(MainActivity.this);
-                    caja.setPadding(0, 0, 0, dp(8));
-                    caja.addView(tv, new LinearLayout.LayoutParams(-1, -2));
-                    return caja;
+            SimpleDateFormat claveDia = new SimpleDateFormat("yyyyMMdd", Locale.ROOT);
+            SimpleDateFormat nombreDia = new SimpleDateFormat("EEEE d 'de' MMMM", new Locale("es", "ES"));
+            String hoyK = claveDia.format(new Date());
+            String ayerK = claveDia.format(new Date(System.currentTimeMillis() - 86400000L));
+            String diaAnt = null;
+            int cuantas = Math.min(ordenes.size(), limiteOrdenes);
+            for (int i = 0; i < cuantas; i++) {
+                final Resumen r = ordenes.get(i);
+                String dk = r.ultima == 0 ? "0" : claveDia.format(new Date(r.ultima));
+                if (!dk.equals(diaAnt)) {
+                    diaAnt = dk;
+                    String nd = dk.equals(hoyK) ? "Hoy" : dk.equals(ayerK) ? "Ayer"
+                        : r.ultima == 0 ? "Sin fecha" : nombreDia.format(new Date(r.ultima));
+                    nd = nd.substring(0, 1).toUpperCase(new Locale("es", "ES")) + nd.substring(1);
+                    TextView dia = texto("— " + nd + " —", 13, GRIS, true);
+                    dia.setPadding(dp(4), dp(6), dp(4), dp(4));
+                    p.addView(dia, margen(-1, -2, 8));
                 }
-            });
-            lista.setOnItemClickListener((a, v, i, id) -> mostrarOrden(ordenes.get(i).nombre));
-            p.addView(lista, new LinearLayout.LayoutParams(-1, 0, 1f));
+                boolean falta = r.fotos == 0 || r.mat == 0;
+                LinearLayout tarjeta = new LinearLayout(this);
+                tarjeta.setBackgroundColor(TARJETA);
+                View raya = new View(this);
+                raya.setBackgroundColor(r.cerrada ? Color.rgb(80, 200, 120) : falta ? Color.rgb(255, 130, 110) : ORO);
+                tarjeta.addView(raya, new LinearLayout.LayoutParams(dp(6), -1));
+                LinearLayout txt = new LinearLayout(this);
+                txt.setOrientation(LinearLayout.VERTICAL);
+                txt.setPadding(dp(12), dp(10), dp(12), dp(10));
+                LinearLayout fila1 = new LinearLayout(this);
+                fila1.setGravity(Gravity.CENTER_VERTICAL);
+                fila1.addView(texto("Orden " + r.nombre, 16, Color.WHITE, true), new LinearLayout.LayoutParams(0, -2, 1f));
+                fila1.addView(texto(r.cerrada ? "✔ cerrada" : "abierta", 12, r.cerrada ? Color.rgb(120, 230, 150) : ORO, true));
+                txt.addView(fila1);
+                txt.addView(texto("📷 " + r.fotos + "   📦 " + r.mat + "   ·   " + formatoCorto(r.ultima), 13, GRIS, false));
+                if (!r.datos.isEmpty()) txt.addView(texto("📍 " + r.datos, 13, Color.WHITE, false));
+                if (falta) txt.addView(texto((r.fotos == 0 ? "⚠ sin foto  " : "") + (r.mat == 0 ? "⚠ sin material" : ""), 12, Color.rgb(255, 150, 130), true));
+                tarjeta.addView(txt, new LinearLayout.LayoutParams(0, -2, 1f));
+                tarjeta.setOnClickListener(v -> mostrarOrden(r.nombre));
+                p.addView(tarjeta, margen(-1, -2, 6));
+            }
+            if (ordenes.size() > cuantas) {
+                Button mas = boton("Ver más órdenes (" + (ordenes.size() - cuantas) + " más)", false);
+                mas.setOnClickListener(v -> { limiteOrdenes += 30; mostrarInicio(); });
+                p.addView(mas, margen(-1, dp(46), 10));
+            }
         }
-        contenido.addView(p, new FrameLayout.LayoutParams(-1, -1));
+        android.widget.ScrollView desliza = new android.widget.ScrollView(this);
+        desliza.addView(p, new FrameLayout.LayoutParams(-1, -2));
+        contenido.addView(desliza, new FrameLayout.LayoutParams(-1, -1));
     }
 
     // Escudo propio de KULI (dibujado a mano, original).
