@@ -1551,12 +1551,15 @@ public class MainActivity extends Activity {
         lista.setOnItemClickListener((av, view, pos, id) -> {
             final String[] f = filas.get(pos);
             final String codEq = f[0], nomEq = f[1], serEq = f[2];
-            File dirOrd = new File(android.os.Environment.getExternalStorageDirectory(), "Almacen de Rafa");
-            File[] dirs = dirOrd.listFiles(File::isDirectory);
+            // V231: solo órdenes de verdad (no «Copias» ni carpetas sueltas), la última tocada primero y con su dirección.
             final java.util.ArrayList<String> nOrds = new java.util.ArrayList<>();
-            if (dirs != null) {
-                java.util.Arrays.sort(dirs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
-                for (File d : dirs) if (!d.getName().startsWith(".")) nOrds.add(d.getName());
+            final java.util.ArrayList<String> etiquetas = new java.util.ArrayList<>();
+            for (Resumen rs : listarOrdenes()) {
+                nOrds.add(rs.nombre);
+                etiquetas.add((nOrds.size() == 1 ? "⭐ " : "") + rs.nombre
+                    + (rs.datos.isEmpty() ? "" : "\n" + rs.datos)
+                    + "\n" + rs.mat + (rs.mat == 1 ? " material" : " materiales") + (rs.cerrada ? " · cerrada ✔" : "")
+                    + (nOrds.size() == 1 ? " · la última que has tocado" : ""));
             }
             if (ordenDestinoDirecto != null) {
                 String ordSel = ordenDestinoDirecto;
@@ -1569,9 +1572,29 @@ public class MainActivity extends Activity {
                 android.widget.Toast.makeText(MainActivity.this, "No hay órdenes abiertas", android.widget.Toast.LENGTH_SHORT).show();
                 return;
             }
+            final android.widget.ArrayAdapter<String> adOrd = new android.widget.ArrayAdapter<String>(MainActivity.this, android.R.layout.simple_list_item_1, etiquetas) {
+                @Override public View getView(int position, View convertView, ViewGroup parent) {
+                    View vv = super.getView(position, convertView, parent);
+                    if (vv instanceof TextView) {
+                        TextView tv = (TextView) vv;
+                        tv.setTextSize(15);
+                        tv.setPadding(dp(14), dp(10), dp(14), dp(10));
+                        if (position == 0) {
+                            tv.setBackgroundColor(Color.rgb(95, 72, 10));
+                            tv.setTextColor(ORO);
+                            tv.setTypeface(Typeface.DEFAULT_BOLD);
+                        } else {
+                            tv.setBackgroundColor(Color.TRANSPARENT);
+                            tv.setTextColor(Color.WHITE);
+                            tv.setTypeface(Typeface.DEFAULT);
+                        }
+                    }
+                    return vv;
+                }
+            };
             new AlertDialog.Builder(MainActivity.this)
-                .setTitle("➕ Asignar " + nomEq + (serEq.isEmpty() ? "" : " (" + serEq + ")"))
-                .setItems(nOrds.toArray(new String[0]), (dlg, idx) -> {
+                .setTitle("➕ Asignar " + nomEq + (serEq.isEmpty() ? "" : " (" + serEq + ")") + "\n¿A qué orden?")
+                .setAdapter(adOrd, (dlg, idx) -> {
                     String ordSel = nOrds.get(idx);
                     gastarCodigo(ordSel, codEq, serEq.isEmpty() ? null : serEq, false);
                     android.widget.Toast.makeText(MainActivity.this, "✅ Añadido a orden " + ordSel, android.widget.Toast.LENGTH_SHORT).show();
