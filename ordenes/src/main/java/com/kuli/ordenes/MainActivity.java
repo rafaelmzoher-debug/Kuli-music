@@ -925,6 +925,7 @@ public class MainActivity extends Activity {
             x.nombre = d.getName();
             x.fotos = fs == null ? 0 : fs.length;
             x.mat = leerMaterial(d.getName()).size();
+            autoCerrar(d.getName()); // V233: se cierra sola si ya tiene todo
             x.cerrada = new File(d, "cerrada.txt").exists();
             String[] dt = leerDatos(d.getName());
             x.datos = (dt[0] + " " + dt[1]).trim();
@@ -939,6 +940,7 @@ public class MainActivity extends Activity {
 
     // ---------- Detalle de una orden ----------
     private void mostrarOrden(final String nombre) {
+        if (autoCerrar(nombre)) aviso("✔ Orden " + nombre + " completa: cerrada sola");
         String auto = notaAuto(nombre);
         if (!nombre.equals(ordenAbierta) || !auto.isEmpty()) ultNota = auto; // el material escaneado pasa solo a la casilla
         ordenAbierta = nombre;
@@ -2078,14 +2080,36 @@ public class MainActivity extends Activity {
         cerrarDeVerdad(orden, cerrar);
     }
 
+    // V233: una orden está completa con foto, material y las fotos ONT, Roseta y Test/Potencia
+    private boolean ordenCompleta(String orden) {
+        if (fotosDe(orden).isEmpty() || leerMaterial(orden).isEmpty()) return false;
+        java.util.Collection<String> tags = leerEtiquetas(orden).values();
+        for (String t : new String[]{"ONT", "Roseta", "Test/Potencia"}) if (!tags.contains(t)) return false;
+        return true;
+    }
+
+    // V233: la cierra sola si está completa (salvo que la hayas reabierto tú a mano)
+    private boolean autoCerrar(String orden) {
+        try {
+            File dir = new File(raiz, limpiar(orden));
+            if (!dir.isDirectory() || new File(dir, "cerrada.txt").exists() || new File(dir, "reabierta.txt").exists()) return false;
+            if (!ordenCompleta(orden)) return false;
+            try (FileOutputStream o = new FileOutputStream(new File(dir, "cerrada.txt"))) { o.write(formatoLargo(System.currentTimeMillis()).getBytes("UTF-8")); }
+            return true;
+        } catch (Exception e) { return false; }
+    }
+
     private void cerrarDeVerdad(String orden, boolean cerrar) {
         File m = new File(new File(raiz, limpiar(orden)), "cerrada.txt");
         if (cerrar) {
             try (FileOutputStream o = new FileOutputStream(m)) { o.write(formatoLargo(System.currentTimeMillis()).getBytes("UTF-8")); }
             catch (Exception e) { aviso("No se pudo cerrar"); return; }
+            new File(m.getParentFile(), "reabierta.txt").delete();
             aviso("✔ Orden " + orden + " cerrada");
         } else {
             m.delete();
+            try (FileOutputStream o = new FileOutputStream(new File(m.getParentFile(), "reabierta.txt"))) { o.write(formatoLargo(System.currentTimeMillis()).getBytes("UTF-8")); }
+            catch (Exception e) { }
             aviso("Orden " + orden + " reabierta");
         }
         mostrarOrden(orden);
