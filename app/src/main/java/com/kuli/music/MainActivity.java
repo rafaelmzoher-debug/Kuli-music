@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
             nuevo.start();
             anterior.setOnCompletionListener(null);
             reproductor = nuevo;
-            mezclaDur = djLista() ? MEZCLA_DJ_MS : MEZCLA_MS;
+            mezclaDur = (djLista() || djActivo) ? MEZCLA_DJ_MS : MEZCLA_MS; // V356
             posicionFavorita = idx;
             if (djLista()) { indiceDj = idx; refrescarEtiquetaDj(); }
             siguienteReproductor = null;
@@ -207,7 +207,7 @@ public class MainActivity extends Activity {
             mezclaAnterior = anterior;
             mezclando = true;
             mezclaInicio = android.os.SystemClock.uptimeMillis();
-            mostrarDatos(Uri.parse(listaFavoritas.get(posicionFavorita)));
+            mostrarDatosPista(Uri.parse(listaFavoritas.get(posicionFavorita)));
             reproductor.setOnCompletionListener(mp -> alTerminar());
             estado.setText("🎛 MEZCLANDO");
             iniciarServicio();
@@ -228,7 +228,7 @@ public class MainActivity extends Activity {
                     if ((djActivo || djLista()) && modoLista) {
                         if (!mezclando) {
                             int dur = reproductor.getDuration(), resto = dur - reproductor.getCurrentPosition();
-                            if (dur > 12000 && resto <= (djLista() ? MEZCLA_DJ_MS : MEZCLA_MS) + 400) {
+                            if (dur > 12000 && resto <= ((djLista() || djActivo) ? MEZCLA_DJ_MS : MEZCLA_MS) + 400) {
                                 if (siguienteReproductor != null && indicePreparado >= 0) iniciarMezcla();
                                 else if (resto < 2000) {
                                     float v = Math.max(0f, resto / 2000f);
@@ -600,6 +600,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (!fundidoArrancado) { fundidoArrancado = true; ui.post(fundido); } // V356: el vigilante de la mezcla siempre activo
         ui.removeCallbacks(ticker);
         ui.post(ticker);
         revisarYMusic();
@@ -2036,6 +2037,23 @@ public class MainActivity extends Activity {
         } catch (Exception e) { aviso("Error mostrando datos: " + e.getMessage()); }
     }
 
+    // V356: al pasar a la siguiente (mezcla o fin de canción) se muestran sus datos, igual que al elegirla a mano.
+    private void mostrarDatosPista(Uri identidad) {
+        try {
+            Uri fuente = identidad;
+            if ("nas".equals(identidad.getScheme())) fuente = Uri.fromFile(archivoCache(identidad.getLastPathSegment()));
+            mostrarDatos(fuente);
+            uriActual = identidad;
+            if ("nas".equals(identidad.getScheme()) && tituloActual != null && tituloActual.equals("Mi canción")) {
+                tituloActual = nombreSinExtension(identidad.getLastPathSegment());
+                cancion.setText(tituloActual);
+            }
+            actualizarBotonFavorito();
+            registrarEscuchada(identidad.toString());
+            registrarCancionOida(identidad.toString());
+        } catch (Throwable ignorar) { }
+    }
+
     private void liberarSiguiente() {
         if (siguienteReproductor != null) {
             try { siguienteReproductor.release(); } catch (Exception ignored) { }
@@ -2090,7 +2108,7 @@ public class MainActivity extends Activity {
         int n = indiceSiguiente();
         if (n < 0 || reproductor == null) return;
         Uri siguienteUri = Uri.parse(listaFavoritas.get(n));
-        if ("nas".equals(siguienteUri.getScheme())) { precargarNas(siguienteUri); return; }
+        if ("nas".equals(siguienteUri.getScheme())) { precargarNas(siguienteUri, n); return; }
         try {
             MediaPlayer proximo = abrirReproductor(Uri.parse(listaFavoritas.get(n)));
             siguienteReproductor = proximo;
@@ -2114,7 +2132,7 @@ public class MainActivity extends Activity {
             siguienteReproductor = null;
             indicePreparado = -1;
             try { anterior.release(); } catch (Exception ignored) { }
-            mostrarDatos(Uri.parse(listaFavoritas.get(posicionFavorita)));
+            mostrarDatosPista(Uri.parse(listaFavoritas.get(posicionFavorita)));
             reproductor.setOnCompletionListener(mp -> alTerminar());
             estado.setText("▶ REPRODUCIENDO"); actualizarNotificacionSegundoPlano(true);
             iniciarServicio();
@@ -3731,13 +3749,28 @@ public class MainActivity extends Activity {
     }
 
     // Descarga en segundo plano la siguiente canción para que no haya pausa entre una y otra.
-    private void precargarNas(Uri nasUri) {
+    private void precargarNas(Uri nasUri, final int idx) { // V356: deja la siguiente PREPARADA para poder mezclarla
         final String nombre = nasUri.getLastPathSegment();
         final java.io.File destino = archivoCache(nombre);
-        if (destino.exists() && destino.length() > 0) return;
+        final MediaPlayer actual = reproductor;
+        final int posAntes = posicionFavorita;
         new Thread(() -> {
-            try { descargarDelNas(nombre, destino); }
-            catch (Throwable ignored) { }
+            try {
+                if (!(destino.exists() && destino.length() > 0)) descargarDelNas(nombre, destino);
+                if (!(destino.exists() && destino.length() > 0)) return;
+                runOnUiThread(() -> {
+                    try {
+                        if (isDestroyed() || reproductor == null || reproductor != actual) return; // ya cambió la canción
+                        if (posicionFavorita != posAntes || siguienteReproductor != null) return;
+                        MediaPlayer p = abrirReproductor(Uri.fromFile(destino));
+                        siguienteReproductor = p;
+                        indicePreparado = idx;
+                        String act = posicionFavorita >= 0 && posicionFavorita < listaFavoritas.size()
+                            ? Uri.parse(listaFavoritas.get(posicionFavorita)).getLastPathSegment() : null;
+                        limpiarCache(act, nombre); // en la caché solo la actual y la siguiente
+                    } catch (Throwable ignorar) { }
+                });
+            } catch (Throwable ignored) { }
         }).start();
     }
 
