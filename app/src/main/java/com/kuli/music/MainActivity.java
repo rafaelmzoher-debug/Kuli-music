@@ -620,11 +620,18 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
-    @Override protected void onDestroy() {
+    @Override protected void onDestroy() { // V355: se recupera la lógica original (sigue sonando en segundo plano) + cerrar el buscador
+        try { if (dialogBusquedaRef != null && dialogBusquedaRef.isShowing()) dialogBusquedaRef.dismiss(); } catch (Exception ignorar) { }
+        ui.removeCallbacks(ticker);
+        if (instancia != this) { super.onDestroy(); return; }
+        boolean suena = false;
+        try { suena = reproductor != null && reproductor.isPlaying(); } catch (Exception ignored) { }
+        if (suena) { super.onDestroy(); return; }   // sigue sonando en segundo plano
         ui.removeCallbacksAndMessages(null);
-        if (dialogBusquedaRef != null && dialogBusquedaRef.isShowing()) {
-            dialogBusquedaRef.dismiss();
-        }
+        instancia = null;
+        detenerServicio();
+        liberarSiguiente();
+        if (reproductor != null) { reproductor.release(); reproductor = null; }
         super.onDestroy();
     }
 
@@ -920,15 +927,9 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    private String obtenerEstilo(String art, String alb, String tit) {
-        String genero = (art != null ? art : "") + " " + (alb != null ? alb : "") + " " + (tit != null ? tit : "");
-        genero = genero.toLowerCase();
-        if (genero.contains("flamenkito") || genero.contains("flamenco")) return "Flamenkito";
-        if (genero.contains("latino") || genero.contains("reggaeton") || genero.contains("salsa")) return "Latino";
-        if (genero.contains("pop")) return "Pop";
-        if (genero.contains("rock")) return "Rock";
-        if (genero.contains("electro") || genero.contains("dance")) return "Electrónica";
-        return "Otros";
+    private String obtenerEstilo(String art, String alb, String tit) { // V355: usa los mismos estilos y reglas que el resto de la app (Dance, Baladas…)
+        String e = detectarEstiloPersonalizado(simple(tit == null ? "" : tit), art == null ? "" : art, "", 0);
+        return (e == null || e.isEmpty()) ? "Sin clasificar" : e;
     }
 
     private void autoOrganizarAlbumesDescargados(boolean avisarSiNada) {
@@ -940,7 +941,7 @@ public class MainActivity extends Activity {
             java.io.File dirRevision = new java.io.File(baseKuli, "Revisión");
             dirAlbumes.mkdirs(); dirRevision.mkdirs();
             
-            String[] estilos = {"Flamenkito", "Latino", "Pop", "Rock", "Electrónica", "Otros"};
+            String[] estilos = {"Flamenkito", "Latino", "Dance", "Pop", "Rock", "Baladas"};
             for (String e : estilos) new java.io.File(baseKuli, e).mkdirs();
 
             java.util.ArrayList<java.io.File> cand = new java.util.ArrayList<>();
@@ -3849,10 +3850,13 @@ public class MainActivity extends Activity {
                     .setPositiveButton("Borrar", (d2, w2) -> { archivos[i].delete(); gestionarRevision(); })
                     .setNegativeButton("Cerrar", null).show();
             })
-            .setPositiveButton("Vaciar todo", (d, w) -> {
-                for (java.io.File f : archivos) f.delete();
-                aviso("Revisión vaciada");
-            })
+            .setPositiveButton("Vaciar todo", (d, w) -> new AlertDialog.Builder(this).setTitle("¿Borrar " + archivos.length + " archivos?")
+                .setMessage("Se borran para siempre. No hay papelera.")
+                .setPositiveButton("BORRAR", (d3, w3) -> {
+                    for (java.io.File f : archivos) f.delete();
+                    aviso("Revisión vaciada");
+                })
+                .setNegativeButton("CANCELAR", null).show())
             .setNegativeButton("Cerrar", null).show();
     }
 
