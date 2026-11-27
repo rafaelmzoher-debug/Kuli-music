@@ -256,14 +256,15 @@ public class MainActivity extends Activity {
         }
     }
 
-    // V234: copia espejo de cada foto en la Galería (Pictures/KULI Respaldo/<orden>/). Si borras «Almacen de Rafa»,
+    // V234: copia espejo de cada foto en la Galería (Pictures/KULI Respaldo/). Si borras «Almacen de Rafa»,
     // las fotos siguen ahí y se recuperan solas; además la papelera de la Galería las guarda 30 días.
     private File espejoRaiz() {
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KULI Respaldo");
     }
 
+    // V236: una sola carpeta en la Galería (nada de un álbum por orden). El nombre lleva la orden: <orden>__<foto>.jpg
     private File espejoDe(File foto) {
-        return new File(new File(espejoRaiz(), foto.getParentFile().getName()), foto.getName());
+        return new File(espejoRaiz(), foto.getParentFile().getName() + "__" + foto.getName());
     }
 
     private void guardarEspejo(File foto) {
@@ -335,15 +336,27 @@ public class MainActivity extends Activity {
                         if (!orig.exists()) { copiarArchivo(b, orig); restauradas++; }
                     }
                 }
-                File[] eords = espejoRaiz().listFiles(); // V234: recupera desde la copia de la Galería
-                if (eords != null) for (File od : eords) {
-                    if (!od.isDirectory()) continue;
-                    File[] fs = od.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
-                    if (fs == null) continue;
-                    for (File b : fs) {
-                        File orig = new File(new File(raiz, od.getName()), b.getName());
-                        if (!orig.exists()) { copiarArchivo(b, orig); restauradas++; }
+                File er = espejoRaiz(); // V236: carpeta única de la Galería
+                File[] eitems = er.listFiles();
+                ArrayList<String> rutasEsp = new ArrayList<>();
+                if (eitems != null) for (File it : eitems) {
+                    if (!it.isDirectory()) continue; // pasa las carpetas por orden de la versión anterior a la carpeta única
+                    File[] sub = it.listFiles();
+                    if (sub != null) for (File sb : sub) {
+                        if (!sb.isFile()) continue;
+                        File plano = new File(er, it.getName() + "__" + sb.getName());
+                        rutasEsp.add(sb.getAbsolutePath());
+                        if (plano.exists()) sb.delete(); else if (sb.renameTo(plano)) rutasEsp.add(plano.getAbsolutePath());
                     }
+                    it.delete(); // solo se borra si ha quedado vacía
+                }
+                if (!rutasEsp.isEmpty()) MediaScannerConnection.scanFile(this, rutasEsp.toArray(new String[0]), null, null);
+                File[] planos = er.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg") && n.contains("__")); // V234: recupera desde la copia de la Galería
+                if (planos != null) for (File pb : planos) {
+                    String pn = pb.getName();
+                    int k = pn.lastIndexOf("__");
+                    File orig = new File(new File(raiz, pn.substring(0, k)), pn.substring(k + 2));
+                    if (!orig.exists()) { copiarArchivo(pb, orig); restauradas++; }
                 }
                 File[] dirs = raiz.listFiles();
                 if (dirs != null) for (File d : dirs) {
