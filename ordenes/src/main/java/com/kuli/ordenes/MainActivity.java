@@ -256,6 +256,62 @@ public class MainActivity extends Activity {
         }
     }
 
+    // V234: copia espejo de cada foto en la Galería (Pictures/KULI Respaldo/<orden>/). Si borras «Almacen de Rafa»,
+    // las fotos siguen ahí y se recuperan solas; además la papelera de la Galería las guarda 30 días.
+    private File espejoRaiz() {
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KULI Respaldo");
+    }
+
+    private File espejoDe(File foto) {
+        return new File(new File(espejoRaiz(), foto.getParentFile().getName()), foto.getName());
+    }
+
+    private void guardarEspejo(File foto) {
+        try {
+            File e = espejoDe(foto);
+            if (e.exists()) return;
+            copiarArchivo(foto, e);
+            MediaScannerConnection.scanFile(this, new String[]{e.getAbsolutePath()}, new String[]{"image/jpeg"}, null);
+        } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Espejo de la foto", t); }
+    }
+
+    // V234: en cuanto se guarda una foto, se sube al NAS si hay wifi (sin esperar a la copia diaria).
+    private final java.util.concurrent.atomic.AtomicBoolean subiendoYa = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    private void subirYa() {
+        hilos.execute(() -> {
+            if (!subiendoYa.compareAndSet(false, true)) return;
+            try {
+                if (!Respaldo.hayWifi(this)) return;
+                Respaldo.subir(this, raiz);
+                getSharedPreferences("ordenes", MODE_PRIVATE).edit().putLong("nas_ok", System.currentTimeMillis()).apply();
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Subida inmediata", t);
+            } finally { subiendoYa.set(false); }
+        });
+    }
+
+    // V234: borrar una foto ya no es definitivo: va 7 días a «Almacen de Rafa/Papelera» (nombre: orden__foto).
+    private boolean enviarAPapelera(File f) {
+        try {
+            File pap = new File(raiz, "Papelera");
+            pap.mkdirs();
+            File dest = new File(pap, System.currentTimeMillis() + "_" + f.getParentFile().getName() + "__" + f.getName());
+            if (!f.renameTo(dest)) {
+                copiarArchivo(f, dest);
+                if (!f.delete()) return false;
+            }
+            dest.setLastModified(System.currentTimeMillis());
+            File e = espejoDe(f);
+            if (e.delete()) MediaScannerConnection.scanFile(this, new String[]{e.getAbsolutePath()}, null, null);
+            respaldoDe(f).delete();
+            return true;
+        } catch (Throwable t) {
+            android.util.Log.e("KULI_ORDENES", "Papelera de fotos", t);
+            return false;
+        }
+    }
+
     private File respaldoDe(File foto) {
         return new File(new File(new File(raiz, ".respaldo_fotos"), foto.getParentFile().getName()), foto.getName());
     }
@@ -279,12 +335,25 @@ public class MainActivity extends Activity {
                         if (!orig.exists()) { copiarArchivo(b, orig); restauradas++; }
                     }
                 }
+                File[] eords = espejoRaiz().listFiles(); // V234: recupera desde la copia de la Galería
+                if (eords != null) for (File od : eords) {
+                    if (!od.isDirectory()) continue;
+                    File[] fs = od.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
+                    if (fs == null) continue;
+                    for (File b : fs) {
+                        File orig = new File(new File(raiz, od.getName()), b.getName());
+                        if (!orig.exists()) { copiarArchivo(b, orig); restauradas++; }
+                    }
+                }
                 File[] dirs = raiz.listFiles();
                 if (dirs != null) for (File d : dirs) {
-                    if (!d.isDirectory() || d.getName().startsWith(".")) continue;
+                    if (!d.isDirectory() || d.getName().startsWith(".") || d.getName().equals("Papelera")) continue;
                     File[] fs = d.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
                     if (fs == null) continue;
-                    for (File f : fs) { File b = respaldoDe(f); if (!b.exists()) copiarArchivo(f, b); }
+                    for (File f : fs) {
+                        File b = respaldoDe(f); if (!b.exists()) copiarArchivo(f, b);
+                        guardarEspejo(f);
+                    }
                 }
             } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Respaldo de fotos", e); }
             final int n = restauradas;
@@ -619,7 +688,7 @@ public class MainActivity extends Activity {
         long horas = nasOk == 0 ? -1 : (System.currentTimeMillis() - nasOk) / 3600000L;
         String txtNas = nasOk == 0 ? "\u26a0\ufe0f Copia en el NAS: todav\u00eda ninguna"
             : "\u2601\ufe0f \u00daltima copia en el NAS: " + new java.text.SimpleDateFormat("dd/MM HH:mm", Locale.ROOT).format(new java.util.Date(nasOk));
-        TextView nasV = texto(txtNas, 12, (nasOk == 0 || horas > 48) ? android.graphics.Color.rgb(217, 48, 37) : GRIS, false);
+        TextView nasV = texto(txtNas, 12, (nasOk == 0 || horas > 24) ? android.graphics.Color.rgb(217, 48, 37) : GRIS, false);
         nasV.setGravity(Gravity.CENTER);
         p.addView(nasV);
 
@@ -721,7 +790,7 @@ public class MainActivity extends Activity {
 
         final android.content.SharedPreferences prefs = getSharedPreferences("ordenes", MODE_PRIVATE);
         long ok = prefs.getLong("nas_ok", 0);
-        if (ok == 0 || System.currentTimeMillis() - ok > 2L * 86400000L) {
+        if (ok == 0 || System.currentTimeMillis() - ok > 86400000L) {
             TextView an = texto("⚠ Sin copia al NAS " + (ok == 0 ? "todavía" : "desde " + formatoCorto(ok)) + ". Conéctate al wifi de casa.", 13, Color.rgb(255, 190, 90), true);
             an.setPadding(dp(4), dp(4), dp(4), dp(4));
             p.addView(an);
@@ -1137,10 +1206,9 @@ public class MainActivity extends Activity {
         abajo.addView(etq, new LinearLayout.LayoutParams(dp(54), dp(44)));
         Button borrar = boton("🗑", false);
         borrar.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("¿Borrar esta foto?")
-            .setMessage("Se borra del móvil y no se puede recuperar.")
+            .setMessage("Se guarda 7 días en la Papelera de «Almacen de Rafa» por si te arrepientes.")
             .setPositiveButton("BORRAR", (d, w) -> {
-                respaldoDe(f).delete();
-                if (f.delete()) {
+                if (enviarAPapelera(f)) {
                     MediaScannerConnection.scanFile(this, new String[]{f.getAbsolutePath()}, null, null);
                     cache.remove(f.getAbsolutePath());
                     visor.dismiss();
@@ -3140,11 +3208,13 @@ public class MainActivity extends Activity {
                 try (FileOutputStream o = new FileOutputStream(salida)) { sellada.compress(Bitmap.CompressFormat.JPEG, 92, o); }
                 MediaScannerConnection.scanFile(this, new String[]{salida.getAbsolutePath()}, new String[]{"image/jpeg"}, null);
                 try { copiarArchivo(salida, respaldoDe(salida)); } catch (Exception e) { android.util.Log.e("KULI_ORDENES", "Respaldo de la foto", e); }
+                guardarEspejo(salida); // V234
             } catch (Throwable t) {
                 error = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
             } finally {
                 if (archivo != null) archivo.delete();
             }
+            if (error == null) subirYa(); // V234
             final String err = error;
             final long fFecha = fecha;
             runOnUiThread(() -> {
