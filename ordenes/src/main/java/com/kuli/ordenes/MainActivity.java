@@ -752,12 +752,16 @@ public class MainActivity extends Activity {
         bus.setOnClickListener(v -> buscarEquipo());
         p.addView(bus, margen(-1, dp(46), 8));
         LinearLayout filaC = new LinearLayout(this);
-        Button med = boton("🧾 Qué me falta por justificar", false);
+        Button med = boton("🧾 Por justificar", false); // V235: el texto largo se cortaba en media pantalla
+        med.setTextSize(14);
         med.setOnClickListener(v -> ordenesAMedias());
-        filaC.addView(med, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        filaC.addView(med, new LinearLayout.LayoutParams(0, -2, 1f));
         Button mes = boton("📊 Resumen del mes", false);
+        mes.setTextSize(14);
+        mes.setMinHeight(dp(46));
+        med.setMinHeight(dp(46));
         mes.setOnClickListener(v -> resumenMes(0));
-        LinearLayout.LayoutParams lmes = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        LinearLayout.LayoutParams lmes = new LinearLayout.LayoutParams(0, -2, 1f);
         lmes.leftMargin = dp(10);
         filaC.addView(mes, lmes);
         p.addView(filaC, margen(-1, -2, 4));
