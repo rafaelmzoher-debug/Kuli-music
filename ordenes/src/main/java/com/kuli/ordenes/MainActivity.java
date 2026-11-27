@@ -358,7 +358,7 @@ public class MainActivity extends Activity {
                     File orig = new File(new File(raiz, pn.substring(0, k)), pn.substring(k + 2));
                     if (!orig.exists()) { copiarArchivo(pb, orig); restauradas++; }
                 }
-                File[] dirs = raiz.listFiles();
+                File[] dirs = carpetasOrden();
                 if (dirs != null) for (File d : dirs) {
                     if (!d.isDirectory() || d.getName().startsWith(".") || d.getName().equals("Papelera")) continue;
                     File[] fs = d.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".jpg"));
@@ -998,9 +998,14 @@ public class MainActivity extends Activity {
         panel.addView(cuerpo, Math.min(pos + 1, panel.getChildCount()), new LinearLayout.LayoutParams(-1, -2));
     }
 
+    // V237: «Papelera» guarda fotos sueltas y NO es una orden: se salta en todas las listas
+    private File[] carpetasOrden() {
+        return raiz.listFiles((x, n) -> !n.equals("Papelera"));
+    }
+
     private ArrayList<Resumen> listarOrdenes() {
         ArrayList<Resumen> r = new ArrayList<>();
-        File[] dirs = raiz.listFiles();
+        File[] dirs = carpetasOrden();
         if (dirs == null) return r;
         for (File d : dirs) {
             if (!d.isDirectory()) continue;
@@ -2030,7 +2035,7 @@ public class MainActivity extends Activity {
 
     // ---------- Órdenes a medias ----------
     private void ordenesAMedias() { // V230: qué falta en cada orden sin cerrar
-        File[] dirs = raiz.listFiles();
+        File[] dirs = carpetasOrden();
         final ArrayList<String> nombres = new ArrayList<>();
         final ArrayList<String> lineas = new ArrayList<>();
         if (dirs != null) {
@@ -2540,7 +2545,7 @@ public class MainActivity extends Activity {
         final String titulo = new SimpleDateFormat("MMMM yyyy", new Locale("es", "ES")).format(cal.getTime());
         java.util.HashMap<String, Integer> cuenta = new java.util.HashMap<>();
         int ordenes = 0, retirados = 0, total = 0;
-        File[] dirs = raiz.listFiles();
+        File[] dirs = carpetasOrden();
         if (dirs != null) {
             for (File d : dirs) {
                 if (!d.isDirectory()) continue;
@@ -2711,7 +2716,7 @@ public class MainActivity extends Activity {
             for (String r : it.raws) if (r.toLowerCase(Locale.ROOT).contains(b)) ok = true;
             if (ok && n < 30) { sb.append("📦 En el almacén: ").append(it.nombre).append(" ×").append(it.cantidad).append("\n\n"); n++; }
         }
-        File[] dirs = raiz.listFiles();
+        File[] dirs = carpetasOrden();
         if (dirs != null) {
             Arrays.sort(dirs);
             for (File d : dirs) {
@@ -2772,7 +2777,7 @@ public class MainActivity extends Activity {
         File[] fs = dir.listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".txt"));
         if (fs == null || fs.length == 0) { aviso("No hay albaranes en la carpeta Albaranes"); return; }
         StringBuilder usado = new StringBuilder();
-        File[] dirs = raiz.listFiles();
+        File[] dirs = carpetasOrden();
         if (dirs != null) for (File d : dirs) if (d.isDirectory()) usado.append(android.text.TextUtils.join("\n", leerMaterial(d.getName()))).append("\n");
         String todo = usado.toString().toLowerCase(Locale.ROOT);
         int total = 0, bien = 0;
@@ -2976,7 +2981,7 @@ public class MainActivity extends Activity {
     private String ordenDondeSeUso(String serie, String ordenActual) {
         try {
             String actual = limpiar(ordenActual);
-            File[] dirs = raiz.listFiles();
+            File[] dirs = carpetasOrden();
             if (dirs == null) return null;
             for (File d : dirs) {
                 if (!d.isDirectory() || d.getName().equals(actual)) continue;
