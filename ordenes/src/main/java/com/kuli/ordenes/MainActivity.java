@@ -378,6 +378,85 @@ public class MainActivity extends Activity {
 
     private void hacerAlbaran(File f, boolean vaciar) { hacerAlbaran(f, vaciar, null); }
 
+    // ---------- V242: Excel del mes (CSV con ; que abre Excel) ----------
+    private String csv(String v) { return "\"" + (v == null ? "" : v.replace("\"", "\"\"")) + "\""; }
+
+    private void excelDelMes() {
+        new AlertDialog.Builder(this).setTitle("📊 Excel del mes")
+            .setItems(new String[]{"Este mes", "El mes pasado"}, (d, i) -> excelDelMes(i)).setNegativeButton("CANCELAR", null).show();
+    }
+
+    private void excelDelMes(final int atras) {
+        aviso("Preparando el Excel…");
+        hilos.execute(() -> {
+            try {
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                cal.add(java.util.Calendar.MONTH, -atras);
+                final String mes = new SimpleDateFormat("MM/yyyy", Locale.US).format(cal.getTime());
+                final String nombre = "Material_" + new SimpleDateFormat("yyyy-MM", Locale.US).format(cal.getTime()) + ".csv";
+                java.util.TreeMap<String, String> filas = new java.util.TreeMap<>();
+                int n = 0;
+                File[] dirs = carpetasOrden();
+                if (dirs != null) for (File dd : dirs) {
+                    if (!dd.isDirectory() || dd.getName().startsWith(".") || dd.getName().equals("Albaranes") || dd.getName().equals("Trabajos")) continue;
+                    String[] dt = leerDatos(dd.getName());
+                    String datos = (dt[0] + " " + dt[1]).trim();
+                    for (String l : leerMaterial(dd.getName())) {
+                        String[] q = l.split(" \\| ");
+                        if (q.length < 2) continue;
+                        String ts = q[0].trim().replaceAll("\\s+", " ");
+                        if (ts.length() < 10 || !ts.substring(3, 10).equals(mes)) continue;
+                        String fecha = ts.substring(0, 10), hora = ts.length() > 11 ? ts.substring(11) : "";
+                        String nom = q[1].trim(), tipo = "Instalado";
+                        if (nom.startsWith("RETIRADO")) { tipo = "Retirado"; nom = nom.replace("RETIRADO · ", "").replace("RETIRADO", "").trim(); }
+                        else if (nom.startsWith("(no estaba")) tipo = "No estaba en el almacén";
+                        String cod = q.length > 2 ? q[2].trim() : "", codMat = q.length > 3 ? q[3].trim() : "";
+                        String clave = ts.substring(6, 10) + ts.substring(3, 5) + ts.substring(0, 2) + hora + "_" + (n++);
+                        filas.put(clave, csv(fecha) + ";" + csv(hora) + ";" + csv(dd.getName()) + ";" + csv(datos) + ";" + csv(tipo) + ";" + csv(nom) + ";" + csv(cod) + ";" + csv(codMat));
+                    }
+                }
+                StringBuilder sb = new StringBuilder("\uFEFFFecha;Hora;Orden;Datos;Tipo;Material;Código o serie;Código material\n");
+                for (String f : filas.values()) sb.append(f).append("\n");
+                File dirT = new File(getCacheDir(), "tmp");
+                dirT.mkdirs();
+                try (FileOutputStream o = new FileOutputStream(new File(dirT, nombre))) { o.write(sb.toString().getBytes("UTF-8")); }
+                File ex = new File(raiz, "Excel");
+                ex.mkdirs();
+                try (FileOutputStream o = new FileOutputStream(new File(ex, nombre))) { o.write(sb.toString().getBytes("UTF-8")); }
+                final int total = filas.size();
+                final Uri uri = Uri.parse("content://com.kuli.ordenes.fotos/" + Uri.encode(nombre));
+                runOnUiThread(() -> {
+                    if (total == 0) { aviso("No hay material apuntado en ese mes"); return; }
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("text/csv");
+                    i.putExtra(Intent.EXTRA_STREAM, uri);
+                    i.putExtra(Intent.EXTRA_SUBJECT, nombre);
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(i, "Enviar Excel (" + total + " líneas)"));
+                });
+            } catch (Throwable t) {
+                android.util.Log.e("KULI_ORDENES", "Excel del mes", t);
+                runOnUiThread(() -> aviso("No se pudo hacer el Excel"));
+            }
+        });
+    }
+
+    // V242: lo gastado que el almacén todavía no ha repuesto (por equipo)
+    private String textoReposicionPendiente() {
+        ArrayList<String> ls = leerGastos();
+        if (ls.isEmpty()) return "";
+        java.util.TreeMap<String, Integer> g = new java.util.TreeMap<>();
+        for (String l : ls) { String c = l.split(";")[0].trim(); g.put(c, g.containsKey(c) ? g.get(c) + 1 : 1); }
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, Integer> e : g.entrySet()) {
+            Almacen.Item it = almacen.buscar(e.getKey());
+            String nm = it != null ? it.nombre : (Albaran.nombre(e.getKey()).isEmpty() ? e.getKey() : Albaran.nombre(e.getKey()));
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(nm).append(" ×").append(e.getValue());
+        }
+        return "📦 Esperando reposición del almacén: " + ls.size() + " → " + sb;
+    }
+
     // ---------- Gastos pendientes de reponer ----------
     private File fGastos() { return new File(raiz, "gastos_pendientes.txt"); }
 
@@ -796,7 +875,10 @@ public class MainActivity extends Activity {
         Button ped = boton("🛒  Pedido de material (lo que queda poco)", false);
         ped.setOnClickListener(v -> pedidoMaterial());
         p.addView(ped, margen(-1, dp(46), 4));
-        agrupar(p, "📊  Resúmenes e informe", filaC, res, inf, ped);
+        Button xl = boton("📊  Excel del mes (material de cada orden)", false);
+        xl.setOnClickListener(v -> excelDelMes());
+        p.addView(xl, margen(-1, dp(46), 4));
+        agrupar(p, "📊  Resúmenes e informe", filaC, res, inf, ped, xl);
         ArrayList<Almacen.Item> bajos = almacen.bajos();
         if (!bajos.isEmpty()) {
             StringBuilder sb = new StringBuilder("⚠ Queda poco: ");
@@ -821,6 +903,14 @@ public class MainActivity extends Activity {
             tv.setPadding(dp(4), dp(4), dp(4), dp(4));
             p.addView(tv);
         }
+        try { // V242: reposición pendiente
+            String rp = textoReposicionPendiente();
+            if (!rp.isEmpty()) {
+                TextView tv = texto(rp, 13, Color.rgb(255, 190, 90), true);
+                tv.setPadding(dp(4), dp(4), dp(4), dp(4));
+                p.addView(tv);
+            }
+        } catch (Throwable ignorar) { }
         try { // V241: equipos con número de serie que llevan 30 días o más sin usarse
             int viejos = 0; long masViejo = 0;
             for (String[] f : filasExistencias("")) {
