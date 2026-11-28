@@ -1816,6 +1816,9 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lq = new LinearLayout.LayoutParams(0, dp(46), 1f);
         lq.leftMargin = dp(8);
         fila3.addView(cua, lq);
+        Button cua2 = boton("📊 Cuadre desde el 09/11", false);
+        cua2.setOnClickListener(v -> cuadreDesdeInicio());
+        p.addView(cua2, margen(-1, dp(46), 8));
         Button des3 = boton("↶ Deshacer", false);
         des3.setOnClickListener(v -> deshacer());
         LinearLayout.LayoutParams lz = new LinearLayout.LayoutParams(0, dp(46), 1f);
@@ -2780,6 +2783,86 @@ public class MainActivity extends Activity {
         i.setType("text/plain");
         i.putExtra(Intent.EXTRA_TEXT, sb.toString());
         startActivity(Intent.createChooser(i, "Enviar informe del almacén"));
+    }
+
+    // ---------- V239: Cuadre desde el 09/11 (albaranes - gastado en órdenes = teórico, contra el Almacén) ----------
+    private static final String CUADRE_DESDE = "09/11/2026";
+
+    private boolean ignorarEnCuadre(String nombre) {
+        String n = nombre.toLowerCase(Locale.ROOT);
+        return n.contains("etiqueta") || n.contains("roseta");
+    }
+
+    private void cuadreDesdeInicio() {
+        try {
+            final SimpleDateFormat sf = new SimpleDateFormat("dd/MM/yyyy", Locale.ROOT);
+            final long desde = sf.parse(CUADRE_DESDE).getTime();
+            java.util.TreeMap<String, int[]> t = new java.util.TreeMap<>(); // nombre -> {recibido, gastado, almacén}
+            int albs = 0;
+            File[] fs = new File(raiz, "Albaranes").listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".txt"));
+            if (fs != null) for (File f : fs) {
+                String fe = datoDe(f, "FECHA");
+                long fm;
+                try { fm = sf.parse(fe).getTime(); } catch (Throwable e) { continue; }
+                if (fm < desde) continue; // lo anterior (octubre) no cuenta
+                albs++;
+                String txt;
+                try (InputStream in = new java.io.FileInputStream(f)) { txt = new String(leerTodo(in), "UTF-8").replace("\uFEFF", ""); }
+                java.util.HashSet<String> vistos = new java.util.HashSet<>();
+                for (String l : txt.split("\\r?\\n")) {
+                    String[] q = l.trim().split(";");
+                    for (int i = 0; i < q.length; i++) q[i] = q[i].trim();
+                    if (q[0].equals("S") && q.length > 3) {
+                        if (ignorarEnCuadre(q[2]) || !vistos.add(q[3].toUpperCase(Locale.ROOT).replace("-", "").replace(" ", ""))) continue;
+                        t.computeIfAbsent(q[2], k -> new int[3])[0]++;
+                    } else if (q[0].equals("C") && q.length > 3) {
+                        if (ignorarEnCuadre(q[2])) continue;
+                        int c = 0; try { c = Integer.parseInt(q[3]); } catch (Throwable e) { }
+                        t.computeIfAbsent(q[2], k -> new int[3])[0] += c;
+                    }
+                }
+            }
+            File[] dirs = carpetasOrden();
+            if (dirs != null) for (File d : dirs) {
+                if (!d.isDirectory()) continue;
+                for (String l : leerMaterial(d.getName())) {
+                    String[] q = l.split(" \\| ");
+                    if (q.length < 2) continue;
+                    String nom = q[1].trim();
+                    if (nom.startsWith("RETIRADO") || nom.startsWith("(no estaba") || ignorarEnCuadre(nom)) continue;
+                    try { if (sf.parse(q[0].trim().substring(0, 10)).getTime() < desde) continue; } catch (Throwable e) { continue; }
+                    t.computeIfAbsent(nom, k -> new int[3])[1]++;
+                }
+            }
+            for (Almacen.Item it : almacen.lista()) {
+                if (ignorarEnCuadre(it.nombre)) continue;
+                t.computeIfAbsent(it.nombre, k -> new int[3])[2] += it.cantidad;
+            }
+            StringBuilder ok = new StringBuilder(), mal = new StringBuilder();
+            int totTeo = 0, totAlm = 0;
+            for (java.util.Map.Entry<String, int[]> e : t.entrySet()) {
+                int[] v = e.getValue();
+                int teo = v[0] - v[1], dif = v[2] - teo;
+                totTeo += teo; totAlm += v[2];
+                String linea = e.getKey() + "\n   recibido " + v[0] + " − gastado " + v[1] + " = " + teo + " · almacén " + v[2];
+                if (dif == 0) ok.append("✔ ").append(linea).append("\n\n");
+                else mal.append("⚠ ").append(linea).append(dif > 0 ? "\n   SOBRAN " + dif : "\n   FALTAN " + (-dif)).append("\n\n");
+            }
+            final String msg = "Desde el " + CUADRE_DESDE + " · " + albs + " albaranes\n"
+                + "Teórico: " + totTeo + " · En el almacén: " + totAlm + "\n(sin etiquetas ni rosetas)\n\n"
+                + (mal.length() > 0 ? "NO CUADRAN:\n\n" + mal : "")
+                + (ok.length() > 0 ? "CUADRAN:\n\n" + ok : "")
+                + "Ojo: lo que hayas devuelto al almacén (averiados, foco, acometida) no resta aquí: puede salir como «sobran».";
+            new AlertDialog.Builder(this).setTitle(mal.length() == 0 ? "✔ Cuadra todo" : "Cuadre desde el 09/11")
+                .setMessage(msg)
+                .setPositiveButton("CERRAR", null)
+                .setNeutralButton("ENVIAR", (d, w) -> {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("text/plain");
+                    i.putExtra(Intent.EXTRA_TEXT, msg);
+                    startActivity(Intent.createChooser(i, "Enviar cuadre"));
+                }).show();
+        } catch (Throwable t) { android.util.Log.e("KULI_ORDENES", "Cuadre desde inicio", t); aviso("No se pudo hacer el cuadre"); }
     }
 
     // ---------- Cuadre con los albaranes ----------
