@@ -821,6 +821,20 @@ public class MainActivity extends Activity {
             tv.setPadding(dp(4), dp(4), dp(4), dp(4));
             p.addView(tv);
         }
+        try { // V241: equipos con número de serie que llevan 30 días o más sin usarse
+            int viejos = 0; long masViejo = 0;
+            for (String[] f : filasExistencias("")) {
+                String nm = f[1].toLowerCase(Locale.ROOT);
+                if (f[2].isEmpty() || nm.contains("cable") || nm.contains("acom")) continue;
+                long dd = Long.parseLong(f[4]);
+                if (dd >= 30) { viejos++; masViejo = Math.max(masViejo, dd); }
+            }
+            if (viejos > 0) {
+                TextView tv = texto("⏳ " + viejos + (viejos == 1 ? " equipo lleva" : " equipos llevan") + " más de 30 días sin usarse (el más antiguo, " + masViejo + " días). Instala primero los más antiguos.", 13, Color.rgb(255, 190, 90), true);
+                tv.setPadding(dp(4), dp(4), dp(4), dp(4));
+                p.addView(tv);
+            }
+        } catch (Throwable ignorar) { }
         final boolean plegada = prefs.getBoolean("plegada", false);
         final ArrayList<Resumen> ordenes = listarOrdenes();
         if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 17) {
@@ -2793,18 +2807,108 @@ public class MainActivity extends Activity {
         return n.contains("etiqueta") || n.contains("roseta");
     }
 
+    // V240: albaranes desde el 09/11 (número|fecha|recibido código:cantidad|devuelto código:cantidad)
+    private static final String[] CUADRE_ALB = {
+        "1925340|09/11/2026|00400711:1,00400713:1,00400714:1,00400717:1,00412537:4,00412547:1,00412967:5,00413012:5,00414936:1,00415959:2,00530151:1,00530152:1,00530153:1,00530154:1,00530170:2,00530171:1,00530172:1,00546040:5,00547876:25,00547877:9,50080103:1|",
+        "1942435|10/11/2026|00530167:1|",
+        "1949672|12/11/2026|00412232:1,00412233:1,00412537:1,00412967:5,00413012:2,00530170:2,00546034:1,00546040:1|",
+        "1950510|12/11/2026|00414429:1|",
+        "1961316|16/11/2026|00412967:7|",
+        "1970372|18/11/2026|00400702:1,00400703:1,00400717:1|",
+        "1970374|18/11/2026|00402751:1,00412232:2,00412547:1,00412967:5,00413012:1,00546047:4,00547877:9,88412547:1|",
+        "1991920|25/11/2026|00400704:1,00400711:1,00400713:1,00400717:1,00412232:1,00412547:1,00412967:2,00413012:4,00415959:1,00530152:1,00530154:1,00530170:2,00546034:3,00546040:7,00546047:2,00547877:9|",
+        "1991964|25/11/2026||00402751:1,00530167:1",
+        "2005093|27/11/2026|00412967:8,00413012:2|",
+    };
+    private static final String[] CUADRE_NOMBRES = {
+        "00400702=Master Fibra Invisible 1 RTF8231-Askey",
+        "00400703=Conversor Fibra Invisible RTF8232 ( Slave )-Askey",
+        "00400704=Roseta Fibra Invisible",
+        "00400711=Módulo Base 1 Fibra 360 Movistar RTF6121",
+        "00400713=Mód Extensor Fibra 360 Movistar RTF6122",
+        "00400714=Enfrentador Solución FTTR Movistar",
+        "00400717=Kit Fib Solución FTTR 60m (Transparente)",
+        "00402751=TELEFONO DOMO3 AMPER",
+        "00412232=CABLE HDMI PREMIUM",
+        "00412233=MANDO BLUETOOTH MOVISTAR+",
+        "00412537=DESCODIFICADOR UHD MOVISTAR+ H2",
+        "00412547=DESCODIFICADOR UHD MOVISTAR+ H3",
+        "00412967=Router Movistar WiFi7 Askey RTF8317VW-SX",
+        "00413012=Router Smart WiFi 7 Askey RTF8316VW",
+        "00414429=Antena AFR 5G",
+        "00414936=Router AFR 5G MITRASTAR IGW -1121GX4X4- M v3",
+        "00415959=Amplific.Smart WiFi7 Mitra HGW500IT4T4-M",
+        "00530151=FTTH-ACOM.EXT.4.5 mm 1FO.POLIVAL. 30 m. c/etiq",
+        "00530152=FTTH-ACOM.EXT. 4.5 mm 1FO.POLIVAL. 50 m. c/etiq",
+        "00530153=FTTH-ACOM.EXT4.5 mm .1FO.POLIVAL. 80 m. c/etiq",
+        "00530154=FTTH-ACOM.EXT.4.5 mm 1FO.POLIVAL. 150 m. c/etiq",
+        "00530167=FTTH-ACOM.EXT.4.5 MM.1FO.SC/APC 150 m.",
+        "00530170=FTTH-ACOM.INT.3.4 MM.1FO. SC/APC.30 m.",
+        "00530171=FTTH-ACOM.INT.3.4 MM.1FO. SC/APC.50 m.",
+        "00530172=FTTH-ACOM.INT.3.4 MM.1FO. SC/APC.80 m.",
+        "00546034=FTTH-Latiguillo Monof.2m.+2conec.SCAPC",
+        "00546040=FTTH-ROSETA DE FIBRA OPTICA",
+        "00546047=FTTH-CORDON 2.4MM. 2M. SC/APC-SC/APC",
+        "00547876=Etiquetas identificación acometidas f.o. Telefónica (100uds)",
+        "00547877=ETIQ. DATAMATRIX ACOMETIDA GENERICA",
+        "50080103=TARJETA SIM AF 3G",
+        "88412547=DESCODIFICADOR UHD MOVISTAR+ H3 PaN",
+        "99412878=Router Fibra Óptica Amper EG-663 usado",
+        "99412886=ONT I240G-T (Alcatel-Lucent) desmontado",
+        "99412897=ONT HG8240H (Huawei) desmontado",
+        "99412920=Router Fibra Óptica HGW-2501GN-R2 usado",
+        "99412928=HGU Equipo Integ. Fibra (ROUTER+ONT Askey) usado",
+        "99412968=Equipo Integ. Fibra(ROUTER+ONT Askey) v2",
+        "99412979=HGU Mitrastar GPT-2541GNAC"
+    };
+
+    private static String normNombre(String n) {
+        return n == null ? "" : n.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private static boolean esCodigo8(String c) { return c != null && c.matches("\\d{8}"); }
+
     private void cuadreDesdeInicio() {
         try {
             final SimpleDateFormat sf = new SimpleDateFormat("dd/MM/yyyy", Locale.ROOT);
             final long desde = sf.parse(CUADRE_DESDE).getTime();
-            java.util.TreeMap<String, int[]> t = new java.util.TreeMap<>(); // nombre -> {recibido, gastado, almacén}
+            // nombres -> código, y código -> nombre para mostrar
+            java.util.HashMap<String, String> n2c = new java.util.HashMap<>(), c2n = new java.util.HashMap<>();
+            for (String x : CUADRE_NOMBRES) { int i = x.indexOf('='); n2c.put(normNombre(x.substring(i + 1)), x.substring(0, i)); c2n.put(x.substring(0, i), x.substring(i + 1)); }
+            for (String[] f : Albaran.CON_SERIE) { n2c.put(normNombre(f[1]), f[0]); c2n.put(f[0], f[1]); }
+            for (String[] f : Albaran.SIN_SERIE) { n2c.put(normNombre(f[1]), f[0]); c2n.put(f[0], f[1]); }
+            for (Almacen.Item it : almacen.lista()) if (esCodigo8(it.codigo)) { n2c.put(normNombre(it.nombre), it.codigo); c2n.put(it.codigo, it.nombre); }
+            final java.util.TreeMap<String, int[]> t = new java.util.TreeMap<>(); // clave -> {recibido, gastado, devuelto, almacén}
+            final java.util.HashMap<String, String> nom = new java.util.HashMap<>();
+            final java.util.HashMap<String, java.util.LinkedHashMap<String, Integer>> uso = new java.util.HashMap<>(); // V241
+            java.util.HashSet<String> ids = new java.util.HashSet<>();
             int albs = 0;
+            for (String linea : CUADRE_ALB) {
+                String[] z = linea.split("\\|", -1);
+                ids.add(z[0]);
+                if (sf.parse(z[1]).getTime() < desde) continue;
+                albs++;
+                for (int k = 2; k <= 3; k++) {
+                    if (z[k].isEmpty()) continue;
+                    for (String par : z[k].split(",")) {
+                        String[] cq = par.split(":");
+                        String nm = c2n.containsKey(cq[0]) ? c2n.get(cq[0]) : cq[0];
+                        if (ignorarEnCuadre(nm)) continue;
+                        t.computeIfAbsent(cq[0], kk -> new int[4])[k == 2 ? 0 : 2] += Integer.parseInt(cq[1]);
+                        nom.put(cq[0], nm);
+                    }
+                }
+            }
+            // albaranes nuevos que cargues después (los que no están ya en la lista de arriba)
             File[] fs = new File(raiz, "Albaranes").listFiles((x, n) -> n.toLowerCase(Locale.ROOT).endsWith(".txt"));
             if (fs != null) for (File f : fs) {
-                String fe = datoDe(f, "FECHA");
+                String id = datoDe(f, "ALBARAN").replaceAll("\\D", "");
+                if (id.length() > 7) id = id.substring(id.length() - 7);
+                if (id.isEmpty() || ids.contains(id)) continue;
                 long fm;
-                try { fm = sf.parse(fe).getTime(); } catch (Throwable e) { continue; }
-                if (fm < desde) continue; // lo anterior (octubre) no cuenta
+                try { fm = sf.parse(datoDe(f, "FECHA")).getTime(); } catch (Throwable e) { continue; }
+                if (fm < desde) continue;
+                ids.add(id);
                 albs++;
                 String txt;
                 try (InputStream in = new java.io.FileInputStream(f)) { txt = new String(leerTodo(in), "UTF-8").replace("\uFEFF", ""); }
@@ -2814,11 +2918,13 @@ public class MainActivity extends Activity {
                     for (int i = 0; i < q.length; i++) q[i] = q[i].trim();
                     if (q[0].equals("S") && q.length > 3) {
                         if (ignorarEnCuadre(q[2]) || !vistos.add(q[3].toUpperCase(Locale.ROOT).replace("-", "").replace(" ", ""))) continue;
-                        t.computeIfAbsent(q[2], k -> new int[3])[0]++;
+                        t.computeIfAbsent(q[1], kk -> new int[4])[0]++;
+                        nom.put(q[1], q[2]); n2c.put(normNombre(q[2]), q[1]);
                     } else if (q[0].equals("C") && q.length > 3) {
                         if (ignorarEnCuadre(q[2])) continue;
                         int c = 0; try { c = Integer.parseInt(q[3]); } catch (Throwable e) { }
-                        t.computeIfAbsent(q[2], k -> new int[3])[0] += c;
+                        t.computeIfAbsent(q[1], kk -> new int[4])[0] += c;
+                        nom.put(q[1], q[2]); n2c.put(normNombre(q[2]), q[1]);
                     }
                 }
             }
@@ -2828,31 +2934,54 @@ public class MainActivity extends Activity {
                 for (String l : leerMaterial(d.getName())) {
                     String[] q = l.split(" \\| ");
                     if (q.length < 2) continue;
-                    String nom = q[1].trim();
-                    if (nom.startsWith("RETIRADO") || nom.startsWith("(no estaba") || ignorarEnCuadre(nom)) continue;
+                    String nm = q[1].trim();
+                    if (nm.startsWith("RETIRADO") || nm.startsWith("(no estaba") || ignorarEnCuadre(nm)) continue;
                     try { if (sf.parse(q[0].trim().substring(0, 10)).getTime() < desde) continue; } catch (Throwable e) { continue; }
-                    t.computeIfAbsent(nom, k -> new int[3])[1]++;
+                    String cod = (q.length > 3 && esCodigo8(q[3].trim())) ? q[3].trim() : n2c.get(normNombre(nm));
+                    String clave = cod != null ? cod : "N:" + normNombre(nm);
+                    t.computeIfAbsent(clave, kk -> new int[4])[1]++;
+                    uso.computeIfAbsent(clave, kk -> new java.util.LinkedHashMap<>()).merge(d.getName(), 1, Integer::sum);
+                    if (!nom.containsKey(clave)) nom.put(clave, c2n.containsKey(clave) ? c2n.get(clave) : nm);
                 }
             }
             for (Almacen.Item it : almacen.lista()) {
                 if (ignorarEnCuadre(it.nombre)) continue;
-                t.computeIfAbsent(it.nombre, k -> new int[3])[2] += it.cantidad;
+                String cod = esCodigo8(it.codigo) ? it.codigo : n2c.get(normNombre(it.nombre));
+                String clave = cod != null ? cod : "N:" + normNombre(it.nombre);
+                t.computeIfAbsent(clave, kk -> new int[4])[3] += it.cantidad;
+                if (!nom.containsKey(clave)) nom.put(clave, it.nombre);
             }
             StringBuilder ok = new StringBuilder(), mal = new StringBuilder();
             int totTeo = 0, totAlm = 0;
             for (java.util.Map.Entry<String, int[]> e : t.entrySet()) {
                 int[] v = e.getValue();
-                int teo = v[0] - v[1], dif = v[2] - teo;
-                totTeo += teo; totAlm += v[2];
-                String linea = e.getKey() + "\n   recibido " + v[0] + " − gastado " + v[1] + " = " + teo + " · almacén " + v[2];
+                int teo = v[0] - v[1] - v[2], dif = v[3] - teo;
+                if (v[0] == 0 && v[1] == 0 && v[2] == 0 && v[3] == 0) continue;
+                totTeo += teo; totAlm += v[3];
+                String nm = nom.containsKey(e.getKey()) ? nom.get(e.getKey()) : e.getKey();
+                String linea = nm + "\n   recibido " + v[0] + " − gastado " + v[1] + (v[2] > 0 ? " − devuelto " + v[2] : "") + " = " + teo + " · almacén " + v[3];
                 if (dif == 0) ok.append("✔ ").append(linea).append("\n\n");
-                else mal.append("⚠ ").append(linea).append(dif > 0 ? "\n   SOBRAN " + dif : "\n   FALTAN " + (-dif)).append("\n\n");
+                else {
+                    mal.append("⚠ ").append(linea).append(dif > 0 ? "\n   SOBRAN " + dif : "\n   FALTAN " + (-dif));
+                    java.util.LinkedHashMap<String, Integer> us = uso.get(e.getKey());
+                    if (us != null && !us.isEmpty()) {
+                        StringBuilder ub = new StringBuilder();
+                        int cuenta = 0;
+                        for (java.util.Map.Entry<String, Integer> u : us.entrySet()) {
+                            if (cuenta++ == 8) { ub.append(", …"); break; }
+                            if (ub.length() > 0) ub.append(", ");
+                            ub.append(u.getKey()).append(u.getValue() > 1 ? " ×" + u.getValue() : "");
+                        }
+                        mal.append("\n   Gastado en: ").append(ub);
+                    }
+                    mal.append("\n\n");
+                }
             }
             final String msg = "Desde el " + CUADRE_DESDE + " · " + albs + " albaranes\n"
                 + "Teórico: " + totTeo + " · En el almacén: " + totAlm + "\n(sin etiquetas ni rosetas)\n\n"
                 + (mal.length() > 0 ? "NO CUADRAN:\n\n" + mal : "")
                 + (ok.length() > 0 ? "CUADRAN:\n\n" + ok : "")
-                + "Ojo: lo que hayas devuelto al almacén (averiados, foco, acometida) no resta aquí: puede salir como «sobran».";
+                + "Ojo: los equipos desmontados que aún no has devuelto no cuentan aquí.";
             new AlertDialog.Builder(this).setTitle(mal.length() == 0 ? "✔ Cuadra todo" : "Cuadre desde el 09/11")
                 .setMessage(msg)
                 .setPositiveButton("CERRAR", null)
